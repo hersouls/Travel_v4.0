@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Search, Plus, Star, MapPin, Trash2 } from 'lucide-react'
-import { Card, CardHeader } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
-import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
+import { PlanTypeBadge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -14,7 +14,7 @@ import type { PlanType, Place } from '@/types'
 const planTypes: Array<PlanType | 'all'> = ['all', 'attraction', 'restaurant', 'hotel', 'transport', 'car', 'plane', 'airport', 'other']
 
 export function PlaceLibrary() {
-  const places = usePlaces()
+  const _places = usePlaces()
   const isLoading = usePlaceLoading()
   const { searchQuery, filterType, setSearchQuery, setFilterType, getFilteredPlaces, toggleFavorite, deletePlace, addPlace } = usePlaceStore()
 

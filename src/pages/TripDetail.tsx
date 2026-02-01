@@ -3,15 +3,26 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
-import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
+import { PlanTypeBadge } from '@/components/ui/Badge'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
-import { useUIStore, toast } from '@/stores/uiStore'
+import { toast } from '@/stores/uiStore'
 import { formatDateRange, getTripDuration, formatTime } from '@/utils/format'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
-import * as LucideIcons from 'lucide-react'
+import { Camera, Utensils, Bed, Bus, Car, Plane, PlaneTakeoff, MapPin as DefaultMapPin, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
+
+const iconMap: Record<string, LucideIcon> = {
+  Camera,
+  Utensils,
+  Bed,
+  Bus,
+  Car,
+  Plane,
+  PlaneTakeoff,
+  MapPin: DefaultMapPin,
+}
 
 export function TripDetail() {
   const { id } = useParams<{ id: string }>()
@@ -200,8 +211,8 @@ export function TripDetail() {
                 ) : (
                   <div className="space-y-3">
                     {dayPlans.map((plan) => {
-                      const iconName = PLAN_TYPE_ICONS[plan.type] as keyof typeof LucideIcons
-                      const Icon = LucideIcons[iconName] || LucideIcons.MapPin
+                      const iconName = PLAN_TYPE_ICONS[plan.type]
+                      const Icon = iconMap[iconName] || DefaultMapPin
                       return (
                         <Link
                           key={plan.id}

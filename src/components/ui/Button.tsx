@@ -169,13 +169,15 @@ type BaseButtonProps = {
   rightIcon?: ReactNode
   className?: string
   children?: ReactNode
+  as?: 'button' | 'span' | 'a'
+  to?: string
+  disabled?: boolean
+  type?: 'button' | 'submit' | 'reset'
+  onClick?: React.MouseEventHandler
+  'aria-label'?: string
 }
 
-type ButtonProps = BaseButtonProps &
-  (
-    | (Omit<Headless.ButtonProps, 'as' | 'className'> & { to?: never })
-    | (Omit<LinkProps, 'className'> & { disabled?: boolean })
-  )
+type ButtonProps = BaseButtonProps & Omit<Headless.ButtonProps, keyof BaseButtonProps>
 
 function getButtonStyles(color: ButtonColor = 'primary', outline?: boolean, plain?: boolean): string {
   if (plain) return plainStyles[color] || plainStyles.secondary
@@ -185,7 +187,7 @@ function getButtonStyles(color: ButtonColor = 'primary', outline?: boolean, plai
 
 export const Button = forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonProps>(
   function Button(
-    { color, size = 'md', outline, plain, isLoading = false, leftIcon, rightIcon, className, children, ...props },
+    { color, size = 'md', outline, plain, isLoading = false, leftIcon, rightIcon, className, children, as, to, disabled, type, onClick, ...props },
     ref
   ) {
     const classes = clsx(baseStyles, sizeStyles[size], getButtonStyles(color, outline, plain), className)
@@ -203,24 +205,34 @@ export const Button = forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPr
       </TouchTarget>
     )
 
-    if ('to' in props && props.to) {
-      const { to, ...linkProps } = props as LinkProps & { disabled?: boolean }
+    // Render as span (for wrapping in label)
+    if (as === 'span') {
       return (
-        <Link to={to} {...linkProps} className={classes} ref={ref as React.Ref<HTMLAnchorElement>}>
+        <span className={classes} ref={ref as React.Ref<HTMLAnchorElement>}>
+          {content}
+        </span>
+      )
+    }
+
+    // Render as Link
+    if (to) {
+      return (
+        <Link to={to} className={classes} ref={ref as React.Ref<HTMLAnchorElement>}>
           {content}
         </Link>
       )
     }
 
-    const buttonProps = props as Omit<Headless.ButtonProps, 'as' | 'className'>
-
+    // Render as Button
     return (
       <Headless.Button
-        {...buttonProps}
+        type={type}
+        onClick={onClick}
         className={classes}
         ref={ref as React.Ref<HTMLButtonElement>}
-        disabled={isLoading || buttonProps.disabled}
+        disabled={isLoading || disabled}
         aria-busy={isLoading || undefined}
+        {...props}
       >
         {content}
       </Headless.Button>
@@ -228,7 +240,7 @@ export const Button = forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPr
   }
 )
 
-type IconButtonProps = BaseButtonProps & Omit<Headless.ButtonProps, 'as' | 'className'>
+type IconButtonProps = BaseButtonProps & Omit<Headless.ButtonProps, 'as' | 'className'> & { to?: string }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
   { className, children, ...props },
