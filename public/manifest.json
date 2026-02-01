@@ -1,0 +1,55 @@
+{
+  "name": "Moonwave Travel",
+  "short_name": "Travel",
+  "description": "여행 일정 관리 및 추억 기록 도구",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#030303",
+  "theme_color": "#2effb4",
+  "scope": "/",
+  "lang": "ko",
+  "dir": "ltr",
+  "categories": ["travel", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "새 여행",
+      "short_name": "새 여행",
+      "description": "새로운 여행 일정 만들기",
+      "url": "/trips/new"
+    },
+    {
+      "name": "장소 라이브러리",
+      "short_name": "장소",
+      "description": "저장된 장소 관리",
+      "url": "/places"
+    }
+  ],
+  "prefer_related_applications": false
+}

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2effb4"/>
+      <stop offset="100%" style="stop-color:#00a86b"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Plane icon -->
+  <g transform="translate(256, 256) rotate(-45)">
+    <path
+      d="M-100,0 L-40,-30 L80,-30 L120,0 L80,30 L-40,30 Z"
+      fill="#030303"
+      opacity="0.9"
+    />
+    <path
+      d="M-20,-60 L-20,-30 L40,-30 L60,-60 Z"
+      fill="#030303"
+      opacity="0.9"
+    />
+    <path
+      d="M-20,60 L-20,30 L40,30 L60,60 Z"
+      fill="#030303"
+      opacity="0.9"
+    />
+    <circle cx="-60" cy="0" r="15" fill="#030303" opacity="0.9"/>
+  </g>
+  <!-- T letter for Travel -->
+  <text
+    x="256"
+    y="320"
+    font-family="Arial, sans-serif"
+    font-size="180"
+    font-weight="bold"
+    fill="#030303"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    opacity="0"
+  >T</text>
+</svg>
