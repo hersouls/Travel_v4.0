@@ -87,9 +87,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 }
 
 async function getOrCreateBackupFolder(accessToken: string): Promise<string> {
-  // 기존 폴더 검색
+  // 기존 폴더 검색 (쿼리 URL 인코딩 필수)
+  const query = `name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
   const searchResponse = await fetch(
-    `https://www.googleapis.com/drive/v3/files?q=name='${BACKUP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)`,
+    `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
