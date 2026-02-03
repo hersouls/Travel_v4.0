@@ -74,6 +74,8 @@ export interface Place {
   type: PlanType
   address?: string
   memo?: string
+  audioScript?: string // Moonyou Guide 음성 대본
+  photos?: string[] // Base64 encoded
   rating?: number // 0.0 ~ 5.0
   mapUrl?: string
   website?: string

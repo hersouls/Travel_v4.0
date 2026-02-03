@@ -5,9 +5,10 @@
 import { useState, useEffect, useRef, useCallback, useId } from 'react'
 import { Combobox, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react'
 import { clsx } from 'clsx'
-import { MapPin, Loader2, Search } from 'lucide-react'
+import { MapPin, Loader2, Search, Bookmark } from 'lucide-react'
 import { searchPlaces, getPlaceDetails, type PlacePrediction, type PlaceDetails } from '@/services/placesAutocomplete'
 import { Label } from './Input'
+import type { Place } from '@/types'
 
 interface PlacesAutocompleteProps {
   label?: string
@@ -18,6 +19,7 @@ interface PlacesAutocompleteProps {
   error?: string
   disabled?: boolean
   className?: string
+  localPlaces?: Place[] // New prop for local library places
 }
 
 export function PlacesAutocomplete({
@@ -29,6 +31,7 @@ export function PlacesAutocomplete({
   error,
   disabled,
   className,
+  localPlaces = [],
 }: PlacesAutocompleteProps) {
   const inputId = useId()
   const [query, setQuery] = useState(value)
@@ -42,6 +45,27 @@ export function PlacesAutocomplete({
     setQuery(value)
   }, [value])
 
+  // Local Search Logic
+  const searchLocalPlaces = useCallback((input: string): PlacePrediction[] => {
+    if (!input || input.length < 1 || !localPlaces.length) return []
+
+    const lowerInput = input.toLowerCase()
+    return localPlaces
+      .filter(place =>
+        place.name.toLowerCase().includes(lowerInput) ||
+        place.address?.toLowerCase().includes(lowerInput)
+      )
+      .slice(0, 5) // Limit local results
+      .map(place => ({
+        placeId: `local_${place.id}`, // specific prefix for local
+        description: place.name,
+        mainText: place.name,
+        secondaryText: place.address || '',
+        isLocal: true,
+        originalPlace: place // Store original place data
+      } as PlacePrediction & { isLocal?: boolean, originalPlace?: Place }))
+  }, [localPlaces])
+
   // Debounced search
   useEffect(() => {
     if (debounceRef.current) {
@@ -53,11 +77,19 @@ export function PlacesAutocomplete({
       return
     }
 
+    // Immediate local search
+    const localResults = searchLocalPlaces(query)
+    setPredictions(localResults)
+
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true)
       try {
         const results = await searchPlaces(query)
-        setPredictions(results)
+        // Merge: Local results first, filtering out duplicates if Google returns them (by placeId check if possible, hard to do perfectly, so just stack)
+        setPredictions(prev => [
+          ...localResults,
+          ...results.filter(r => !localResults.some(lr => lr.placeId === `local_${r.placeId || ''}`)) // Simple dedup attempt
+        ])
       } finally {
         setIsLoading(false)
       }
@@ -68,7 +100,7 @@ export function PlacesAutocomplete({
         clearTimeout(debounceRef.current)
       }
     }
-  }, [query])
+  }, [query, searchLocalPlaces])
 
   const handleInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,7 +112,7 @@ export function PlacesAutocomplete({
   )
 
   const handleSelect = useCallback(
-    async (prediction: PlacePrediction | null) => {
+    async (prediction: (PlacePrediction & { isLocal?: boolean, originalPlace?: Place }) | null) => {
       if (!prediction) return
 
       setQuery(prediction.mainText || prediction.description)
@@ -88,6 +120,25 @@ export function PlacesAutocomplete({
       setPredictions([])
 
       if (onPlaceSelect) {
+        // If it is a local place, use existing data
+        if (prediction.isLocal && prediction.originalPlace) {
+          const place = prediction.originalPlace
+          const details: PlaceDetails = {
+            name: place.name,
+            address: place.address || '',
+            latitude: place.latitude || 0,
+            longitude: place.longitude || 0,
+            website: place.website,
+            phone: undefined, // Local place might not have full details stored same way
+            rating: place.rating,
+            category: place.type,
+            // Map other fields as needed
+          }
+          onPlaceSelect(details, prediction)
+          return
+        }
+
+        // If Google Place, fetch details
         setIsLoadingDetails(true)
         try {
           const details = await getPlaceDetails(prediction.placeId)
@@ -153,7 +204,7 @@ export function PlacesAutocomplete({
                 검색 결과가 없습니다
               </div>
             )}
-            {predictions.map((prediction) => (
+            {predictions.map((prediction: any) => (
               <ComboboxOption
                 key={prediction.placeId}
                 value={prediction}
@@ -166,7 +217,11 @@ export function PlacesAutocomplete({
                   )
                 }
               >
-                <MapPin className="size-4 text-zinc-400 mt-0.5 flex-shrink-0" />
+                {prediction.isLocal ? (
+                  <Bookmark className="size-4 text-primary-500 mt-0.5 flex-shrink-0" fill="currentColor" />
+                ) : (
+                  <MapPin className="size-4 text-zinc-400 mt-0.5 flex-shrink-0" />
+                )}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-zinc-900 dark:text-white truncate">
                     {prediction.mainText || prediction.description}
@@ -175,6 +230,11 @@ export function PlacesAutocomplete({
                     <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
                       {prediction.secondaryText}
                     </p>
+                  )}
+                  {prediction.isLocal && (
+                    <span className="text-[10px] text-primary-600 dark:text-primary-400 font-medium">
+                      내 라이브러리
+                    </span>
                   )}
                 </div>
               </ComboboxOption>

@@ -9,7 +9,8 @@ import { useSettingsStore, useTheme, useColorPalette, useMusicPlayerEnabled } fr
 import { toast } from '@/stores/uiStore'
 import { exportAllData, importAllData, clearAllData, validateBackupData, type BackupData } from '@/services/database'
 import { importFromFirebase, validateBackupFile, type MigrationProgress } from '@/services/migration'
-import { APP_VERSION, COLOR_PALETTES } from '@/utils/constants'
+import { APP_VERSION, COLOR_PALETTES, SCHEMA_VERSION } from '@/utils/constants'
+import { DEFAULT_SETTINGS } from '@/types'
 import { getStorageInfo, formatBytes, requestPersistentStorage, type StorageInfo } from '@/services/storageQuota'
 import { googleDrive, DriveError, DriveErrorCode, type DriveFile, type UploadProgress } from '@/services/googleDrive'
 import type { ThemeMode, ColorPalette } from '@/types'
@@ -287,6 +288,58 @@ export function Settings() {
     }
   }
 
+  // 빈 백업 템플릿 다운로드
+  const handleDownloadTemplate = () => {
+    const template: BackupData = {
+      version: APP_VERSION,
+      appVersion: APP_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: new Date().toISOString(),
+      trips: [
+        {
+          id: 1,
+          title: '예시 여행 (삭제 후 사용하세요)',
+          country: '대한민국',
+          timezone: 'Asia/Seoul',
+          startDate: '2025-01-01',
+          endDate: '2025-01-03',
+          coverImage: '',
+          plansCount: 0,
+          isFavorite: false,
+          createdAt: new Date().toISOString() as unknown as Date,
+          updatedAt: new Date().toISOString() as unknown as Date,
+        },
+      ],
+      plans: [
+        {
+          id: 1,
+          tripId: 1,
+          day: 1,
+          order: 0,
+          type: 'activity',
+          title: '예시 일정 (삭제 후 사용하세요)',
+          startTime: '09:00',
+          endTime: '12:00',
+          location: '서울',
+          memo: '메모를 입력하세요',
+          createdAt: new Date().toISOString() as unknown as Date,
+          updatedAt: new Date().toISOString() as unknown as Date,
+        },
+      ],
+      places: [],
+      settings: DEFAULT_SETTINGS,
+    }
+
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'travel-backup-template.json'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('백업 템플릿이 다운로드되었습니다')
+  }
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -552,6 +605,22 @@ export function Settings() {
               </Button>
               <input type="file" accept=".json" className="hidden" onChange={handleImport} />
             </label>
+          </div>
+
+          {/* Template Download */}
+          <div className="pt-2">
+            <Button
+              color="secondary"
+              outline
+              size="sm"
+              leftIcon={<FileJson className="size-4" />}
+              onClick={handleDownloadTemplate}
+            >
+              백업 양식 내려받기
+            </Button>
+            <p className="mt-2 text-sm text-zinc-400">
+              예시 데이터가 포함된 백업 파일 양식을 다운로드합니다. 직접 편집하여 데이터를 복원할 수 있습니다.
+            </p>
           </div>
 
           {/* Clear Data */}

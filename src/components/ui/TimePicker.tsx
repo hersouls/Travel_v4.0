@@ -18,7 +18,7 @@ interface TimePickerProps {
 const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
 const minutes = ['00', '15', '30', '45']
 
-export function TimePicker({ label, value, onChange, minTime, className, required }: TimePickerProps) {
+export function TimePicker({ label, value, onChange, minTime, className, required, align = 'start' }: TimePickerProps & { align?: 'start' | 'end' }) {
   const id = useId()
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -86,7 +86,10 @@ export function TimePicker({ label, value, onChange, minTime, className, require
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden">
+        <div className={clsx(
+          "absolute z-50 mt-1 w-full min-w-[280px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden",
+          align === 'end' ? 'right-0' : 'left-0'
+        )}>
           {/* Quick Select */}
           <div className="flex gap-1 p-2 border-b border-zinc-200 dark:border-zinc-700">
             {quickOptions.map((opt) => (

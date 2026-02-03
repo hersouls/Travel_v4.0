@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, X } from 'lucide-react'
+import { ArrowLeft, Upload, X, Download, FileJson } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
@@ -13,6 +13,12 @@ import { COUNTRIES } from '@/utils/constants'
 import { getCountryInfo } from '@/utils/countryInfo'
 import { getTimezoneFromCountry } from '@/utils/timezone'
 import { Clock, Banknote, FileCheck, Plug } from 'lucide-react'
+import {
+  exportSingleTrip,
+  importSingleTrip,
+  validateSingleTripBackup,
+  getSingleTripTemplate,
+} from '@/services/database'
 
 export function TripForm() {
   const { id } = useParams<{ id: string }>()
@@ -25,6 +31,8 @@ export function TripForm() {
   const updateTrip = useTripStore((state) => state.updateTrip)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [formData, setFormData] = useState({
     title: '',
     country: '대한민국',
@@ -101,17 +109,131 @@ export function TripForm() {
     }
   }
 
+  // 여행 내보내기 (편집 모드에서만)
+  const handleExportTrip = async () => {
+    if (!id) return
+    setIsExporting(true)
+    try {
+      const data = await exportSingleTrip(parseInt(id))
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const safeName = (currentTrip?.title || 'trip').replace(/[^a-zA-Z0-9가-힣]/g, '_')
+      a.download = `trip-${safeName}-${new Date().toISOString().split('T')[0]}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('여행이 내보내기되었습니다')
+    } catch {
+      toast.error('내보내기 실패')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  // 파일에서 여행 가져오기
+  const handleImportTrip = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsImporting(true)
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+
+      const validation = validateSingleTripBackup(data)
+      if (!validation.valid) {
+        toast.error(validation.error || '유효하지 않은 파일입니다')
+        return
+      }
+
+      const newTripId = await importSingleTrip(data)
+      toast.success(`여행이 가져오기되었습니다 (${data.plans?.length || 0}개 일정 포함)`)
+      navigate(`/trips/${newTripId}`)
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        toast.error('파일 형식이 올바르지 않습니다 (JSON 파싱 오류)')
+      } else {
+        toast.error('가져오기 실패')
+      }
+    } finally {
+      setIsImporting(false)
+      e.target.value = ''
+    }
+  }
+
+  // 템플릿 다운로드
+  const handleDownloadTemplate = () => {
+    const template = getSingleTripTemplate()
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'trip-template.json'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('템플릿이 다운로드되었습니다')
+  }
+
   return (
     <PageContainer maxWidth="md">
       <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
-          <ArrowLeft className="size-5" />
-        </IconButton>
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">
-          {isEditing ? '여행 편집' : '새 여행'}
-        </h1>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
+            <ArrowLeft className="size-5" />
+          </IconButton>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">
+            {isEditing ? '여행 편집' : '새 여행'}
+          </h1>
+        </div>
+
+        {/* Backup/Restore Buttons */}
+        <div className="flex items-center gap-2">
+          {isEditing && (
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              leftIcon={<Download className="size-4" />}
+              onClick={handleExportTrip}
+              isLoading={isExporting}
+            >
+              내보내기
+            </Button>
+          )}
+          <label>
+            <Button
+              type="button"
+              color="secondary"
+              outline
+              size="sm"
+              leftIcon={<Upload className="size-4" />}
+              as="span"
+              isLoading={isImporting}
+            >
+              가져오기
+            </Button>
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImportTrip}
+            />
+          </label>
+          <Button
+            type="button"
+            color="secondary"
+            plain
+            size="sm"
+            leftIcon={<FileJson className="size-4" />}
+            onClick={handleDownloadTemplate}
+          >
+            템플릿
+          </Button>
+        </div>
       </div>
 
       {/* Form */}

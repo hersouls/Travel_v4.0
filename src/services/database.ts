@@ -364,3 +364,449 @@ export function validateBackupData(data: unknown): BackupValidationResult {
     appVersion: backup.appVersion,
   }
 }
+
+// ============================================
+// Single Trip Backup & Restore
+// ============================================
+
+export interface SingleTripBackup {
+  version: string
+  appVersion: string
+  schemaVersion: number
+  exportedAt: string
+  trip: Omit<Trip, 'id'> & { id?: number }
+  plans: (Omit<Plan, 'id' | 'tripId'> & { id?: number; tripId?: number })[]
+}
+
+export interface SingleTripBackupValidationResult {
+  valid: boolean
+  error?: string
+  needsMigration: boolean
+  schemaVersion?: number
+  appVersion?: string
+}
+
+// Export a single trip with its plans
+export async function exportSingleTrip(tripId: number): Promise<SingleTripBackup> {
+  const trip = await db.trips.get(tripId)
+  if (!trip) {
+    throw new Error('여행을 찾을 수 없습니다')
+  }
+
+  const plans = await db.plans.where('tripId').equals(tripId).toArray()
+
+  // Remove ids for portability
+  const tripWithoutId = { ...trip }
+  delete tripWithoutId.id
+
+  const plansWithoutIds = plans.map((plan) => {
+    const planCopy = { ...plan }
+    delete planCopy.id
+    delete planCopy.tripId
+    return planCopy
+  })
+
+  return {
+    version: APP_VERSION,
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    trip: serializeDates(tripWithoutId),
+    plans: serializeDates(plansWithoutIds),
+  }
+}
+
+// Import a single trip with its plans
+export async function importSingleTrip(data: SingleTripBackup): Promise<number> {
+  // Deserialize dates
+  const trip = deserializeDates(data.trip, DATE_FIELDS)
+  const plans = deserializeDates(data.plans || [], DATE_FIELDS)
+
+  return await db.transaction('rw', [db.trips, db.plans], async () => {
+    // Create trip without id (auto-generate)
+    const tripData: Omit<Trip, 'id'> = {
+      title: trip.title,
+      country: trip.country,
+      timezone: trip.timezone,
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      coverImage: trip.coverImage || '',
+      plansCount: plans.length,
+      isFavorite: trip.isFavorite || false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+
+    const newTripId = await db.trips.add(tripData as Trip)
+
+    // Map plans to new tripId and add them
+    if (plans.length > 0) {
+      const mappedPlans = plans.map((plan, index) => ({
+        ...plan,
+        tripId: newTripId,
+        order: plan.order ?? index,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }))
+
+      await db.plans.bulkAdd(mappedPlans as Plan[])
+    }
+
+    return newTripId
+  })
+}
+
+// Validate single trip backup data
+export function validateSingleTripBackup(data: unknown): SingleTripBackupValidationResult {
+  if (!data || typeof data !== 'object') {
+    return { valid: false, error: '유효하지 않은 파일입니다', needsMigration: false }
+  }
+
+  const backup = data as Partial<SingleTripBackup>
+
+  // Required fields
+  if (!backup.version || !backup.trip) {
+    return { valid: false, error: '필수 데이터가 누락되었습니다 (version, trip)', needsMigration: false }
+  }
+
+  // Validate trip structure
+  const trip = backup.trip
+  if (!trip.title || !trip.country || !trip.startDate || !trip.endDate) {
+    return { valid: false, error: '여행 정보가 올바르지 않습니다 (title, country, startDate, endDate 필요)', needsMigration: false }
+  }
+
+  // Validate plans is array
+  if (backup.plans && !Array.isArray(backup.plans)) {
+    return { valid: false, error: '일정 데이터가 올바르지 않습니다', needsMigration: false }
+  }
+
+  // Schema version check
+  const backupSchema = backup.schemaVersion || 0
+  if (backupSchema > SCHEMA_VERSION) {
+    return {
+      valid: false,
+      error: `이 백업은 더 최신 버전의 앱에서 생성되었습니다. 앱을 업데이트해주세요.`,
+      needsMigration: false,
+      schemaVersion: backupSchema,
+      appVersion: backup.appVersion,
+    }
+  }
+
+  return {
+    valid: true,
+    needsMigration: backupSchema < SCHEMA_VERSION,
+    schemaVersion: backupSchema,
+    appVersion: backup.appVersion,
+  }
+}
+
+// Get empty trip template
+export function getSingleTripTemplate(): SingleTripBackup {
+  const now = new Date().toISOString()
+  return {
+    version: APP_VERSION,
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: now,
+    trip: {
+      title: '예시 여행 (제목을 변경하세요)',
+      country: '대한민국',
+      timezone: 'Asia/Seoul',
+      startDate: '2025-01-01',
+      endDate: '2025-01-03',
+      coverImage: '',
+      plansCount: 1,
+      isFavorite: false,
+      createdAt: now as unknown as Date,
+      updatedAt: now as unknown as Date,
+    },
+    plans: [
+      {
+        day: 1,
+        order: 0,
+        placeName: '예시 장소 (삭제 후 사용하세요)',
+        startTime: '09:00',
+        endTime: '12:00',
+        type: 'attraction',
+        address: '서울시 종로구',
+        memo: '메모를 입력하세요',
+        createdAt: now as unknown as Date,
+        updatedAt: now as unknown as Date,
+      } as Omit<Plan, 'id' | 'tripId'>,
+    ],
+  }
+}
+
+// ============================================
+// Single Plan Backup & Restore
+// ============================================
+
+export interface SinglePlanBackup {
+  version: string
+  appVersion: string
+  schemaVersion: number
+  exportedAt: string
+  plan: Omit<Plan, 'id' | 'tripId'> & { id?: number; tripId?: number }
+}
+
+export interface SinglePlanBackupValidationResult {
+  valid: boolean
+  error?: string
+  needsMigration: boolean
+  schemaVersion?: number
+  appVersion?: string
+}
+
+// Export a single plan
+export async function exportSinglePlan(planId: number): Promise<SinglePlanBackup> {
+  const plan = await db.plans.get(planId)
+  if (!plan) {
+    throw new Error('일정을 찾을 수 없습니다')
+  }
+
+  // Remove id and tripId for portability
+  const planWithoutIds = { ...plan }
+  delete planWithoutIds.id
+  delete planWithoutIds.tripId
+
+  return {
+    version: APP_VERSION,
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    plan: serializeDates(planWithoutIds),
+  }
+}
+
+// Import a single plan to a trip
+export async function importSinglePlan(
+  data: SinglePlanBackup,
+  tripId: number,
+  day?: number
+): Promise<number> {
+  // Deserialize dates
+  const plan = deserializeDates(data.plan, DATE_FIELDS)
+
+  // Create plan with assigned tripId
+  const planData: Omit<Plan, 'id'> = {
+    tripId,
+    day: day ?? plan.day ?? 1,
+    order: plan.order ?? 0,
+    placeName: plan.placeName,
+    startTime: plan.startTime,
+    endTime: plan.endTime,
+    type: plan.type || 'attraction',
+    address: plan.address,
+    website: plan.website,
+    openingHours: plan.openingHours,
+    memo: plan.memo,
+    photos: plan.photos,
+    youtubeLink: plan.youtubeLink,
+    mapUrl: plan.mapUrl,
+    latitude: plan.latitude,
+    longitude: plan.longitude,
+    googlePlaceId: plan.googlePlaceId,
+    googleInfo: plan.googleInfo,
+    audioScript: plan.audioScript,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+
+  const newPlanId = await db.plans.add(planData as Plan)
+
+  // Update trip's plansCount
+  const trip = await db.trips.get(tripId)
+  if (trip) {
+    const plansCount = await db.plans.where('tripId').equals(tripId).count()
+    await db.trips.update(tripId, { plansCount, updatedAt: new Date() })
+  }
+
+  return newPlanId
+}
+
+// Validate single plan backup data
+export function validateSinglePlanBackup(data: unknown): SinglePlanBackupValidationResult {
+  if (!data || typeof data !== 'object') {
+    return { valid: false, error: '유효하지 않은 파일입니다', needsMigration: false }
+  }
+
+  const backup = data as Partial<SinglePlanBackup>
+
+  // Required fields
+  if (!backup.version || !backup.plan) {
+    return { valid: false, error: '필수 데이터가 누락되었습니다 (version, plan)', needsMigration: false }
+  }
+
+  // Validate plan structure
+  const plan = backup.plan
+  if (!plan.placeName || !plan.startTime) {
+    return { valid: false, error: '일정 정보가 올바르지 않습니다 (placeName, startTime 필요)', needsMigration: false }
+  }
+
+  // Schema version check
+  const backupSchema = backup.schemaVersion || 0
+  if (backupSchema > SCHEMA_VERSION) {
+    return {
+      valid: false,
+      error: `이 백업은 더 최신 버전의 앱에서 생성되었습니다. 앱을 업데이트해주세요.`,
+      needsMigration: false,
+      schemaVersion: backupSchema,
+      appVersion: backup.appVersion,
+    }
+  }
+
+  return {
+    valid: true,
+    needsMigration: backupSchema < SCHEMA_VERSION,
+    schemaVersion: backupSchema,
+    appVersion: backup.appVersion,
+  }
+}
+
+// Get empty plan template
+export function getSinglePlanTemplate(): SinglePlanBackup {
+  const now = new Date().toISOString()
+  return {
+    version: APP_VERSION,
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: now,
+    plan: {
+      day: 1,
+      order: 0,
+      placeName: '예시 장소 (이름을 변경하세요)',
+      startTime: '09:00',
+      endTime: '12:00',
+      type: 'attraction',
+      address: '주소를 입력하세요',
+      website: '',
+      memo: '메모를 입력하세요',
+      photos: [],
+      youtubeLink: '',
+      mapUrl: '',
+      audioScript: '',
+      createdAt: now as unknown as Date,
+      updatedAt: now as unknown as Date,
+    } as Omit<Plan, 'id' | 'tripId'>,
+  }
+}
+
+// ============================================
+// Single Place Backup/Restore
+// ============================================
+
+export interface SinglePlaceBackup {
+  version: string
+  appVersion: string
+  schemaVersion: number
+  exportedAt: string
+  place: Omit<Place, 'id' | 'isFavorite' | 'usageCount' | 'createdAt' | 'updatedAt'>
+}
+
+export interface SinglePlaceBackupValidationResult {
+  valid: boolean
+  error?: string
+  needsMigration?: boolean
+  schemaVersion?: number
+  appVersion?: string
+}
+
+// Export single place to backup
+export async function exportSinglePlace(placeId: number): Promise<SinglePlaceBackup> {
+  const place = await db.places.get(placeId)
+  if (!place) {
+    throw new Error('장소를 찾을 수 없습니다')
+  }
+
+  // Remove runtime fields
+  const { id, isFavorite, usageCount, createdAt, updatedAt, ...placeData } = place
+
+  return {
+    version: APP_VERSION,
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    place: placeData,
+  }
+}
+
+// Import single place from backup
+export async function importSinglePlace(
+  data: SinglePlaceBackup
+): Promise<number> {
+  const now = new Date()
+
+  const newPlace: Omit<Place, 'id'> = {
+    ...data.place,
+    isFavorite: false,
+    usageCount: 0,
+    createdAt: now,
+    updatedAt: now,
+  }
+
+  const newPlaceId = await db.places.add(newPlace as Place)
+  return newPlaceId
+}
+
+// Validate single place backup
+export function validateSinglePlaceBackup(data: unknown): SinglePlaceBackupValidationResult {
+  if (!data || typeof data !== 'object') {
+    return { valid: false, error: '유효하지 않은 백업 파일입니다.' }
+  }
+
+  const backup = data as Partial<SinglePlaceBackup>
+
+  // Check required fields
+  if (!backup.version || !backup.place) {
+    return { valid: false, error: '필수 필드가 누락되었습니다.' }
+  }
+
+  // Check place data
+  if (!backup.place.name || !backup.place.type) {
+    return { valid: false, error: '장소 데이터가 올바르지 않습니다.' }
+  }
+
+  // Check schema version
+  const backupSchema = backup.schemaVersion || 1
+  if (backupSchema > SCHEMA_VERSION) {
+    return {
+      valid: false,
+      error: `이 백업은 더 최신 버전의 앱에서 생성되었습니다. 앱을 업데이트해주세요.`,
+      needsMigration: false,
+      schemaVersion: backupSchema,
+      appVersion: backup.appVersion,
+    }
+  }
+
+  return {
+    valid: true,
+    needsMigration: backupSchema < SCHEMA_VERSION,
+    schemaVersion: backupSchema,
+    appVersion: backup.appVersion,
+  }
+}
+
+// Get empty place template
+export function getSinglePlaceTemplate(): SinglePlaceBackup {
+  const now = new Date().toISOString()
+  return {
+    version: APP_VERSION,
+    appVersion: APP_VERSION,
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: now,
+    place: {
+      name: '예시 장소 (이름을 변경하세요)',
+      type: 'attraction',
+      address: '주소를 입력하세요',
+      memo: '메모를 입력하세요',
+      audioScript: '',
+      photos: [],
+      rating: undefined,
+      mapUrl: '',
+      website: '',
+      googlePlaceId: undefined,
+      latitude: undefined,
+      longitude: undefined,
+    },
+  }
+}
