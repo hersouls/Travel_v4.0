@@ -1,6 +1,43 @@
 // ============================================
 // Image Storage Service (Base64)
+// WebP Support & Quality Optimization
 // ============================================
+
+type ImageFormat = 'auto' | 'webp' | 'jpeg'
+
+interface CompressOptions {
+  maxWidth?: number
+  maxHeight?: number
+  quality?: number
+  format?: ImageFormat
+  targetSizeKB?: number
+}
+
+// Cache WebP support check result
+let webpSupportCache: boolean | null = null
+
+/**
+ * Check if browser supports WebP format
+ */
+export async function checkWebPSupport(): Promise<boolean> {
+  if (webpSupportCache !== null) {
+    return webpSupportCache
+  }
+
+  if (typeof document === 'undefined') {
+    webpSupportCache = false
+    return false
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+
+  const dataUrl = canvas.toDataURL('image/webp')
+  webpSupportCache = dataUrl.startsWith('data:image/webp')
+
+  return webpSupportCache
+}
 
 /**
  * Convert File to Base64 string
@@ -17,39 +54,78 @@ export function fileToBase64(file: File): Promise<string> {
 /**
  * Compress image and convert to Base64
  * @param file - Image file to compress
- * @param maxWidth - Maximum width (default: 1200px)
- * @param quality - JPEG quality 0-1 (default: 0.8)
+ * @param options - Compression options
  */
 export async function compressImage(
   file: File,
-  maxWidth: number = 1200,
-  quality: number = 0.8
+  options: CompressOptions = {}
 ): Promise<string> {
+  const {
+    maxWidth = 1920,
+    maxHeight = 1920,
+    quality = 0.85,
+    format = 'auto',
+    targetSizeKB = 500,
+  } = options
+
+  // Determine output format
+  const supportsWebP = await checkWebPSupport()
+  const outputFormat =
+    format === 'auto'
+      ? supportsWebP
+        ? 'webp'
+        : 'jpeg'
+      : format
+
+  const mimeType = outputFormat === 'webp' ? 'image/webp' : 'image/jpeg'
+
   return new Promise((resolve, reject) => {
     const img = new Image()
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
 
-    img.onload = () => {
+    img.onload = async () => {
       let width = img.width
       let height = img.height
 
-      // Calculate new dimensions
-      if (width > maxWidth) {
-        height = Math.round((height * maxWidth) / width)
-        width = maxWidth
+      // Calculate new dimensions maintaining aspect ratio
+      if (width > maxWidth || height > maxHeight) {
+        const widthRatio = maxWidth / width
+        const heightRatio = maxHeight / height
+        const ratio = Math.min(widthRatio, heightRatio)
+        width = Math.round(width * ratio)
+        height = Math.round(height * ratio)
       }
 
       canvas.width = width
       canvas.height = height
 
-      if (ctx) {
-        ctx.drawImage(img, 0, 0, width, height)
-        const base64 = canvas.toDataURL('image/jpeg', quality)
-        resolve(base64)
-      } else {
+      if (!ctx) {
         reject(new Error('Failed to get canvas context'))
+        return
       }
+
+      // Enable image smoothing for better quality
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
+      ctx.drawImage(img, 0, 0, width, height)
+
+      // Adaptive quality compression to meet target file size
+      let currentQuality = quality
+      let base64 = canvas.toDataURL(mimeType, currentQuality)
+      let currentSize = getBase64Size(base64)
+      const targetSize = targetSizeKB * 1024
+
+      // Iteratively reduce quality if file is too large
+      let attempts = 0
+      while (currentSize > targetSize && currentQuality > 0.3 && attempts < 5) {
+        currentQuality -= 0.1
+        base64 = canvas.toDataURL(mimeType, currentQuality)
+        currentSize = getBase64Size(base64)
+        attempts++
+      }
+
+      resolve(base64)
     }
 
     img.onerror = () => reject(new Error('Failed to load image'))
@@ -62,6 +138,17 @@ export async function compressImage(
     reader.onerror = reject
     reader.readAsDataURL(file)
   })
+}
+
+/**
+ * Legacy compressImage signature for backwards compatibility
+ */
+export async function compressImageLegacy(
+  file: File,
+  maxWidth: number = 1200,
+  quality: number = 0.8
+): Promise<string> {
+  return compressImage(file, { maxWidth, quality })
 }
 
 /**
@@ -119,14 +206,13 @@ export function formatBytes(bytes: number): string {
  */
 export async function processImages(
   files: FileList | File[],
-  maxWidth: number = 1200,
-  quality: number = 0.8
+  options: CompressOptions = {}
 ): Promise<string[]> {
   const fileArray = Array.from(files)
   const imageFiles = fileArray.filter((file) => file.type.startsWith('image/'))
 
   const results = await Promise.all(
-    imageFiles.map((file) => compressImage(file, maxWidth, quality))
+    imageFiles.map((file) => compressImage(file, options))
   )
 
   return results
@@ -149,4 +235,14 @@ export async function urlToBase64(url: string): Promise<string> {
   } catch {
     throw new Error(`Failed to fetch image from URL: ${url}`)
   }
+}
+
+/**
+ * Get image format from base64 string
+ */
+export function getImageFormat(base64: string): string {
+  if (base64.startsWith('data:image/webp')) return 'webp'
+  if (base64.startsWith('data:image/png')) return 'png'
+  if (base64.startsWith('data:image/gif')) return 'gif'
+  return 'jpeg'
 }

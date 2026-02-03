@@ -154,6 +154,14 @@ export async function togglePlaceFavorite(id: number): Promise<void> {
   }
 }
 
+export async function findPlaceByName(name: string): Promise<Place | undefined> {
+  return db.places.where('name').equals(name).first()
+}
+
+export async function findPlaceByGoogleId(googlePlaceId: string): Promise<Place | undefined> {
+  return db.places.filter((p) => p.googlePlaceId === googlePlaceId).first()
+}
+
 // ============================================
 // Settings Operations
 // ============================================

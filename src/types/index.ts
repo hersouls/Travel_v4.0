@@ -76,6 +76,8 @@ export interface Place {
   memo?: string
   rating?: number // 0.0 ~ 5.0
   mapUrl?: string
+  website?: string
+  googlePlaceId?: string // Google Place ID
   latitude?: number
   longitude?: number
   isFavorite: boolean
@@ -172,6 +174,8 @@ export interface FirebasePlace {
   address?: string
   rating?: number
   map_url?: string
+  website?: string
+  google_place_id?: string
   latitude?: number
   longitude?: number
   favorite: boolean

@@ -1,10 +1,59 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Menu, Search, Plus, Settings, X, WifiOff } from 'lucide-react'
+import { Menu, Search, Plus, Settings, X, WifiOff, Wifi } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Button, IconButton } from '@/components/ui/Button'
 import { useUIStore, toast } from '@/stores/uiStore'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { APP_NAME } from '@/utils/constants'
+
+// Enhanced Offline/Online Indicator Component
+function ConnectionIndicator({ isOnline }: { isOnline: boolean }) {
+  const [showReconnected, setShowReconnected] = useState(false)
+  const prevOnlineRef = useRef(isOnline)
+
+  useEffect(() => {
+    // Show "온라인" indicator when coming back online
+    if (isOnline && !prevOnlineRef.current) {
+      setShowReconnected(true)
+      const timer = setTimeout(() => setShowReconnected(false), 3000)
+      return () => clearTimeout(timer)
+    }
+    prevOnlineRef.current = isOnline
+  }, [isOnline])
+
+  // Don't show anything when online and not just reconnected
+  if (isOnline && !showReconnected) return null
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={isOnline ? 'online' : 'offline'}
+        initial={{ opacity: 0, scale: 0.9, x: -10 }}
+        animate={{ opacity: 1, scale: 1, x: 0 }}
+        exit={{ opacity: 0, scale: 0.9, x: -10 }}
+        transition={{ duration: 0.2 }}
+        className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium ${
+          isOnline
+            ? 'bg-success-100 dark:bg-success-900/30 text-success-700 dark:text-success-400'
+            : 'bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-400'
+        }`}
+      >
+        {isOnline ? (
+          <>
+            <Wifi className="size-3.5" />
+            <span className="hidden sm:inline">온라인</span>
+          </>
+        ) : (
+          <>
+            <WifiOff className="size-3.5 animate-pulse" />
+            <span className="hidden sm:inline">오프라인</span>
+          </>
+        )}
+      </motion.div>
+    </AnimatePresence>
+  )
+}
 
 export function Header() {
   const navigate = useNavigate()
@@ -21,6 +70,11 @@ export function Header() {
     }
     prevOnlineRef.current = isOnline
   }, [isOnline])
+
+  // Reset toast ref on mount
+  useEffect(() => {
+    prevOnlineRef.current = isOnline
+  }, [])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,13 +112,8 @@ export function Header() {
             </span>
           </Link>
 
-          {/* Offline Indicator */}
-          {!isOnline && (
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-400 rounded-md text-xs font-medium">
-              <WifiOff className="size-3.5" />
-              <span className="hidden sm:inline">오프라인</span>
-            </div>
-          )}
+          {/* Connection Indicator */}
+          <ConnectionIndicator isOnline={isOnline} />
         </div>
 
         {/* Center: Search (Desktop) */}
@@ -100,13 +149,9 @@ export function Header() {
             color="primary"
             size="sm"
             leftIcon={<Plus className="size-4" />}
-            className="hidden sm:inline-flex"
           >
-            새 여행
+            <span className="hidden sm:inline">새 여행</span>
           </Button>
-          <IconButton color="primary" className="sm:hidden" to="/trips/new" aria-label="새 여행">
-            <Plus className="size-5" />
-          </IconButton>
 
           {/* Settings */}
           <IconButton plain color="secondary" to="/settings" aria-label="설정">

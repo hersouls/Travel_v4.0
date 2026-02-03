@@ -4,8 +4,62 @@
 
 import * as Headless from '@headlessui/react'
 import { clsx } from 'clsx'
-import { type ReactNode, forwardRef } from 'react'
+import { type ReactNode, forwardRef, useState, useCallback } from 'react'
 import { Link, type LinkProps } from 'react-router-dom'
+
+// ============================================
+// Ripple Effect Hook
+// ============================================
+
+interface RippleState {
+  x: number
+  y: number
+  size: number
+  key: number
+}
+
+function useRipple() {
+  const [ripples, setRipples] = useState<RippleState[]>([])
+
+  const createRipple = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    const button = e.currentTarget
+    const rect = button.getBoundingClientRect()
+    const size = Math.max(rect.width, rect.height) * 2
+    const x = e.clientX - rect.left - size / 2
+    const y = e.clientY - rect.top - size / 2
+    const key = Date.now()
+
+    setRipples((prev) => [...prev, { x, y, size, key }])
+
+    // Remove ripple after animation completes
+    setTimeout(() => {
+      setRipples((prev) => prev.filter((r) => r.key !== key))
+    }, 600)
+  }, [])
+
+  return { ripples, createRipple }
+}
+
+function RippleContainer({ ripples }: { ripples: RippleState[] }) {
+  if (ripples.length === 0) return null
+
+  return (
+    <span className="absolute inset-0 overflow-hidden rounded-lg pointer-events-none">
+      {ripples.map(({ x, y, size, key }) => (
+        <span
+          key={key}
+          className="absolute bg-white/30 rounded-full animate-ripple"
+          style={{
+            left: x,
+            top: y,
+            width: size,
+            height: size,
+          }}
+        />
+      ))}
+    </span>
+  )
+}
 
 function TouchTarget({ children }: { children: ReactNode }) {
   return (
@@ -190,7 +244,19 @@ export const Button = forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPr
     { color, size = 'md', outline, plain, isLoading = false, leftIcon, rightIcon, className, children, as, to, disabled, type, onClick, ...props },
     ref
   ) {
+    const { ripples, createRipple } = useRipple()
     const classes = clsx(baseStyles, sizeStyles[size], getButtonStyles(color, outline, plain), className)
+
+    // Combine onClick with ripple effect
+    const handleClick = useCallback(
+      (e: React.MouseEvent<HTMLElement>) => {
+        if (!plain && !isLoading && !disabled) {
+          createRipple(e)
+        }
+        onClick?.(e as React.MouseEvent<HTMLButtonElement>)
+      },
+      [createRipple, onClick, plain, isLoading, disabled]
+    )
 
     const content = isLoading ? (
       <>
@@ -223,17 +289,18 @@ export const Button = forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPr
       )
     }
 
-    // Render as Button
+    // Render as Button with ripple
     return (
       <Headless.Button
         type={type}
-        onClick={onClick}
+        onClick={handleClick}
         className={classes}
         ref={ref as React.Ref<HTMLButtonElement>}
         disabled={isLoading || disabled}
         aria-busy={isLoading || undefined}
         {...props}
       >
+        <RippleContainer ripples={ripples} />
         {content}
       </Headless.Button>
     )

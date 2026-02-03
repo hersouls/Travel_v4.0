@@ -1,8 +1,11 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
+import { SpeedInsights } from '@vercel/speed-insights/react'
+import { Analytics } from '@vercel/analytics/react'
 import './index.css'
 import App from './App'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { requestPersistentStorage } from '@/services/storageQuota'
 import { initCacheWarming } from '@/services/cacheWarming'
 
@@ -226,6 +229,10 @@ if (typeof window !== 'undefined') {
 // Render app
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+      <SpeedInsights />
+      <Analytics />
+    </ErrorBoundary>
   </StrictMode>
 )

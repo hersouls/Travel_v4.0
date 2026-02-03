@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, X, Clock, MapPin, Globe, Youtube, Camera, Loader2, Sparkles, ExternalLink, Volume2, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, X, Clock, MapPin, Globe, Youtube, Camera, Loader2, Sparkles, ExternalLink, Volume2, Eye, EyeOff, ChevronDown, ChevronUp, BookmarkPlus } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { MemoRenderer } from '@/components/memo'
 import { Button, IconButton } from '@/components/ui/Button'
@@ -9,6 +9,7 @@ import { PlacesAutocomplete } from '@/components/ui/PlacesAutocomplete'
 import { TimePicker } from '@/components/ui/TimePicker'
 import { PageContainer } from '@/components/layout'
 import { useTripStore } from '@/stores/tripStore'
+import { usePlaceStore } from '@/stores/placeStore'
 import { toast } from '@/stores/uiStore'
 import { processImages } from '@/services/imageStorage'
 import { extractPlaceInfo, isGoogleMapsUrl } from '@/services/googleMaps'
@@ -56,7 +57,13 @@ export function PlanForm() {
   const addPlan = useTripStore((state) => state.addPlan)
   const updatePlan = useTripStore((state) => state.updatePlan)
 
+  // Place Library auto-register
+  const placeAddPlace = usePlaceStore((state) => state.addPlace)
+  const findPlaceByNameOrGoogleId = usePlaceStore((state) => state.findPlaceByNameOrGoogleId)
+  const incrementPlaceUsage = usePlaceStore((state) => state.incrementUsage)
+
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [saveToLibrary, setSaveToLibrary] = useState(true)
   const [isExtracting, setIsExtracting] = useState(false)
   const [showManualCoords, setShowManualCoords] = useState(false)
   const [typeManuallyChanged, setTypeManuallyChanged] = useState(false)
@@ -288,6 +295,31 @@ export function PlanForm() {
     setGeminiInput('')
   }
 
+  const autoRegisterToPlaceLibrary = async () => {
+    if (!formData.placeName.trim()) return
+
+    const existing = findPlaceByNameOrGoogleId(formData.placeName, formData.googlePlaceId)
+
+    if (existing && existing.id) {
+      await incrementPlaceUsage(existing.id)
+      toast.info(`"${formData.placeName}" 사용 횟수가 증가했습니다`)
+    } else {
+      await placeAddPlace({
+        name: formData.placeName,
+        type: formData.type,
+        address: formData.address,
+        memo: '',
+        rating: formData.googleInfo?.rating,
+        mapUrl: formData.mapUrl,
+        website: formData.website,
+        googlePlaceId: formData.googlePlaceId,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+      })
+      toast.success(`"${formData.placeName}"이(가) 장소 라이브러리에 등록되었습니다`)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -312,6 +344,12 @@ export function PlanForm() {
         await addPlan(planData)
         toast.success('일정이 추가되었습니다')
       }
+
+      // Auto-register to place library
+      if (saveToLibrary) {
+        await autoRegisterToPlaceLibrary()
+      }
+
       navigate(`/trips/${tripId}`)
     } catch {
       toast.error(isEditing ? '일정 수정 실패' : '일정 추가 실패')
@@ -745,6 +783,27 @@ export function PlanForm() {
               )}
             </div>
             <p className="mt-1 text-xs text-zinc-400">최대 10장</p>
+          </div>
+
+          {/* Place Library Auto-Register */}
+          <div className="flex items-center justify-between py-3 px-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={saveToLibrary}
+                onChange={(e) => setSaveToLibrary(e.target.checked)}
+                className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-600 text-primary-500 focus:ring-primary-500 focus:ring-offset-0"
+              />
+              <div className="flex items-center gap-2">
+                <BookmarkPlus className="size-4 text-zinc-500" />
+                <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                  장소 라이브러리에 자동 등록
+                </span>
+              </div>
+            </label>
+            <span className="text-xs text-zinc-400">
+              {saveToLibrary ? '저장 시 라이브러리에 추가됩니다' : '라이브러리에 추가하지 않습니다'}
+            </span>
           </div>
 
           {/* Actions */}

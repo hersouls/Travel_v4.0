@@ -29,6 +29,9 @@ interface PlaceState {
   setSearchQuery: (query: string) => void
   setFilterType: (type: PlanType | 'all') => void
   getFilteredPlaces: () => Place[]
+
+  // Duplicate check
+  findPlaceByNameOrGoogleId: (name: string, googlePlaceId?: string) => Place | null
 }
 
 export const usePlaceStore = create<PlaceState>()(
@@ -154,6 +157,16 @@ export const usePlaceStore = create<PlaceState>()(
           const matchesType = filterType === 'all' || place.type === filterType
           return matchesSearch && matchesType
         })
+      },
+
+      // Find place by name or Google Place ID (for duplicate check)
+      findPlaceByNameOrGoogleId: (name, googlePlaceId) => {
+        const { places } = get()
+        return places.find((place) =>
+          place.name === name ||
+          (googlePlaceId && place.googlePlaceId === googlePlaceId) ||
+          (googlePlaceId && place.mapUrl?.includes(googlePlaceId))
+        ) || null
       },
     }),
     { name: 'place-store' }

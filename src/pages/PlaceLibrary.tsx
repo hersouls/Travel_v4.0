@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Plus, Star, MapPin, Trash2 } from 'lucide-react'
+import { Search, Plus, Star, MapPin, Trash2, Loader2, Sparkles, Globe } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { usePlaceStore, usePlaces, usePlaceLoading } from '@/stores/placeStore'
 import { toast } from '@/stores/uiStore'
+import { extractPlaceInfo, isGoogleMapsUrl } from '@/services/googleMaps'
 import { PLAN_TYPE_LABELS } from '@/utils/constants'
 import type { PlanType, Place } from '@/types'
 
@@ -21,14 +22,52 @@ export function PlaceLibrary() {
 
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
   const [placeToDelete, setPlaceToDelete] = useState<Place | null>(null)
+  const [isExtracting, setIsExtracting] = useState(false)
   const [newPlace, setNewPlace] = useState({
     name: '',
     type: 'attraction' as PlanType,
     address: '',
     memo: '',
+    mapUrl: '',
+    website: '',
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
+    rating: undefined as number | undefined,
+    googlePlaceId: undefined as string | undefined,
   })
 
   const filteredPlaces = getFilteredPlaces()
+
+  const handleExtractInfo = async () => {
+    if (!newPlace.mapUrl) {
+      toast.error('지도 URL을 입력해주세요')
+      return
+    }
+    if (!isGoogleMapsUrl(newPlace.mapUrl)) {
+      toast.error('Google Maps URL만 지원합니다')
+      return
+    }
+
+    setIsExtracting(true)
+    try {
+      const extracted = await extractPlaceInfo(newPlace.mapUrl)
+      setNewPlace((prev) => ({
+        ...prev,
+        name: extracted.placeName || prev.name,
+        address: extracted.address || prev.address,
+        website: extracted.website || prev.website,
+        latitude: extracted.latitude,
+        longitude: extracted.longitude,
+        rating: extracted.googleInfo.rating,
+        googlePlaceId: extracted.googleInfo.placeId,
+      }))
+      toast.success('장소 정보를 추출했습니다')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '정보 추출 실패')
+    } finally {
+      setIsExtracting(false)
+    }
+  }
 
   const handleAddPlace = async () => {
     if (!newPlace.name.trim()) {
@@ -40,7 +79,18 @@ export function PlaceLibrary() {
       await addPlace(newPlace)
       toast.success('장소가 추가되었습니다')
       setIsAddDialogOpen(false)
-      setNewPlace({ name: '', type: 'attraction', address: '', memo: '' })
+      setNewPlace({
+        name: '',
+        type: 'attraction',
+        address: '',
+        memo: '',
+        mapUrl: '',
+        website: '',
+        latitude: undefined,
+        longitude: undefined,
+        rating: undefined,
+        googlePlaceId: undefined,
+      })
     } catch {
       toast.error('장소 추가 실패')
     }
@@ -141,6 +191,11 @@ export function PlaceLibrary() {
                     {place.isFavorite && (
                       <Star className="size-4 fill-warning-400 text-warning-400" />
                     )}
+                    {place.createdAt && (Date.now() - new Date(place.createdAt).getTime()) < 5 * 60 * 1000 && (
+                      <span className="px-2 py-0.5 text-xs bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full animate-pulse">
+                        방금 등록됨
+                      </span>
+                    )}
                   </div>
                   <h3 className="font-semibold text-[var(--foreground)] truncate">{place.name}</h3>
                   {place.address && (
@@ -183,6 +238,46 @@ export function PlaceLibrary() {
       <Dialog open={isAddDialogOpen} onClose={() => setIsAddDialogOpen(false)}>
         <DialogTitle onClose={() => setIsAddDialogOpen(false)}>새 장소 추가</DialogTitle>
         <DialogBody className="space-y-4">
+          {/* Map URL + Extract Button */}
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  label="지도 URL"
+                  value={newPlace.mapUrl}
+                  onChange={(value) => setNewPlace((prev) => ({ ...prev, mapUrl: value }))}
+                  placeholder="Google Maps URL (maps.app.goo.gl/...)"
+                  leftIcon={<MapPin className="size-4" />}
+                />
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  color="primary"
+                  size="sm"
+                  onClick={handleExtractInfo}
+                  disabled={!newPlace.mapUrl || isExtracting}
+                  leftIcon={isExtracting ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                >
+                  {isExtracting ? '추출 중...' : '추출'}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-zinc-500">
+              Google Maps URL을 입력하고 "추출"을 클릭하면 장소 정보를 자동으로 가져옵니다
+            </p>
+          </div>
+
+          {/* Rating Display */}
+          {newPlace.rating && (
+            <div className="flex items-center gap-2 p-2 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
+              <Star className="size-4 fill-amber-400 text-amber-400" />
+              <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
+                {newPlace.rating.toFixed(1)}
+              </span>
+            </div>
+          )}
+
           <Input
             label="장소 이름"
             value={newPlace.name}
@@ -216,6 +311,13 @@ export function PlaceLibrary() {
             value={newPlace.address}
             onChange={(value) => setNewPlace((prev) => ({ ...prev, address: value }))}
             placeholder="주소 입력 (선택)"
+          />
+          <Input
+            label="웹사이트"
+            value={newPlace.website}
+            onChange={(value) => setNewPlace((prev) => ({ ...prev, website: value }))}
+            placeholder="https://"
+            leftIcon={<Globe className="size-4" />}
           />
           <Input
             label="메모"

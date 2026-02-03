@@ -365,6 +365,56 @@ input, button { touch-action: manipulation; }
 }
 
 /* ============================================
+   View Transitions API
+   ============================================ */
+
+@keyframes view-fade-in {
+  from { opacity: 0; }
+}
+
+@keyframes view-fade-out {
+  to { opacity: 0; }
+}
+
+@keyframes view-slide-from-right {
+  from { transform: translateX(30px); }
+}
+
+@keyframes view-slide-to-left {
+  to { transform: translateX(-30px); }
+}
+
+::view-transition-old(root) {
+  animation: 90ms cubic-bezier(0.4, 0, 1, 1) both view-fade-out,
+    300ms cubic-bezier(0.4, 0, 0.2, 1) both view-slide-to-left;
+}
+
+::view-transition-new(root) {
+  animation: 210ms cubic-bezier(0, 0, 0.2, 1) 90ms both view-fade-in,
+    300ms cubic-bezier(0.4, 0, 0.2, 1) both view-slide-from-right;
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* Button Ripple Effect */
+@keyframes ripple {
+  to {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.animate-ripple {
+  animation: ripple 0.6s linear;
+}
+
+/* ============================================
    Travel-specific styles
    ============================================ */
 
