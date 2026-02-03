@@ -397,13 +397,11 @@ export async function exportSingleTrip(tripId: number): Promise<SingleTripBackup
 
   // Remove ids for portability
   const tripWithoutId = { ...trip }
-  delete tripWithoutId.id
+  const { id: _tripId, ...tripData } = tripWithoutId
 
   const plansWithoutIds = plans.map((plan) => {
-    const planCopy = { ...plan }
-    delete planCopy.id
-    delete planCopy.tripId
-    return planCopy
+    const { id: _planId, tripId: _planTripId, ...planData } = plan
+    return planData
   })
 
   return {
@@ -411,7 +409,7 @@ export async function exportSingleTrip(tripId: number): Promise<SingleTripBackup
     appVersion: APP_VERSION,
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    trip: serializeDates(tripWithoutId),
+    trip: serializeDates(tripData),
     plans: serializeDates(plansWithoutIds),
   }
 }
@@ -565,16 +563,14 @@ export async function exportSinglePlan(planId: number): Promise<SinglePlanBackup
   }
 
   // Remove id and tripId for portability
-  const planWithoutIds = { ...plan }
-  delete planWithoutIds.id
-  delete planWithoutIds.tripId
+  const { id: _planId, tripId: _tripId, ...planData } = plan
 
   return {
     version: APP_VERSION,
     appVersion: APP_VERSION,
     schemaVersion: SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    plan: serializeDates(planWithoutIds),
+    plan: serializeDates(planData),
   }
 }
 
