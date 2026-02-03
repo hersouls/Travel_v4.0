@@ -68,7 +68,7 @@ export function Header() {
         </div>
 
         {/* Center: Search (Desktop) */}
-        <div className="hidden md:flex flex-1 max-w-md mx-4">
+        <div className="hidden md:flex flex-1 max-w-[40%] lg:max-w-md mx-4">
           <form onSubmit={handleSearch} className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
             <input

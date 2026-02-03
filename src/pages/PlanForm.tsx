@@ -341,7 +341,7 @@ export function PlanForm() {
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Map URL */}
           <div className="space-y-2">
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <div className="flex-1">
                 <Input
                   label="지도 URL"
@@ -351,7 +351,7 @@ export function PlanForm() {
                   leftIcon={<MapPin className="size-4" />}
                 />
               </div>
-              <div className="flex items-end">
+              <div className="flex items-end gap-2 flex-wrap">
                 <Button
                   type="button"
                   color="primary"
@@ -565,7 +565,7 @@ export function PlanForm() {
           {/* Type */}
           <div>
             <Label>유형</Label>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-2 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
               {planTypes.map((type) => (
                 <button
                   key={type}

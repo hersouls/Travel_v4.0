@@ -126,7 +126,7 @@ export function TripForm() {
                   <img
                     src={formData.coverImage}
                     alt="커버"
-                    className="w-full h-48 object-cover"
+                    className="w-full aspect-video object-cover"
                   />
                   <IconButton
                     type="button"
@@ -140,7 +140,7 @@ export function TripForm() {
                   </IconButton>
                 </div>
               ) : (
-                <label className="flex flex-col items-center justify-center h-48 border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-lg cursor-pointer hover:border-primary-500 transition-colors">
+                <label className="flex flex-col items-center justify-center aspect-video border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-lg cursor-pointer hover:border-primary-500 transition-colors">
                   <Upload className="size-8 text-zinc-400 mb-2" />
                   <span className="text-sm text-zinc-500">클릭하여 이미지 업로드</span>
                   <input

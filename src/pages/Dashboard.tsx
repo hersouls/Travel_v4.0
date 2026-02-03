@@ -69,9 +69,6 @@ export function Dashboard() {
             </p>
           )}
         </div>
-        <Button to="/trips/new" color="primary" leftIcon={<Plus className="size-4" />}>
-          새 여행
-        </Button>
       </div>
 
       {/* Stats */}
@@ -82,7 +79,7 @@ export function Dashboard() {
               <MapPin className="size-5 text-primary-600 dark:text-primary-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.total}</p>
+              <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">{stats.total}</p>
               <p className="text-sm text-zinc-500">전체 여행</p>
             </div>
           </div>
@@ -93,7 +90,7 @@ export function Dashboard() {
               <Calendar className="size-5 text-success-600 dark:text-success-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.upcoming}</p>
+              <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">{stats.upcoming}</p>
               <p className="text-sm text-zinc-500">예정된 여행</p>
             </div>
           </div>
@@ -104,7 +101,7 @@ export function Dashboard() {
               <Star className="size-5 text-warning-600 dark:text-warning-400" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-[var(--foreground)]">{stats.totalPlans}</p>
+              <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">{stats.totalPlans}</p>
               <p className="text-sm text-zinc-500">전체 일정</p>
             </div>
           </div>
@@ -144,7 +141,7 @@ export function Dashboard() {
             <Card key={trip.id} variant="interactive" padding="none" className="overflow-hidden group">
               <Link to={`/trips/${trip.id}`} className="block">
                 {/* Cover Image */}
-                <div className="relative h-40 bg-zinc-100 dark:bg-zinc-800">
+                <div className="relative aspect-[16/10] bg-zinc-100 dark:bg-zinc-800">
                   {trip.coverImage ? (
                     <img
                       src={trip.coverImage}
