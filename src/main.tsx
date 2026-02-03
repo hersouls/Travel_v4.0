@@ -153,11 +153,14 @@ if ('serviceWorker' in navigator) {
           if (newWorker) {
             newWorker.addEventListener('statechange', () => {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                // New content available
-                if (confirm('새 버전이 있습니다. 새로고침하시겠습니까?')) {
-                  newWorker.postMessage({ type: 'SKIP_WAITING' })
-                  window.location.reload()
-                }
+                // New content available - dispatch custom event for UI to handle
+                console.log('[SW] New version available, dispatching update event')
+                window.dispatchEvent(new CustomEvent('pwaUpdateAvailable', {
+                  detail: {
+                    registration,
+                    waitingWorker: newWorker,
+                  }
+                }))
               }
             })
           }

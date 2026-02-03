@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { MemoRenderer } from '@/components/memo'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Input, Textarea, Label } from '@/components/ui/Input'
+import { PlacesAutocomplete } from '@/components/ui/PlacesAutocomplete'
 import { TimePicker } from '@/components/ui/TimePicker'
 import { PageContainer } from '@/components/layout'
 import { useTripStore } from '@/stores/tripStore'
@@ -13,6 +14,7 @@ import { processImages } from '@/services/imageStorage'
 import { extractPlaceInfo, isGoogleMapsUrl } from '@/services/googleMaps'
 import { PLAN_TYPE_LABELS } from '@/utils/constants'
 import type { PlanType, GooglePlaceInfo } from '@/types'
+import type { PlaceDetails, PlacePrediction } from '@/services/placesAutocomplete'
 import * as db from '@/services/database'
 
 const planTypes: PlanType[] = ['attraction', 'restaurant', 'hotel', 'transport', 'car', 'plane', 'airport', 'other']
@@ -585,13 +587,42 @@ export function PlanForm() {
             </div>
           </div>
 
-          {/* Address */}
-          <Input
-            label="주소"
+          {/* Address with Places Autocomplete */}
+          <PlacesAutocomplete
+            label="장소 검색"
+            placeholder="장소 이름 또는 주소 검색..."
             value={formData.address}
             onChange={(value) => setFormData((prev) => ({ ...prev, address: value }))}
-            placeholder="주소 입력"
-            leftIcon={<MapPin className="size-4" />}
+            onPlaceSelect={(details: PlaceDetails, prediction: PlacePrediction) => {
+              // Auto-fill form fields from place details
+              const detectedType = detectPlanType(details.name) || detectPlanType(details.category || '')
+
+              setFormData((prev) => ({
+                ...prev,
+                placeName: prev.placeName || details.name,
+                address: details.address,
+                latitude: details.latitude,
+                longitude: details.longitude,
+                website: details.website || prev.website,
+                googlePlaceId: prediction.placeId,
+                googleInfo: {
+                  ...prev.googleInfo,
+                  placeId: prediction.placeId,
+                  rating: details.rating,
+                  reviewCount: details.reviewCount,
+                  category: details.category,
+                  phone: details.phone,
+                  openingHours: details.openingHours,
+                  extractedAt: new Date(),
+                },
+                type: (!typeManuallyChanged && detectedType) ? detectedType : prev.type,
+              }))
+
+              if (!typeManuallyChanged && detectedType) {
+                toast.success(`"${PLAN_TYPE_LABELS[detectedType]}"(으)로 분류했습니다`)
+              }
+              toast.success('장소 정보가 입력되었습니다')
+            }}
           />
 
           {/* Website */}

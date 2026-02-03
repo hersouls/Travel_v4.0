@@ -8,6 +8,7 @@ import { ToastContainer } from '@/components/ui/Toast'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { MusicPlayer } from '@/components/audio'
 import { TimezoneAlert } from '@/components/timezone'
+import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
 import { useTimezoneDetection } from '@/hooks/useTimezoneDetection'
 import { subscribeToBroadcast, type BroadcastMessage } from '@/services/broadcast'
 
@@ -136,6 +137,9 @@ export default function App() {
           onDismiss={dismissChange}
         />
       )}
+
+      {/* PWA Update Prompt */}
+      <PWAUpdatePrompt />
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
