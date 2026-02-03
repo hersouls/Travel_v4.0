@@ -2,10 +2,11 @@ import { useEffect, Suspense, lazy } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useTripStore } from '@/stores/tripStore'
 import { usePlaceStore } from '@/stores/placeStore'
-import { useSettingsStore } from '@/stores/settingsStore'
+import { useSettingsStore, useMusicPlayerEnabled } from '@/stores/settingsStore'
 import { useUIStore, useToasts } from '@/stores/uiStore'
 import { ToastContainer } from '@/components/ui/Toast'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { MusicPlayer } from '@/components/audio'
 import { subscribeToBroadcast, type BroadcastMessage } from '@/services/broadcast'
 
 // Lazy load layout components
@@ -29,6 +30,7 @@ export default function App() {
   const toasts = useToasts()
   const dismissToast = useUIStore((state) => state.dismissToast)
   const isSidebarCollapsed = useUIStore((state) => state.isSidebarCollapsed)
+  const isMusicPlayerEnabled = useMusicPlayerEnabled()
 
   // Initialize stores on mount
   useEffect(() => {
@@ -71,37 +73,42 @@ export default function App() {
   }, [location.pathname])
 
   return (
-    <div className="min-h-screen bg-[var(--background)]">
+    <div className="min-h-screen flex flex-col bg-[var(--background)]">
       {/* Header */}
       <Suspense fallback={<Skeleton height={64} className="w-full" />}>
         <Header />
       </Suspense>
 
       {/* Main Layout */}
-      <div className="flex">
+      <div className="flex flex-1 overflow-hidden">
         {/* Sidebar (Desktop) */}
         <Suspense fallback={null}>
           <Sidebar />
         </Suspense>
 
         {/* Main Content */}
-        <main
-          className={`flex-1 min-h-[calc(100vh-4rem)] transition-all duration-300 ${
+        <div
+          className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
             isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
           }`}
         >
-          <div className="container mx-auto px-4 py-6 pb-24 lg:pb-6">
-            <Suspense fallback={<LoadingFallback />}>
-              <Outlet />
-            </Suspense>
-          </div>
-        </main>
+          <Suspense fallback={<LoadingFallback />}>
+            <Outlet />
+          </Suspense>
+        </div>
       </div>
 
       {/* Mobile Navigation */}
       <Suspense fallback={null}>
         <MobileNav />
       </Suspense>
+
+      {/* Music Player */}
+      {isMusicPlayerEnabled && (
+        <div className="fixed bottom-20 lg:bottom-4 right-4 z-30">
+          <MusicPlayer />
+        </div>
+      )}
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

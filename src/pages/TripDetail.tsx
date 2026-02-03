@@ -6,6 +6,7 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { PageContainer } from '@/components/layout'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatDateRange, getTripDuration, formatTime } from '@/utils/format'
@@ -82,27 +83,32 @@ export function TripDetail() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <Skeleton height={200} className="rounded-xl" />
-        <Skeleton height={400} className="rounded-xl" />
-      </div>
+      <PageContainer>
+        <div className="space-y-6">
+          <Skeleton height={200} className="rounded-xl" />
+          <Skeleton height={400} className="rounded-xl" />
+        </div>
+      </PageContainer>
     )
   }
 
   if (!trip) {
     return (
-      <Card padding="lg" className="text-center">
-        <MapPin className="size-12 mx-auto text-zinc-300 mb-4" />
-        <h2 className="text-lg font-semibold mb-2">여행을 찾을 수 없습니다</h2>
-        <Button to="/dashboard" color="primary">
-          대시보드로 이동
-        </Button>
-      </Card>
+      <PageContainer>
+        <Card padding="lg" className="text-center">
+          <MapPin className="size-12 mx-auto text-zinc-300 mb-4" />
+          <h2 className="text-lg font-semibold mb-2">여행을 찾을 수 없습니다</h2>
+          <Button to="/dashboard" color="primary">
+            대시보드로 이동
+          </Button>
+        </Card>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
+      <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-4">
         <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
@@ -185,26 +191,28 @@ export function TripDetail() {
           dayDate.setDate(dayDate.getDate() + day - 1)
 
           return (
-            <Card key={day} padding="md">
-              <CardHeader
-                title={`Day ${day}`}
-                description={dayDate.toLocaleDateString('ko-KR', {
-                  month: 'long',
-                  day: 'numeric',
-                  weekday: 'short',
-                })}
-                action={
-                  <Button
-                    to={`/trips/${trip.id}/plans/new?day=${day}`}
-                    size="xs"
-                    outline
-                    color="primary"
-                    leftIcon={<Plus className="size-3" />}
-                  >
-                    추가
-                  </Button>
-                }
-              />
+            <Link key={day} to={`/trips/${trip.id}/day/${day}`} className="block">
+              <Card padding="md" variant="interactive">
+                <CardHeader
+                  title={`Day ${day}`}
+                  description={dayDate.toLocaleDateString('ko-KR', {
+                    month: 'long',
+                    day: 'numeric',
+                    weekday: 'short',
+                  })}
+                  action={
+                    <Button
+                      to={`/trips/${trip.id}/plans/new?day=${day}`}
+                      size="xs"
+                      outline
+                      color="primary"
+                      leftIcon={<Plus className="size-3" />}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      추가
+                    </Button>
+                  }
+                />
               <CardContent>
                 {dayPlans.length === 0 ? (
                   <p className="text-sm text-zinc-400 text-center py-4">일정이 없습니다</p>
@@ -257,7 +265,8 @@ export function TripDetail() {
                   </div>
                 )}
               </CardContent>
-            </Card>
+              </Card>
+            </Link>
           )
         })}
       </div>
@@ -297,6 +306,7 @@ export function TripDetail() {
           </Button>
         </DialogActions>
       </Dialog>
-    </div>
+      </div>
+    </PageContainer>
   )
 }

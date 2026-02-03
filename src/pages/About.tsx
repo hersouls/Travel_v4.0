@@ -1,10 +1,12 @@
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { PageContainer } from '@/components/layout'
 import { APP_NAME, APP_VERSION } from '@/utils/constants'
 
 export function About() {
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+    <PageContainer maxWidth="md">
+      <div className="space-y-6 animate-fade-in">
       <h1 className="text-2xl font-bold text-[var(--foreground)]">정보</h1>
 
       {/* App Info */}
@@ -94,6 +96,7 @@ export function About() {
       <p className="text-center text-sm text-zinc-400">
         © 2024 Moonwave. All rights reserved.
       </p>
-    </div>
+      </div>
+    </PageContainer>
   )
 }

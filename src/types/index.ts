@@ -27,6 +27,19 @@ export interface Trip {
   updatedAt: Date
 }
 
+// Google Place Info (Google Maps에서 추출된 정보)
+export interface GooglePlaceInfo {
+  placeId?: string // Google Place ID (ChIJ...)
+  cid?: string // Customer ID
+  rating?: number // 평점 0.0 ~ 5.0
+  reviewCount?: number // 리뷰 수
+  phone?: string // 전화번호
+  website?: string // 웹사이트
+  openingHours?: string[] // 영업시간
+  category?: string // 카테고리
+  extractedAt: Date // 추출 시간
+}
+
 // Plan (일정)
 export interface Plan {
   id?: number
@@ -45,6 +58,9 @@ export interface Plan {
   mapUrl?: string
   latitude?: number
   longitude?: number
+  googlePlaceId?: string // Google Place ID
+  googleInfo?: GooglePlaceInfo // Google Maps 추출 정보
+  audioScript?: string // Moonyou Guide 음성 대본
   createdAt: Date
   updatedAt: Date
 }

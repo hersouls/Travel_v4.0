@@ -11,7 +11,9 @@ const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m
 const TripDetail = lazy(() => import('@/pages/TripDetail').then(m => ({ default: m.TripDetail })))
 const TripForm = lazy(() => import('@/pages/TripForm').then(m => ({ default: m.TripForm })))
 const PlanForm = lazy(() => import('@/pages/PlanForm').then(m => ({ default: m.PlanForm })))
+const PlanDetail = lazy(() => import('@/pages/PlanDetail').then(m => ({ default: m.PlanDetail })))
 const TripMap = lazy(() => import('@/pages/TripMap').then(m => ({ default: m.TripMap })))
+const DayDetail = lazy(() => import('@/pages/DayDetail').then(m => ({ default: m.DayDetail })))
 const PlaceLibrary = lazy(() => import('@/pages/PlaceLibrary').then(m => ({ default: m.PlaceLibrary })))
 const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
 const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About })))
@@ -76,7 +78,23 @@ const router = createBrowserRouter([
         path: 'trips/:tripId/plans/:planId',
         element: (
           <Suspense fallback={<PageLoading />}>
+            <PlanDetail />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'trips/:tripId/plans/:planId/edit',
+        element: (
+          <Suspense fallback={<PageLoading />}>
             <PlanForm />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'trips/:id/day/:day',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <DayDetail />
           </Suspense>
         ),
       },

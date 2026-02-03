@@ -1,18 +1,24 @@
 // ============================================
-// Google Drive Service
-// 큰 파일 방식 (Resumable Upload)
+// Google Drive Service (Client-Side)
 // ============================================
 
-const API_BASE = '/api/drive'
-const STORAGE_KEY = 'google-drive-tokens'
+import type { BackupData } from './database'
 
-interface DriveTokens {
-  access_token: string
-  refresh_token?: string
-  expires_at: number
+// Configuration
+const CLIENT_ID = '918814780081-cu6o0krg6d7ihmnspjbe1nsi272t695j.apps.googleusercontent.com'
+const API_KEY = 'AIzaSyAxfac7PrWNus6b7xxUGM3irAk_xO-a4vY' // Public API Key for client-side use
+const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'
+const SCOPES = 'https://www.googleapis.com/auth/drive.file'
+
+// Global types
+declare global {
+  interface Window {
+    gapi: any
+    google: any
+  }
 }
 
-interface DriveFile {
+export interface DriveFile {
   id: string
   name: string
   size?: string
@@ -20,249 +26,208 @@ interface DriveFile {
   modifiedTime?: string
 }
 
-interface UploadProgress {
+export interface UploadProgress {
   loaded: number
   total: number
   percentage: number
 }
 
 class GoogleDriveService {
-  private tokens: DriveTokens | null = null
+  private tokenClient: any
+  private _isConnected = false
+  private initialized = false
 
-  constructor() {
-    this.loadTokens()
+  // Dynamic Script Loading
+  private loadScript(src: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${src}"]`)) {
+        resolve()
+        return
+      }
+      const script = document.createElement('script')
+      script.src = src
+      script.onload = () => resolve()
+      script.onerror = (err) => reject(err)
+      document.body.appendChild(script)
+    })
   }
 
-  /**
-   * localStorage에서 토큰 로드
-   */
-  private loadTokens(): void {
-    if (typeof window === 'undefined') return
+  // Initialize Library
+  async init(): Promise<void> {
+    if (this.initialized) return
 
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) {
-        this.tokens = JSON.parse(stored)
+      await Promise.all([
+        this.loadScript('https://apis.google.com/js/api.js'),
+        this.loadScript('https://accounts.google.com/gsi/client'),
+      ])
+
+      await new Promise<void>((resolve, reject) => {
+        window.gapi.load('client', async () => {
+          try {
+            await window.gapi.client.init({
+              apiKey: API_KEY,
+              discoveryDocs: [DISCOVERY_DOC],
+            })
+            resolve()
+          } catch (err) {
+            reject(err)
+          }
+        })
+      })
+
+      this.tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: (resp: any) => {
+          if (resp.error) {
+            console.error('Auth Error:', resp)
+            return
+          }
+          this._isConnected = true
+        },
+      })
+
+      // Check if we have a valid token already
+      const token = window.gapi.client.getToken()
+      if (token) {
+        this._isConnected = true
       }
-    } catch {
-      console.warn('[GoogleDrive] Failed to load tokens')
+
+      this.initialized = true
+    } catch (error) {
+      console.error('Google Drive Init Error:', error)
+      throw error
     }
   }
 
-  /**
-   * 토큰 저장
-   */
-  private saveTokens(tokens: DriveTokens): void {
-    this.tokens = tokens
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tokens))
-  }
-
-  /**
-   * 연결 상태 확인
-   */
   isConnected(): boolean {
-    return !!this.tokens?.access_token
+    return this._isConnected && !!window.gapi?.client?.getToken()
   }
 
-  /**
-   * 연결 정보 가져오기
-   */
-  getConnectionInfo(): { connected: boolean; expiresAt?: Date } {
-    if (!this.tokens) {
-      return { connected: false }
-    }
-    return {
-      connected: true,
-      expiresAt: new Date(this.tokens.expires_at),
-    }
+  async connect(): Promise<void> {
+    if (!this.initialized) await this.init()
+
+    return new Promise((resolve, reject) => {
+      this.tokenClient.callback = (resp: any) => {
+        if (resp.error) {
+          reject(resp)
+        } else {
+          // Critical: Set the token for gapi types to use
+          if (window.gapi) {
+            window.gapi.client.setToken(resp)
+          }
+          this._isConnected = true
+          resolve()
+        }
+      }
+
+      // Prompt the user to select an account
+      this.tokenClient.requestAccessToken({ prompt: 'consent' })
+    })
   }
 
-  /**
-   * OAuth 인증 시작 (새 창에서)
-   */
-  connect(): void {
-    const state = encodeURIComponent(window.location.pathname)
-    window.location.href = `${API_BASE}/auth?state=${state}`
-  }
-
-  /**
-   * 연결 해제
-   */
   disconnect(): void {
-    this.tokens = null
-    localStorage.removeItem(STORAGE_KEY)
+    const token = window.gapi?.client?.getToken()
+    if (token) {
+      window.google.accounts.oauth2.revoke(token.access_token)
+      window.gapi.client.setToken(null)
+      this._isConnected = false
+    }
   }
 
-  /**
-   * 유효한 Access Token 가져오기 (필요시 갱신)
-   */
-  private async getValidAccessToken(): Promise<string> {
-    if (!this.tokens) {
-      throw new Error('Not connected to Google Drive')
-    }
-
-    // 토큰 만료 5분 전에 갱신
-    const expiresIn = this.tokens.expires_at - Date.now()
-    if (expiresIn < 5 * 60 * 1000 && this.tokens.refresh_token) {
-      await this.refreshToken()
-    }
-
-    return this.tokens.access_token
-  }
-
-  /**
-   * 토큰 갱신
-   */
-  private async refreshToken(): Promise<void> {
-    if (!this.tokens?.refresh_token) {
-      throw new Error('No refresh token available')
-    }
-
-    const response = await fetch(`${API_BASE}/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: this.tokens.refresh_token }),
-    })
-
-    if (!response.ok) {
-      this.disconnect()
-      throw new Error('Token refresh failed')
-    }
-
-    const data = await response.json()
-    this.saveTokens({
-      ...this.tokens,
-      access_token: data.access_token,
-      expires_at: data.expires_at,
-    })
-  }
-
-  /**
-   * 백업 파일 목록 조회
-   */
   async listBackups(): Promise<DriveFile[]> {
-    const accessToken = await this.getValidAccessToken()
+    if (!this.isConnected()) throw new Error('Not authenticated')
 
-    const response = await fetch(`${API_BASE}/list`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to list backups')
+    try {
+      const response = await window.gapi.client.drive.files.list({
+        pageSize: 10,
+        fields: 'files(id, name, size, createdTime, modifiedTime)',
+        q: "name contains 'travel-backup' and trashed=false",
+        orderBy: 'createdTime desc',
+      })
+      return response.result.files || []
+    } catch (error) {
+      console.error('List Backups Error:', error)
+      throw error
     }
-
-    const data = await response.json()
-    return data.files || []
   }
 
-  /**
-   * 백업 업로드 (Resumable Upload)
-   */
   async uploadBackup(
     data: string,
     fileName: string,
     onProgress?: (progress: UploadProgress) => void
-  ): Promise<DriveFile> {
-    const accessToken = await this.getValidAccessToken()
-    const blob = new Blob([data], { type: 'application/json' })
+  ): Promise<string> {
+    if (!this.isConnected()) throw new Error('Not authenticated')
 
-    // 1. 업로드 URL 요청
-    const urlResponse = await fetch(`${API_BASE}/upload-url`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        fileName,
-        mimeType: 'application/json',
-        fileSize: blob.size,
-      }),
-    })
-
-    if (!urlResponse.ok) {
-      const error = await urlResponse.json()
-      throw new Error(error.details || 'Failed to get upload URL')
+    const fileContent = data // JSON string
+    const file = new Blob([fileContent], { type: 'application/json' })
+    const metadata = {
+      name: fileName,
+      mimeType: 'application/json',
     }
 
-    const { uploadUrl } = await urlResponse.json()
+    const accessToken = window.gapi.client.getToken().access_token
+    const form = new FormData()
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }))
+    form.append('file', file)
 
-    // 2. 클라이언트에서 직접 Google Drive로 업로드
+    // Using fetch for upload to support progress if needed (though fetch doesn't support upload progress natively easily without streams, we'll keep it simple or use XHR for progress)
+    // For reliable progress, XHR is better
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
+      xhr.open(
+        'POST',
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        true
+      )
+      xhr.setRequestHeader('Authorization', 'Bearer ' + accessToken)
 
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && onProgress) {
-          onProgress({
-            loaded: event.loaded,
-            total: event.total,
-            percentage: Math.round((event.loaded / event.total) * 100),
-          })
+      if (onProgress) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            onProgress({
+              loaded: event.loaded,
+              total: event.total,
+              percentage: Math.round((event.loaded / event.total) * 100),
+            })
+          }
         }
       }
 
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const file = JSON.parse(xhr.responseText)
-            resolve(file)
-          } catch {
-            resolve({ id: 'unknown', name: fileName })
-          }
+          const response = JSON.parse(xhr.responseText)
+          resolve(response.id)
         } else {
-          reject(new Error(`Upload failed: ${xhr.status}`))
+          reject(new Error('Upload failed: ' + xhr.statusText))
         }
       }
 
-      xhr.onerror = () => reject(new Error('Upload failed'))
-
-      xhr.open('PUT', uploadUrl, true)
-      xhr.setRequestHeader('Content-Type', 'application/json')
-      xhr.send(blob)
+      xhr.onerror = () => reject(new Error('Network error during upload'))
+      xhr.send(form)
     })
   }
 
-  /**
-   * 백업 다운로드
-   */
   async downloadBackup(fileId: string): Promise<string> {
-    const accessToken = await this.getValidAccessToken()
+    if (!this.isConnected()) throw new Error('Not authenticated')
 
-    const response = await fetch(`${API_BASE}/download?fileId=${fileId}`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+    const response = await window.gapi.client.drive.files.get({
+      fileId: fileId,
+      alt: 'media',
     })
 
-    if (!response.ok) {
-      throw new Error('Failed to download backup')
-    }
-
-    return response.text()
+    return typeof response.body === 'string' ? response.body : JSON.stringify(response.result)
   }
 
-  /**
-   * 백업 삭제
-   */
   async deleteBackup(fileId: string): Promise<void> {
-    const accessToken = await this.getValidAccessToken()
+    if (!this.isConnected()) throw new Error('Not authenticated')
 
-    const response = await fetch(`${API_BASE}/delete?fileId=${fileId}`, {
-      method: 'DELETE',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+    await window.gapi.client.drive.files.delete({
+      fileId: fileId,
     })
-
-    if (!response.ok) {
-      throw new Error('Failed to delete backup')
-    }
   }
 }
 
-// 싱글톤 인스턴스
 export const googleDrive = new GoogleDriveService()
 
-export type { DriveFile, UploadProgress }

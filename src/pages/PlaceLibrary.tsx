@@ -6,6 +6,7 @@ import { PlanTypeBadge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { PageContainer } from '@/components/layout'
 import { usePlaceStore, usePlaces, usePlaceLoading } from '@/stores/placeStore'
 import { toast } from '@/stores/uiStore'
 import { PLAN_TYPE_LABELS } from '@/utils/constants'
@@ -55,19 +56,22 @@ export function PlaceLibrary() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <Skeleton height={48} />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} variant="rectangular" height={120} />
-          ))}
+      <PageContainer>
+        <div className="space-y-6">
+          <Skeleton height={48} />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} variant="rectangular" height={120} />
+            ))}
+          </div>
         </div>
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
+      <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -247,6 +251,7 @@ export function PlaceLibrary() {
           </Button>
         </DialogActions>
       </Dialog>
-    </div>
+      </div>
+    </PageContainer>
   )
 }

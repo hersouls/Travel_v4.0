@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { PageContainer } from '@/components/layout'
 import { useTrips, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { formatDateRange, getTripDuration } from '@/utils/format'
 
@@ -36,23 +37,26 @@ export function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} variant="rectangular" height={100} />
-          ))}
+      <PageContainer>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} variant="rectangular" height={100} />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <Skeleton key={i} variant="rectangular" height={200} />
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Skeleton key={i} variant="rectangular" height={200} />
-          ))}
-        </div>
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <PageContainer>
+      <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -189,6 +193,7 @@ export function Dashboard() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </PageContainer>
   )
 }

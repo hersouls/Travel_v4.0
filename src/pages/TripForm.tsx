@@ -4,6 +4,7 @@ import { ArrowLeft, Upload, X, Calendar } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
+import { PageContainer } from '@/components/layout'
 import { useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { compressImage } from '@/services/imageStorage'
@@ -95,7 +96,8 @@ export function TripForm() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
+    <PageContainer maxWidth="md">
+      <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-4">
         <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
@@ -215,6 +217,7 @@ export function TripForm() {
           </div>
         </form>
       </Card>
-    </div>
+      </div>
+    </PageContainer>
   )
 }

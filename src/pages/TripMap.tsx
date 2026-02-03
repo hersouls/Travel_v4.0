@@ -6,6 +6,7 @@ import { Icon, divIcon } from 'leaflet'
 import { IconButton, Button } from '@/components/ui/Button'
 import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
+import { PageContainer } from '@/components/layout'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { formatTime } from '@/utils/format'
 // Fix Leaflet default marker icon issue
@@ -100,25 +101,30 @@ export function TripMap() {
 
   if (isLoading) {
     return (
-      <div className="h-[calc(100vh-8rem)]">
-        <Skeleton height="100%" className="rounded-xl" />
-      </div>
+      <PageContainer fullHeight>
+        <div className="flex-1 p-4">
+          <Skeleton height="100%" className="rounded-xl" />
+        </div>
+      </PageContainer>
     )
   }
 
   if (!trip) {
     return (
-      <div className="text-center py-12">
-        <p className="text-zinc-500">여행을 찾을 수 없습니다</p>
-        <Button to="/dashboard" color="primary" className="mt-4">
-          대시보드로 이동
-        </Button>
-      </div>
+      <PageContainer>
+        <div className="text-center py-12">
+          <p className="text-zinc-500">여행을 찾을 수 없습니다</p>
+          <Button to="/dashboard" color="primary" className="mt-4">
+            대시보드로 이동
+          </Button>
+        </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <PageContainer fullHeight>
+      <div className="flex flex-col h-full p-4 space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -136,7 +142,7 @@ export function TripMap() {
       </div>
 
       {/* Map */}
-      <div className="h-[calc(100vh-12rem)] rounded-xl overflow-hidden ring-1 ring-zinc-950/5 dark:ring-white/10">
+      <div className="flex-1 rounded-xl overflow-hidden ring-1 ring-zinc-950/5 dark:ring-white/10 mb-16 lg:mb-0">
         {plansWithCoords.length === 0 ? (
           <div className="h-full flex items-center justify-center bg-zinc-100 dark:bg-zinc-800">
             <div className="text-center">
@@ -201,6 +207,7 @@ export function TripMap() {
           </MapContainer>
         )}
       </div>
-    </div>
+      </div>
+    </PageContainer>
   )
 }

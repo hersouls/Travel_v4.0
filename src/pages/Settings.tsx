@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson } from 'lucide-react'
+import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson, Music } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
-import { useSettingsStore, useTheme, useColorPalette } from '@/stores/settingsStore'
+import { PageContainer } from '@/components/layout'
+import { useSettingsStore, useTheme, useColorPalette, useMusicPlayerEnabled } from '@/stores/settingsStore'
 import { toast } from '@/stores/uiStore'
 import { exportAllData, importAllData, clearAllData, type BackupData } from '@/services/database'
 import { importFromFirebase, validateBackupFile, type MigrationProgress } from '@/services/migration'
@@ -21,8 +22,10 @@ const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }>
 export function Settings() {
   const theme = useTheme()
   const colorPalette = useColorPalette()
+  const isMusicPlayerEnabled = useMusicPlayerEnabled()
   const setTheme = useSettingsStore((state) => state.setTheme)
   const setColorPalette = useSettingsStore((state) => state.setColorPalette)
+  const setMusicPlayerEnabled = useSettingsStore((state) => state.setMusicPlayerEnabled)
   const updateLastBackupDate = useSettingsStore((state) => state.updateLastBackupDate)
   const lastBackupDate = useSettingsStore((state) => state.lastBackupDate)
 
@@ -55,7 +58,15 @@ export function Settings() {
     loadStorageInfo()
 
     // Check Google Drive connection
-    setIsDriveConnected(googleDrive.isConnected())
+    const initDrive = async () => {
+      try {
+        await googleDrive.init()
+        setIsDriveConnected(googleDrive.isConnected())
+      } catch (error) {
+        console.error('Failed to initialize Google Drive:', error)
+      }
+    }
+    initDrive()
 
     // Check URL params for Drive connection result
     const params = new URLSearchParams(window.location.search)
@@ -90,8 +101,16 @@ export function Settings() {
     loadDriveBackups()
   }, [loadDriveBackups])
 
-  const handleDriveConnect = () => {
-    googleDrive.connect()
+  const handleDriveConnect = async () => {
+    try {
+      await googleDrive.connect()
+      setIsDriveConnected(true)
+      toast.success('Google Drive가 연결되었습니다')
+      loadDriveBackups()
+    } catch (error) {
+      console.error('Drive connection failed:', error)
+      toast.error('Google Drive 연결 실패')
+    }
   }
 
   const handleDriveDisconnect = () => {
@@ -292,8 +311,9 @@ export function Settings() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
-      <h1 className="text-2xl font-bold text-[var(--foreground)]">설정</h1>
+    <PageContainer maxWidth="md">
+      <div className="space-y-6 animate-fade-in">
+        <h1 className="text-2xl font-bold text-[var(--foreground)]">설정</h1>
 
       {/* Theme */}
       <Card padding="lg">
@@ -304,25 +324,22 @@ export function Settings() {
               <button
                 key={option.value}
                 onClick={() => setTheme(option.value)}
-                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${
-                  theme === option.value
-                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
-                    : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
-                }`}
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${theme === option.value
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                  : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                  }`}
               >
                 <option.icon
-                  className={`size-6 ${
-                    theme === option.value
-                      ? 'text-primary-600 dark:text-primary-400'
-                      : 'text-zinc-500'
-                  }`}
+                  className={`size-6 ${theme === option.value
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-zinc-500'
+                    }`}
                 />
                 <span
-                  className={`text-sm font-medium ${
-                    theme === option.value
-                      ? 'text-primary-600 dark:text-primary-400'
-                      : 'text-zinc-600 dark:text-zinc-400'
-                  }`}
+                  className={`text-sm font-medium ${theme === option.value
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-zinc-600 dark:text-zinc-400'
+                    }`}
                 >
                   {option.label}
                 </span>
@@ -346,11 +363,10 @@ export function Settings() {
                 key={palette.id}
                 type="button"
                 onClick={() => setColorPalette(palette.id as ColorPalette)}
-                className={`flex flex-col items-center p-2 rounded-lg border-2 transition-all ${
-                  colorPalette === palette.id
-                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
-                    : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
-                }`}
+                className={`flex flex-col items-center p-2 rounded-lg border-2 transition-all ${colorPalette === palette.id
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                  : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                  }`}
               >
                 <div className="flex gap-0.5 mb-1.5">
                   <div
@@ -363,11 +379,10 @@ export function Settings() {
                   />
                 </div>
                 <span
-                  className={`text-[10px] font-medium ${
-                    colorPalette === palette.id
-                      ? 'text-primary-600 dark:text-primary-400'
-                      : 'text-zinc-700 dark:text-zinc-300'
-                  }`}
+                  className={`text-[10px] font-medium ${colorPalette === palette.id
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : 'text-zinc-700 dark:text-zinc-300'
+                    }`}
                 >
                   {palette.nameKo}
                 </span>
@@ -376,6 +391,40 @@ export function Settings() {
           </div>
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
             다크 모드에서는 기본 민트 색상이 사용됩니다.
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Music Player */}
+      <Card padding="lg">
+        <CardHeader
+          title="배경 음악"
+          description="Moonwave 오리지널 음악을 재생합니다"
+          icon={<Music className="size-5" />}
+        />
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+              음악 플레이어 활성화
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isMusicPlayerEnabled}
+              onClick={() => setMusicPlayerEnabled(!isMusicPlayerEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                isMusicPlayerEnabled ? 'bg-primary-500' : 'bg-zinc-300 dark:bg-zinc-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  isMusicPlayerEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+          <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+            활성화하면 앱 하단에 음악 플레이어가 표시됩니다.
           </p>
         </CardContent>
       </Card>
@@ -646,13 +695,12 @@ export function Settings() {
                 </div>
                 <div className="h-2 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
                   <div
-                    className={`h-full transition-all duration-300 ${
-                      storageInfo.status === 'critical'
-                        ? 'bg-danger-500'
-                        : storageInfo.status === 'warning'
-                          ? 'bg-warning-500'
-                          : 'bg-primary-500'
-                    }`}
+                    className={`h-full transition-all duration-300 ${storageInfo.status === 'critical'
+                      ? 'bg-danger-500'
+                      : storageInfo.status === 'warning'
+                        ? 'bg-warning-500'
+                        : 'bg-primary-500'
+                      }`}
                     style={{ width: `${Math.min(storageInfo.percentage * 100, 100)}%` }}
                   />
                 </div>
@@ -809,6 +857,7 @@ export function Settings() {
           </Button>
         </DialogActions>
       </Dialog>
-    </div>
+      </div>
+    </PageContainer>
   )
 }
