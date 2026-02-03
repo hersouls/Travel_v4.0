@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
+import { OnboardingModal } from '@/components/OnboardingModal'
 import { useTrips, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { formatDateRange, getTripDuration } from '@/utils/format'
 
@@ -56,6 +57,7 @@ export function Dashboard() {
 
   return (
     <PageContainer>
+      <OnboardingModal />
       <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -123,9 +125,16 @@ export function Dashboard() {
                 : '첫 번째 여행을 만들어보세요!'}
             </p>
             {!searchQuery && (
-              <Button to="/trips/new" color="primary" leftIcon={<Plus className="size-4" />}>
-                새 여행 만들기
-              </Button>
+              <>
+                <Button to="/trips/new" color="primary" leftIcon={<Plus className="size-4" />}>
+                  새 여행 만들기
+                </Button>
+                <div className="mt-6 pt-6 border-t border-zinc-200 dark:border-zinc-700">
+                  <p className="text-xs text-zinc-400 space-y-1">
+                    💡 Google Maps URL을 붙여넣으면 장소 정보가 자동으로 입력됩니다
+                  </p>
+                </div>
+              </>
             )}
           </div>
         </Card>

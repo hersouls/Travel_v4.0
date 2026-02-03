@@ -18,6 +18,7 @@ export interface Trip {
   id?: number
   title: string
   country: string
+  timezone?: string // IANA timezone (e.g., 'Asia/Tokyo')
   startDate: string // YYYY-MM-DD
   endDate: string // YYYY-MM-DD
   coverImage?: string // Base64 encoded
@@ -45,6 +46,7 @@ export interface Plan {
   id?: number
   tripId: number
   day: number // 1, 2, 3...
+  order?: number // 드래그앤드롭 정렬 순서
   placeName: string
   startTime: string // HH:mm
   endTime?: string // HH:mm
@@ -107,6 +109,9 @@ export interface Settings {
   language: 'ko' | 'en'
   isMusicPlayerEnabled: boolean
   lastBackupDate?: Date
+  // 시간대 설정
+  detectedTimezone?: string // 마지막 감지된 시간대
+  timezoneAutoDetect: boolean // 자동 감지 활성화 (기본: true)
 }
 
 // Default settings
@@ -116,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   colorPalette: 'default',
   language: 'ko',
   isMusicPlayerEnabled: true,
+  timezoneAutoDetect: true,
 }
 
 // UI Types

@@ -7,6 +7,7 @@ import { devtools } from 'zustand/middleware'
 import type { Trip, Plan } from '@/types'
 import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
+import { getTimezoneFromCountry } from '@/utils/timezone'
 
 interface TripState {
   // State
@@ -30,6 +31,7 @@ interface TripState {
   addPlan: (plan: Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>) => Promise<number>
   updatePlan: (id: number, updates: Partial<Plan>) => Promise<void>
   deletePlan: (id: number) => Promise<void>
+  reorderPlans: (tripId: number, day: number, planIds: number[]) => Promise<void>
 
   // Utils
   clearCurrentTrip: () => void
@@ -68,11 +70,19 @@ export const useTripStore = create<TripState>()(
         }
       },
 
-      // Load single trip with plans
+      // Load single trip with plans (with lazy timezone migration)
       loadTrip: async (id: number) => {
         set({ isLoading: true, error: null })
         try {
-          const [trip, plans] = await Promise.all([db.getTrip(id), db.getPlansForTrip(id)])
+          let [trip, plans] = await Promise.all([db.getTrip(id), db.getPlansForTrip(id)])
+
+          // Lazy migration: add timezone if missing
+          if (trip && !trip.timezone) {
+            const timezone = getTimezoneFromCountry(trip.country)
+            await db.updateTrip(id, { timezone })
+            trip = { ...trip, timezone }
+          }
+
           set({
             currentTrip: trip || null,
             currentPlans: plans,
@@ -83,12 +93,15 @@ export const useTripStore = create<TripState>()(
         }
       },
 
-      // Add new trip
+      // Add new trip (with automatic timezone from country)
       addTrip: async (tripData) => {
         set({ isLoading: true, error: null })
         try {
+          // Ensure timezone is set from country if not provided
+          const timezone = tripData.timezone || getTimezoneFromCountry(tripData.country)
           const trip: Omit<Trip, 'id'> = {
             ...tripData,
+            timezone,
             isFavorite: false,
             plansCount: 0,
             createdAt: new Date(),
@@ -228,6 +241,22 @@ export const useTripStore = create<TripState>()(
           }
         } catch (error) {
           set({ error: (error as Error).message, isLoading: false })
+        }
+      },
+
+      // Reorder plans (드래그앤드롭)
+      reorderPlans: async (tripId, day, planIds) => {
+        try {
+          // Update order for each plan
+          await Promise.all(
+            planIds.map((id, index) => db.updatePlan(id, { order: index }))
+          )
+          // Reload plans
+          const plans = await db.getPlansForTrip(tripId)
+          set({ currentPlans: plans })
+          sendBroadcast('PLANS_REORDERED', { tripId, day })
+        } catch (error) {
+          set({ error: (error as Error).message })
         }
       },
 

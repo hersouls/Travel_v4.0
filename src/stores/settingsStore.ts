@@ -17,6 +17,9 @@ interface SettingsState extends Settings {
   setLanguage: (language: 'ko' | 'en') => void
   setMusicPlayerEnabled: (enabled: boolean) => void
   updateLastBackupDate: () => void
+  // Timezone actions
+  setTimezoneAutoDetect: (enabled: boolean) => void
+  updateDetectedTimezone: (timezone: string) => void
   saveToDatabase: () => Promise<void>
 }
 
@@ -105,6 +108,19 @@ export const useSettingsStore = create<SettingsState>()(
           get().saveToDatabase()
         },
 
+        // Set timezone auto-detect
+        setTimezoneAutoDetect: (enabled) => {
+          set({ timezoneAutoDetect: enabled })
+          get().saveToDatabase()
+          sendBroadcast('SETTINGS_CHANGED', { field: 'timezoneAutoDetect', value: enabled })
+        },
+
+        // Update detected timezone
+        updateDetectedTimezone: (timezone) => {
+          set({ detectedTimezone: timezone })
+          get().saveToDatabase()
+        },
+
         // Save to database
         saveToDatabase: async () => {
           const state = get()
@@ -115,6 +131,8 @@ export const useSettingsStore = create<SettingsState>()(
             language: state.language,
             isMusicPlayerEnabled: state.isMusicPlayerEnabled,
             lastBackupDate: state.lastBackupDate,
+            timezoneAutoDetect: state.timezoneAutoDetect,
+            detectedTimezone: state.detectedTimezone,
           })
         },
       }),
@@ -125,6 +143,7 @@ export const useSettingsStore = create<SettingsState>()(
           colorPalette: state.colorPalette,
           language: state.language,
           isMusicPlayerEnabled: state.isMusicPlayerEnabled,
+          timezoneAutoDetect: state.timezoneAutoDetect,
         }),
       }
     ),
@@ -137,3 +156,4 @@ export const useTheme = () => useSettingsStore((state) => state.theme)
 export const useColorPalette = () => useSettingsStore((state) => state.colorPalette)
 export const useLanguage = () => useSettingsStore((state) => state.language)
 export const useMusicPlayerEnabled = () => useSettingsStore((state) => state.isMusicPlayerEnabled)
+export const useTimezoneAutoDetect = () => useSettingsStore((state) => state.timezoneAutoDetect)

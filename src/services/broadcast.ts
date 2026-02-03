@@ -10,6 +10,7 @@ type MessageType =
   | 'PLAN_CREATED'
   | 'PLAN_UPDATED'
   | 'PLAN_DELETED'
+  | 'PLANS_REORDERED'
   | 'PLACE_CREATED'
   | 'PLACE_UPDATED'
   | 'PLACE_DELETED'

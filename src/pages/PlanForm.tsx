@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, X, Clock, MapPin, Globe, Youtube, Camera, Loader2, Sparkles, ExternalLink, Volume2, Eye, EyeOff } from 'lucide-react'
+import { ArrowLeft, X, Clock, MapPin, Globe, Youtube, Camera, Loader2, Sparkles, ExternalLink, Volume2, Eye, EyeOff, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { MemoRenderer } from '@/components/memo'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Input, Textarea, Label } from '@/components/ui/Input'
+import { TimePicker } from '@/components/ui/TimePicker'
 import { PageContainer } from '@/components/layout'
 import { useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
@@ -15,6 +16,31 @@ import type { PlanType, GooglePlaceInfo } from '@/types'
 import * as db from '@/services/database'
 
 const planTypes: PlanType[] = ['attraction', 'restaurant', 'hotel', 'transport', 'car', 'plane', 'airport', 'other']
+
+// 키워드 기반 타입 자동 추천 매핑
+const typeKeywords: Record<PlanType, string[]> = {
+  restaurant: ['식당', '레스토랑', '카페', '맛집', '음식', 'food', 'cafe', 'restaurant', 'coffee', '커피', '베이커리', '빵집', '라멘', '스시', '초밥', '우동', '돈부리', '이자카야', '야키토리', '디저트'],
+  hotel: ['호텔', '숙소', '리조트', '펜션', '게스트하우스', 'hotel', 'resort', 'airbnb', '료칸', '민박', '모텔', 'hostel', '호스텔', 'inn'],
+  attraction: ['관광', '박물관', '공원', '타워', '성', '궁', 'temple', 'museum', 'park', 'tower', '신사', '사찰', '절', '미술관', '전망대', '동물원', '수족관', '테마파크', '유적지', '명소'],
+  transport: ['역', '버스', '지하철', 'station', 'terminal', '터미널', '정류장', '전철', '기차'],
+  airport: ['공항', 'airport', '인천공항', '나리타', '하네다', '간사이', '후쿠오카'],
+  plane: ['항공', '비행', 'flight', '대한항공', '아시아나', 'JAL', 'ANA'],
+  car: ['렌트카', '렌터카', 'rent', 'car', '자동차', '드라이브'],
+  other: [],
+}
+
+function detectPlanType(text: string): PlanType | null {
+  const lowerText = text.toLowerCase()
+  for (const [type, keywords] of Object.entries(typeKeywords) as [PlanType, string[]][]) {
+    if (type === 'other') continue
+    for (const keyword of keywords) {
+      if (lowerText.includes(keyword.toLowerCase())) {
+        return type
+      }
+    }
+  }
+  return null
+}
 
 export function PlanForm() {
   const { tripId, planId } = useParams<{ tripId: string; planId: string }>()
@@ -30,6 +56,8 @@ export function PlanForm() {
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
+  const [showManualCoords, setShowManualCoords] = useState(false)
+  const [typeManuallyChanged, setTypeManuallyChanged] = useState(false)
   const [formData, setFormData] = useState({
     placeName: '',
     day: defaultDay,
@@ -373,6 +401,76 @@ export function PlanForm() {
                 )}
               </div>
             )}
+            {/* 추출된 좌표 표시 */}
+            {(formData.latitude && formData.longitude) && (
+              <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    📍 추출된 좌표
+                  </span>
+                  <span className="text-sm text-blue-600 dark:text-blue-400">
+                    위도: {formData.latitude.toFixed(6)}
+                  </span>
+                  <span className="text-sm text-blue-600 dark:text-blue-400">
+                    경도: {formData.longitude.toFixed(6)}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  size="xs"
+                  outline
+                  color="primary"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      `${formData.latitude}, ${formData.longitude}`
+                    )
+                    toast.success('좌표가 복사되었습니다')
+                  }}
+                >
+                  복사
+                </Button>
+              </div>
+            )}
+            {/* 수동 좌표 입력 토글 */}
+            <button
+              type="button"
+              onClick={() => setShowManualCoords(!showManualCoords)}
+              className="flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+            >
+              {showManualCoords ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+              좌표 직접 입력
+            </button>
+            {showManualCoords && (
+              <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label="위도 (Latitude)"
+                    type="number"
+                    step="any"
+                    value={formData.latitude?.toString() || ''}
+                    onChange={(value) => setFormData((prev) => ({
+                      ...prev,
+                      latitude: value ? parseFloat(value) : undefined
+                    }))}
+                    placeholder="예: 37.5665"
+                  />
+                  <Input
+                    label="경도 (Longitude)"
+                    type="number"
+                    step="any"
+                    value={formData.longitude?.toString() || ''}
+                    onChange={(value) => setFormData((prev) => ({
+                      ...prev,
+                      longitude: value ? parseFloat(value) : undefined
+                    }))}
+                    placeholder="예: 126.9780"
+                  />
+                </div>
+                <p className="text-xs text-zinc-500">
+                  💡 Google Maps에서 장소 우클릭 → 좌표 복사 후 붙여넣기
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Gemini Gem Integration */}
@@ -417,7 +515,17 @@ export function PlanForm() {
           <Input
             label="장소 이름"
             value={formData.placeName}
-            onChange={(value) => setFormData((prev) => ({ ...prev, placeName: value }))}
+            onChange={(value) => {
+              setFormData((prev) => ({ ...prev, placeName: value }))
+              // 자동 타입 추천 (수동 변경 안 했을 때만)
+              if (!typeManuallyChanged && value.length >= 2) {
+                const detectedType = detectPlanType(value)
+                if (detectedType && detectedType !== formData.type) {
+                  setFormData((prev) => ({ ...prev, type: detectedType }))
+                  toast.success(`"${PLAN_TYPE_LABELS[detectedType]}"(으)로 분류했습니다`)
+                }
+              }
+            }}
             placeholder="예: 도쿄 스카이트리"
             leftIcon={<MapPin className="size-4" />}
             required
@@ -440,33 +548,18 @@ export function PlanForm() {
                 ))}
               </select>
             </div>
-            <div>
-              <Label htmlFor="startTime">시작 시간</Label>
-              <div className="relative mt-2">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
-                <input
-                  type="time"
-                  id="startTime"
-                  value={formData.startTime}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, startTime: e.target.value }))}
-                  className="w-full h-10 pl-10 pr-3 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="endTime">종료 시간</Label>
-              <div className="relative mt-2">
-                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
-                <input
-                  type="time"
-                  id="endTime"
-                  value={formData.endTime}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, endTime: e.target.value }))}
-                  className="w-full h-10 pl-10 pr-3 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-            </div>
+            <TimePicker
+              label="시작 시간"
+              value={formData.startTime}
+              onChange={(value) => setFormData((prev) => ({ ...prev, startTime: value }))}
+              required
+            />
+            <TimePicker
+              label="종료 시간"
+              value={formData.endTime}
+              onChange={(value) => setFormData((prev) => ({ ...prev, endTime: value }))}
+              minTime={formData.startTime}
+            />
           </div>
 
           {/* Type */}
@@ -477,7 +570,10 @@ export function PlanForm() {
                 <button
                   key={type}
                   type="button"
-                  onClick={() => setFormData((prev) => ({ ...prev, type }))}
+                  onClick={() => {
+                    setFormData((prev) => ({ ...prev, type }))
+                    setTypeManuallyChanged(true)
+                  }}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${formData.type === type
                     ? 'bg-primary-500 text-white'
                     : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'

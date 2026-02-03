@@ -13,7 +13,27 @@ import {
   ExternalLink,
   Volume2,
   Edit,
+  ChevronLeft,
+  ChevronRight,
+  GripVertical,
 } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import { Icon, divIcon } from 'leaflet'
 import { Card, CardContent } from '@/components/ui/Card'
@@ -27,6 +47,7 @@ import { PageContainer } from '@/components/layout'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatTime } from '@/utils/format'
+import { getTripDurationSafe, getTripDayDate } from '@/utils/timezone'
 import { formatRating, formatReviewCount, extractPlaceInfo } from '@/services/googleMaps'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
 import {
@@ -41,6 +62,212 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { Plan } from '@/types'
+
+// SortablePlanCard component for drag and drop
+interface SortablePlanCardProps {
+  plan: Plan
+  index: number
+  tripId: number
+  iconMap: Record<string, LucideIcon>
+  refreshingPlanId: number | null
+  onRefresh: (plan: Plan) => void
+  onDelete: (id: number) => void
+}
+
+function SortablePlanCard({
+  plan,
+  index,
+  tripId,
+  iconMap,
+  refreshingPlanId,
+  onRefresh,
+  onDelete,
+}: SortablePlanCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: plan.id! })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 1000 : 1,
+  }
+
+  const iconName = PLAN_TYPE_ICONS[plan.type]
+  const PlanIcon = iconMap[iconName] || DefaultMapPin
+  const hasGoogleInfo = plan.googleInfo && (plan.googleInfo.rating || plan.googleInfo.phone)
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <Card padding="none" className={`overflow-hidden group ${isDragging ? 'shadow-lg ring-2 ring-primary-500' : ''}`}>
+        <div className="p-4">
+          {/* Plan Header */}
+          <div className="flex items-start gap-3">
+            {/* Drag Handle */}
+            <button
+              {...attributes}
+              {...listeners}
+              className="touch-none p-1 -ml-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-grab active:cursor-grabbing"
+              aria-label="드래그하여 순서 변경"
+            >
+              <GripVertical className="size-5 text-zinc-400" />
+            </button>
+            <div className="size-12 rounded-xl bg-primary-50 dark:bg-primary-950/50 flex items-center justify-center flex-shrink-0">
+              <PlanIcon className="size-6 text-primary-600 dark:text-primary-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge color="zinc" size="sm">
+                  {index + 1}
+                </Badge>
+                <Link
+                  to={`/trips/${tripId}/plans/${plan.id}`}
+                  className="font-semibold text-[var(--foreground)] hover:text-primary-600 transition-colors"
+                >
+                  {plan.placeName}
+                </Link>
+                <PlanTypeBadge type={plan.type} />
+              </div>
+              <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500">
+                <Clock className="size-3.5" />
+                <span>{formatTime(plan.startTime)}</span>
+                {plan.endTime && <span>- {formatTime(plan.endTime)}</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {plan.mapUrl && (
+                <IconButton
+                  plain
+                  color="secondary"
+                  onClick={() => onRefresh(plan)}
+                  disabled={refreshingPlanId === plan.id}
+                  aria-label="정보 새로고침"
+                >
+                  <RefreshCw
+                    className={`size-4 ${refreshingPlanId === plan.id ? 'animate-spin' : ''}`}
+                  />
+                </IconButton>
+              )}
+              <Link to={`/trips/${tripId}/plans/${plan.id}/edit`}>
+                <IconButton
+                  plain
+                  color="secondary"
+                  aria-label="편집"
+                >
+                  <Edit className="size-4" />
+                </IconButton>
+              </Link>
+              <IconButton
+                plain
+                color="danger"
+                onClick={() => onDelete(plan.id!)}
+                aria-label="삭제"
+              >
+                <Trash2 className="size-4" />
+              </IconButton>
+            </div>
+          </div>
+
+          {/* Address */}
+          {plan.address && (
+            <div className="flex items-start gap-2 mt-3 text-sm text-zinc-500">
+              <MapPin className="size-4 flex-shrink-0 mt-0.5" />
+              <span>{plan.address}</span>
+            </div>
+          )}
+
+          {/* Google Info */}
+          {hasGoogleInfo && (
+            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <div className="flex flex-wrap gap-3 text-sm">
+                {plan.googleInfo?.rating && (
+                  <div className="flex items-center gap-1.5 text-amber-600">
+                    <Star className="size-4 fill-current" />
+                    <span className="font-medium">{plan.googleInfo.rating.toFixed(1)}</span>
+                    {plan.googleInfo.reviewCount && (
+                      <span className="text-zinc-400">
+                        ({formatReviewCount(plan.googleInfo.reviewCount)})
+                      </span>
+                    )}
+                  </div>
+                )}
+                {plan.googleInfo?.phone && (
+                  <a
+                    href={`tel:${plan.googleInfo.phone}`}
+                    className="flex items-center gap-1.5 text-zinc-500 hover:text-primary-600 transition-colors"
+                  >
+                    <Phone className="size-4" />
+                    <span>{plan.googleInfo.phone}</span>
+                  </a>
+                )}
+                {(plan.googleInfo?.website || plan.website) && (
+                  <a
+                    href={plan.googleInfo?.website || plan.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-zinc-500 hover:text-primary-600 transition-colors"
+                  >
+                    <Globe className="size-4" />
+                    <span>웹사이트</span>
+                    <ExternalLink className="size-3" />
+                  </a>
+                )}
+              </div>
+              {plan.googleInfo?.openingHours && plan.googleInfo.openingHours.length > 0 && (
+                <div className="mt-2 text-sm text-zinc-500">
+                  <div className="flex items-start gap-1.5">
+                    <Clock className="size-4 flex-shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      {plan.googleInfo.openingHours.slice(0, 2).map((hour, i) => (
+                        <div key={i}>{hour}</div>
+                      ))}
+                      {plan.googleInfo.openingHours.length > 2 && (
+                        <div className="text-zinc-400">...</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              {plan.googleInfo?.category && (
+                <div className="mt-2">
+                  <Badge color="zinc" size="sm">
+                    {plan.googleInfo.category}
+                  </Badge>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Memo */}
+          {plan.memo && (
+            <div className="mt-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
+              <MemoRenderer content={plan.memo} />
+            </div>
+          )}
+
+          {/* Moonyou Guide Audio */}
+          {plan.audioScript && (
+            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2 mb-2">
+                <Volume2 className="size-4 text-emerald-600" />
+                <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                  Moonyou Guide
+                </span>
+              </div>
+              <AudioPlayer text={plan.audioScript} compact />
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
+  )
+}
 
 // Fix Leaflet default marker icon issue
 Icon.Default.mergeOptions({
@@ -81,12 +308,21 @@ export function DayDetail() {
     }
   }, [id, loadTrip])
 
-  // Filter plans for this day only
+  // Filter plans for this day only (order 우선, 없으면 startTime)
   const dayPlans = useMemo(() => {
     return plans
       .filter((p) => p.day === dayNumber)
-      .sort((a, b) => a.startTime.localeCompare(b.startTime))
+      .sort((a, b) => {
+        // order가 둘 다 있으면 order로 정렬
+        if (a.order !== undefined && b.order !== undefined) {
+          return a.order - b.order
+        }
+        // order가 없으면 startTime으로 정렬
+        return a.startTime.localeCompare(b.startTime)
+      })
   }, [plans, dayNumber])
+
+  const reorderPlans = useTripStore((state) => state.reorderPlans)
 
   // Plans with coordinates for map
   const plansWithCoords = useMemo(() => {
@@ -109,13 +345,60 @@ export function DayDetail() {
     return plansWithCoords.map((p) => [p.latitude!, p.longitude!] as [number, number])
   }, [plansWithCoords])
 
-  // Calculate day date
+  // Calculate day date (timezone-safe)
   const dayDate = useMemo(() => {
     if (!trip) return null
-    const date = new Date(trip.startDate)
-    date.setDate(date.getDate() + dayNumber - 1)
-    return date
+    return getTripDayDate(trip.startDate, dayNumber)
   }, [trip, dayNumber])
+
+  // Calculate total days (timezone-safe)
+  const totalDays = useMemo(() => {
+    if (!trip) return 1
+    return getTripDurationSafe(trip.startDate, trip.endDate)
+  }, [trip])
+
+  // Day navigation handlers
+  const goToPrevDay = () => {
+    if (dayNumber > 1) {
+      navigate(`/trips/${id}/day/${dayNumber - 1}`)
+    }
+  }
+
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  // Handle drag end
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      const oldIndex = dayPlans.findIndex((p) => p.id === active.id)
+      const newIndex = dayPlans.findIndex((p) => p.id === over.id)
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const newOrder = arrayMove(dayPlans, oldIndex, newIndex)
+        const planIds = newOrder.map((p) => p.id!).filter(Boolean)
+
+        if (trip?.id) {
+          await reorderPlans(trip.id, dayNumber, planIds)
+          toast.success('일정 순서가 변경되었습니다')
+        }
+      }
+    }
+  }
+
+  const goToNextDay = () => {
+    if (dayNumber < totalDays) {
+      navigate(`/trips/${id}/day/${dayNumber + 1}`)
+    }
+  }
 
   // Marker colors by type
   const getMarkerColor = (type: string) => {
@@ -229,7 +512,31 @@ export function DayDetail() {
           <ArrowLeft className="size-5" />
         </IconButton>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-[var(--foreground)]">Day {dayNumber}</h1>
+          {/* Day Navigation */}
+          <div className="flex items-center gap-2">
+            <IconButton
+              plain
+              color="secondary"
+              onClick={goToPrevDay}
+              disabled={dayNumber <= 1}
+              aria-label="이전 날"
+            >
+              <ChevronLeft className="size-5" />
+            </IconButton>
+            <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              Day {dayNumber}
+              <span className="text-sm font-normal text-zinc-500 ml-2">/ {totalDays}</span>
+            </h1>
+            <IconButton
+              plain
+              color="secondary"
+              onClick={goToNextDay}
+              disabled={dayNumber >= totalDays}
+              aria-label="다음 날"
+            >
+              <ChevronRight className="size-5" />
+            </IconButton>
+          </div>
           {dayDate && (
             <p className="text-sm text-zinc-500">
               {dayDate.toLocaleDateString('ko-KR', {
@@ -318,167 +625,31 @@ export function DayDetail() {
             </Button>
           </Card>
         ) : (
-          <div className="space-y-4">
-            {dayPlans.map((plan, index) => {
-              const iconName = PLAN_TYPE_ICONS[plan.type]
-              const PlanIcon = iconMap[iconName] || DefaultMapPin
-              const hasGoogleInfo = plan.googleInfo && (plan.googleInfo.rating || plan.googleInfo.phone)
-
-              return (
-                <Card key={plan.id} padding="none" className="overflow-hidden group">
-                  <div className="p-4">
-                    {/* Plan Header */}
-                    <div className="flex items-start gap-3">
-                      <div className="size-12 rounded-xl bg-primary-50 dark:bg-primary-950/50 flex items-center justify-center flex-shrink-0">
-                        <PlanIcon className="size-6 text-primary-600 dark:text-primary-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge color="zinc" size="sm">
-                            {index + 1}
-                          </Badge>
-                          <Link
-                            to={`/trips/${trip.id}/plans/${plan.id}`}
-                            className="font-semibold text-[var(--foreground)] hover:text-primary-600 transition-colors"
-                          >
-                            {plan.placeName}
-                          </Link>
-                          <PlanTypeBadge type={plan.type} />
-                        </div>
-                        <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500">
-                          <Clock className="size-3.5" />
-                          <span>{formatTime(plan.startTime)}</span>
-                          {plan.endTime && <span>- {formatTime(plan.endTime)}</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {plan.mapUrl && (
-                          <IconButton
-                            plain
-                            color="secondary"
-                            onClick={() => handleRefreshGoogleInfo(plan)}
-                            disabled={refreshingPlanId === plan.id}
-                            aria-label="정보 새로고침"
-                          >
-                            <RefreshCw
-                              className={`size-4 ${refreshingPlanId === plan.id ? 'animate-spin' : ''}`}
-                            />
-                          </IconButton>
-                        )}
-                        <Link to={`/trips/${trip.id}/plans/${plan.id}/edit`}>
-                          <IconButton
-                            plain
-                            color="secondary"
-                            aria-label="편집"
-                          >
-                            <Edit className="size-4" />
-                          </IconButton>
-                        </Link>
-                        <IconButton
-                          plain
-                          color="danger"
-                          onClick={() => setPlanToDelete(plan.id!)}
-                          aria-label="삭제"
-                        >
-                          <Trash2 className="size-4" />
-                        </IconButton>
-                      </div>
-                    </div>
-
-                    {/* Address */}
-                    {plan.address && (
-                      <div className="flex items-start gap-2 mt-3 text-sm text-zinc-500">
-                        <MapPin className="size-4 flex-shrink-0 mt-0.5" />
-                        <span>{plan.address}</span>
-                      </div>
-                    )}
-
-                    {/* Google Info */}
-                    {hasGoogleInfo && (
-                      <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-                        <div className="flex flex-wrap gap-3 text-sm">
-                          {plan.googleInfo?.rating && (
-                            <div className="flex items-center gap-1.5 text-amber-600">
-                              <Star className="size-4 fill-current" />
-                              <span className="font-medium">{plan.googleInfo.rating.toFixed(1)}</span>
-                              {plan.googleInfo.reviewCount && (
-                                <span className="text-zinc-400">
-                                  ({formatReviewCount(plan.googleInfo.reviewCount)})
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {plan.googleInfo?.phone && (
-                            <a
-                              href={`tel:${plan.googleInfo.phone}`}
-                              className="flex items-center gap-1.5 text-zinc-500 hover:text-primary-600 transition-colors"
-                            >
-                              <Phone className="size-4" />
-                              <span>{plan.googleInfo.phone}</span>
-                            </a>
-                          )}
-                          {(plan.googleInfo?.website || plan.website) && (
-                            <a
-                              href={plan.googleInfo?.website || plan.website}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 text-zinc-500 hover:text-primary-600 transition-colors"
-                            >
-                              <Globe className="size-4" />
-                              <span>웹사이트</span>
-                              <ExternalLink className="size-3" />
-                            </a>
-                          )}
-                        </div>
-                        {plan.googleInfo?.openingHours && plan.googleInfo.openingHours.length > 0 && (
-                          <div className="mt-2 text-sm text-zinc-500">
-                            <div className="flex items-start gap-1.5">
-                              <Clock className="size-4 flex-shrink-0 mt-0.5" />
-                              <div className="space-y-0.5">
-                                {plan.googleInfo.openingHours.slice(0, 2).map((hour, i) => (
-                                  <div key={i}>{hour}</div>
-                                ))}
-                                {plan.googleInfo.openingHours.length > 2 && (
-                                  <div className="text-zinc-400">...</div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        {plan.googleInfo?.category && (
-                          <div className="mt-2">
-                            <Badge color="zinc" size="sm">
-                              {plan.googleInfo.category}
-                            </Badge>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Memo */}
-                    {plan.memo && (
-                      <div className="mt-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg p-3">
-                        <MemoRenderer content={plan.memo} />
-                      </div>
-                    )}
-
-                    {/* Moonyou Guide Audio */}
-                    {plan.audioScript && (
-                      <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Volume2 className="size-4 text-emerald-600" />
-                          <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                            Moonyou Guide
-                          </span>
-                        </div>
-                        <AudioPlayer text={plan.audioScript} compact />
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              )
-            })}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={dayPlans.map((p) => p.id!)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-4">
+                {dayPlans.map((plan, index) => (
+                  <SortablePlanCard
+                    key={plan.id}
+                    plan={plan}
+                    index={index}
+                    tripId={trip.id!}
+                    iconMap={iconMap}
+                    refreshingPlanId={refreshingPlanId}
+                    onRefresh={handleRefreshGoogleInfo}
+                    onDelete={(id) => setPlanToDelete(id)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         )}
       </div>
 

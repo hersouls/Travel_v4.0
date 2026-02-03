@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Menu, Search, Plus, Settings, X } from 'lucide-react'
+import { Menu, Search, Plus, Settings, X, WifiOff } from 'lucide-react'
 import { Button, IconButton } from '@/components/ui/Button'
-import { useUIStore } from '@/stores/uiStore'
+import { useUIStore, toast } from '@/stores/uiStore'
+import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { APP_NAME } from '@/utils/constants'
 
 export function Header() {
@@ -10,6 +11,16 @@ export function Header() {
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const setMobileMenuOpen = useUIStore((state) => state.setMobileMenuOpen)
+  const { isOnline } = useOnlineStatus()
+  const prevOnlineRef = useRef(isOnline)
+
+  // Show toast when coming back online
+  useEffect(() => {
+    if (isOnline && !prevOnlineRef.current) {
+      toast.success('온라인으로 연결되었습니다')
+    }
+    prevOnlineRef.current = isOnline
+  }, [isOnline])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -46,6 +57,14 @@ export function Header() {
               {APP_NAME}
             </span>
           </Link>
+
+          {/* Offline Indicator */}
+          {!isOnline && (
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-warning-100 dark:bg-warning-900/30 text-warning-700 dark:text-warning-400 rounded-md text-xs font-medium">
+              <WifiOff className="size-3.5" />
+              <span className="hidden sm:inline">오프라인</span>
+            </div>
+          )}
         </div>
 
         {/* Center: Search (Desktop) */}

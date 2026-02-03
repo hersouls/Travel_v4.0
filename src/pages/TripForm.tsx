@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Upload, X, Calendar } from 'lucide-react'
+import { ArrowLeft, Upload, X } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Input, Label } from '@/components/ui/Input'
+import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { PageContainer } from '@/components/layout'
 import { useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { compressImage } from '@/services/imageStorage'
 import { COUNTRIES } from '@/utils/constants'
+import { getCountryInfo } from '@/utils/countryInfo'
+import { getTimezoneFromCountry } from '@/utils/timezone'
+import { Clock, Banknote, FileCheck, Plug } from 'lucide-react'
 
 export function TripForm() {
   const { id } = useParams<{ id: string }>()
@@ -24,6 +28,7 @@ export function TripForm() {
   const [formData, setFormData] = useState({
     title: '',
     country: '대한민국',
+    timezone: 'Asia/Seoul',
     startDate: '',
     endDate: '',
     coverImage: '',
@@ -40,6 +45,7 @@ export function TripForm() {
       setFormData({
         title: currentTrip.title,
         country: currentTrip.country,
+        timezone: currentTrip.timezone || getTimezoneFromCountry(currentTrip.country),
         startDate: currentTrip.startDate,
         endDate: currentTrip.endDate,
         coverImage: currentTrip.coverImage || '',
@@ -158,51 +164,69 @@ export function TripForm() {
           />
 
           {/* Country */}
-          <div>
-            <Label htmlFor="country">국가</Label>
-            <select
-              id="country"
-              value={formData.country}
-              onChange={(e) => setFormData((prev) => ({ ...prev, country: e.target.value }))}
-              className="mt-2 w-full h-10 px-3 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
-              {COUNTRIES.map((country) => (
-                <option key={country} value={country}>
-                  {country}
-                </option>
-              ))}
-            </select>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="country">국가</Label>
+              <select
+                id="country"
+                value={formData.country}
+                onChange={(e) => {
+                  const country = e.target.value
+                  const timezone = getTimezoneFromCountry(country)
+                  setFormData((prev) => ({ ...prev, country, timezone }))
+                }}
+                className="mt-2 w-full h-10 px-3 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                {COUNTRIES.map((country) => (
+                  <option key={country} value={country}>
+                    {country}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* Country Info Card */}
+            {getCountryInfo(formData.country) && (
+              <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <Clock className="size-4 text-zinc-400" />
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      {getCountryInfo(formData.country)!.timezone}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Banknote className="size-4 text-zinc-400" />
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      {getCountryInfo(formData.country)!.currency}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FileCheck className="size-4 text-zinc-400" />
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      {getCountryInfo(formData.country)!.visa}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Plug className="size-4 text-zinc-400" />
+                    <span className="text-zinc-600 dark:text-zinc-400">
+                      {getCountryInfo(formData.country)!.plug}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="startDate">시작 날짜</Label>
-              <div className="relative mt-2">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
-                <input
-                  type="date"
-                  id="startDate"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full h-10 pl-10 pr-3 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  required
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="endDate">종료 날짜</Label>
-              <div className="relative mt-2">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
-                <input
-                  type="date"
-                  id="endDate"
-                  value={formData.endDate}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, endDate: e.target.value }))}
-                  className="w-full h-10 pl-10 pr-3 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  required
-                />
-              </div>
+          <div>
+            <Label>여행 기간</Label>
+            <div className="mt-2">
+              <DateRangePicker
+                startDate={formData.startDate}
+                endDate={formData.endDate}
+                onStartDateChange={(date) => setFormData((prev) => ({ ...prev, startDate: date }))}
+                onEndDateChange={(date) => setFormData((prev) => ({ ...prev, endDate: date }))}
+              />
             </div>
           </div>
 

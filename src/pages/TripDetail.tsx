@@ -7,9 +7,11 @@ import { PlanTypeBadge } from '@/components/ui/Badge'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
+import { LocalTimeComparison } from '@/components/timezone'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatDateRange, getTripDuration, formatTime } from '@/utils/format'
+import { getTripDayDate, getTimezoneFromCountry } from '@/utils/timezone'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
 import { Camera, Utensils, Bed, Bus, Car, Plane, PlaneTakeoff, MapPin as DefaultMapPin, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
@@ -161,6 +163,13 @@ export function TripDetail() {
             </div>
           </div>
 
+          {/* Local Time Comparison */}
+          <div className="mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+            <LocalTimeComparison
+              tripTimezone={trip.timezone || getTimezoneFromCountry(trip.country)}
+            />
+          </div>
+
           <div className="flex gap-2 mt-4">
             <Button
               to={`/trips/${trip.id}/plans/new`}
@@ -187,8 +196,7 @@ export function TripDetail() {
       <div className="space-y-6">
         {days.map((day) => {
           const dayPlans = plansByDay[day] || []
-          const dayDate = new Date(trip.startDate)
-          dayDate.setDate(dayDate.getDate() + day - 1)
+          const dayDate = getTripDayDate(trip.startDate, day)
 
           return (
             <Link key={day} to={`/trips/${trip.id}/day/${day}`} className="block">

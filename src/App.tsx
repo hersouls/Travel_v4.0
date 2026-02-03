@@ -2,11 +2,13 @@ import { useEffect, Suspense, lazy } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useTripStore } from '@/stores/tripStore'
 import { usePlaceStore } from '@/stores/placeStore'
-import { useSettingsStore, useMusicPlayerEnabled } from '@/stores/settingsStore'
+import { useSettingsStore, useMusicPlayerEnabled, useTimezoneAutoDetect } from '@/stores/settingsStore'
 import { useUIStore, useToasts } from '@/stores/uiStore'
 import { ToastContainer } from '@/components/ui/Toast'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { MusicPlayer } from '@/components/audio'
+import { TimezoneAlert } from '@/components/timezone'
+import { useTimezoneDetection } from '@/hooks/useTimezoneDetection'
 import { subscribeToBroadcast, type BroadcastMessage } from '@/services/broadcast'
 
 // Lazy load layout components
@@ -31,6 +33,17 @@ export default function App() {
   const dismissToast = useUIStore((state) => state.dismissToast)
   const isSidebarCollapsed = useUIStore((state) => state.isSidebarCollapsed)
   const isMusicPlayerEnabled = useMusicPlayerEnabled()
+  const timezoneAutoDetect = useTimezoneAutoDetect()
+  const updateDetectedTimezone = useSettingsStore((s) => s.updateDetectedTimezone)
+
+  // Timezone detection
+  const {
+    currentTimezone,
+    previousTimezone,
+    hasChanged,
+    updateTimezone,
+    dismissChange
+  } = useTimezoneDetection()
 
   // Initialize stores on mount
   useEffect(() => {
@@ -108,6 +121,20 @@ export default function App() {
         <div className="fixed bottom-20 lg:bottom-4 right-4 z-30">
           <MusicPlayer />
         </div>
+      )}
+
+      {/* Timezone Change Alert */}
+      {timezoneAutoDetect && (
+        <TimezoneAlert
+          isVisible={hasChanged}
+          previousTimezone={previousTimezone}
+          currentTimezone={currentTimezone}
+          onConfirm={() => {
+            updateTimezone()
+            updateDetectedTimezone(currentTimezone)
+          }}
+          onDismiss={dismissChange}
+        />
       )}
 
       {/* Toast Notifications */}

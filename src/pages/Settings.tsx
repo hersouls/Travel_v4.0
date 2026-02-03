@@ -4,6 +4,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { PageContainer } from '@/components/layout'
+import { TimezoneSettings } from '@/components/timezone'
 import { useSettingsStore, useTheme, useColorPalette, useMusicPlayerEnabled } from '@/stores/settingsStore'
 import { toast } from '@/stores/uiStore'
 import { exportAllData, importAllData, clearAllData, type BackupData } from '@/services/database'
@@ -428,6 +429,9 @@ export function Settings() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Timezone Settings */}
+      <TimezoneSettings />
 
       {/* Data Management */}
       <Card padding="lg">

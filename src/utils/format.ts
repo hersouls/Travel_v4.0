@@ -2,11 +2,14 @@
 // Formatting Utilities
 // ============================================
 
+import { parseDateAsLocal, getTripDurationSafe } from './timezone'
+
 /**
  * Format date to Korean locale string
+ * Uses safe parsing to avoid timezone issues
  */
 export function formatDate(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
+  const d = typeof date === 'string' ? parseDateAsLocal(date) : date
   return d.toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: 'long',
@@ -16,9 +19,10 @@ export function formatDate(date: Date | string): string {
 
 /**
  * Format date to short format (YYYY.MM.DD)
+ * Uses safe parsing to avoid timezone issues
  */
 export function formatDateShort(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date
+  const d = typeof date === 'string' ? parseDateAsLocal(date) : date
   return d.toLocaleDateString('ko-KR', {
     year: 'numeric',
     month: '2-digit',
@@ -28,10 +32,11 @@ export function formatDateShort(date: Date | string): string {
 
 /**
  * Format date range
+ * Uses safe parsing to avoid timezone issues
  */
 export function formatDateRange(startDate: string, endDate: string): string {
-  const start = new Date(startDate)
-  const end = new Date(endDate)
+  const start = parseDateAsLocal(startDate)
+  const end = parseDateAsLocal(endDate)
   const sameYear = start.getFullYear() === end.getFullYear()
   const sameMonth = sameYear && start.getMonth() === end.getMonth()
 
@@ -48,12 +53,10 @@ export function formatDateRange(startDate: string, endDate: string): string {
 
 /**
  * Calculate trip duration in days
+ * Uses timezone-safe calculation to ensure consistent results
  */
 export function getTripDuration(startDate: string, endDate: string): number {
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-  const diffTime = Math.abs(end.getTime() - start.getTime())
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+  return getTripDurationSafe(startDate, endDate)
 }
 
 /**
