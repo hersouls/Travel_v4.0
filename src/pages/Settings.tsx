@@ -7,11 +7,11 @@ import { PageContainer } from '@/components/layout'
 import { TimezoneSettings } from '@/components/timezone'
 import { useSettingsStore, useTheme, useColorPalette, useMusicPlayerEnabled } from '@/stores/settingsStore'
 import { toast } from '@/stores/uiStore'
-import { exportAllData, importAllData, clearAllData, type BackupData } from '@/services/database'
+import { exportAllData, importAllData, clearAllData, validateBackupData, type BackupData } from '@/services/database'
 import { importFromFirebase, validateBackupFile, type MigrationProgress } from '@/services/migration'
 import { APP_VERSION, COLOR_PALETTES } from '@/utils/constants'
 import { getStorageInfo, formatBytes, requestPersistentStorage, type StorageInfo } from '@/services/storageQuota'
-import { googleDrive, type DriveFile, type UploadProgress } from '@/services/googleDrive'
+import { googleDrive, DriveError, DriveErrorCode, type DriveFile, type UploadProgress } from '@/services/googleDrive'
 import type { ThemeMode, ColorPalette } from '@/types'
 
 const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
@@ -82,6 +82,42 @@ export function Settings() {
     }
   }, [])
 
+  // Drive error handler
+  const handleDriveError = (error: unknown, context: string) => {
+    console.error(`${context} error:`, error)
+
+    if (error instanceof DriveError) {
+      switch (error.code) {
+        case DriveErrorCode.TOKEN_EXPIRED:
+        case DriveErrorCode.NOT_AUTHENTICATED:
+          toast.error('세션이 만료되었습니다. 다시 연결해주세요.')
+          setIsDriveConnected(false)
+          setDriveBackups([])
+          break
+        case DriveErrorCode.NETWORK_ERROR:
+          toast.error('네트워크 오류가 발생했습니다. 인터넷 연결을 확인해주세요.')
+          break
+        case DriveErrorCode.QUOTA_EXCEEDED:
+          toast.error('요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.')
+          break
+        case DriveErrorCode.PERMISSION_DENIED:
+          toast.error('권한이 없습니다. Google Drive 연결을 다시 설정해주세요.')
+          setIsDriveConnected(false)
+          break
+        case DriveErrorCode.FILE_NOT_FOUND:
+          toast.error('파일을 찾을 수 없습니다.')
+          break
+        case DriveErrorCode.CONFIG_MISSING:
+          toast.error('Google Drive 설정이 올바르지 않습니다.')
+          break
+        default:
+          toast.error(`${context} 실패: ${error.message}`)
+      }
+    } else {
+      toast.error(`${context} 실패`)
+    }
+  }
+
   // Load Drive backups when connected
   const loadDriveBackups = useCallback(async () => {
     if (!isDriveConnected) return
@@ -91,8 +127,7 @@ export function Settings() {
       const files = await googleDrive.listBackups()
       setDriveBackups(files)
     } catch (error) {
-      console.error('Failed to load Drive backups:', error)
-      toast.error('백업 목록을 불러올 수 없습니다')
+      handleDriveError(error, '백업 목록 로드')
     } finally {
       setIsDriveLoading(false)
     }
@@ -109,8 +144,7 @@ export function Settings() {
       toast.success('Google Drive가 연결되었습니다')
       loadDriveBackups()
     } catch (error) {
-      console.error('Drive connection failed:', error)
-      toast.error('Google Drive 연결 실패')
+      handleDriveError(error, 'Google Drive 연결')
     }
   }
 
@@ -136,8 +170,7 @@ export function Settings() {
       toast.success('Google Drive에 백업되었습니다')
       loadDriveBackups()
     } catch (error) {
-      console.error('Drive backup failed:', error)
-      toast.error('백업 실패')
+      handleDriveError(error, '백업')
     } finally {
       setIsDriveUploading(false)
       setDriveUploadProgress(null)
@@ -157,18 +190,28 @@ export function Settings() {
 
     try {
       const content = await googleDrive.downloadBackup(selectedDriveFile.id)
-      const data: BackupData = JSON.parse(content)
+      const data = JSON.parse(content)
 
-      if (!data.version || !data.trips) {
-        throw new Error('Invalid backup file')
+      // Validate backup data
+      const validation = validateBackupData(data)
+      if (!validation.valid) {
+        toast.error(validation.error || '유효하지 않은 백업 파일입니다')
+        return
       }
 
-      await importAllData(data)
-      toast.success(`데이터를 복원했습니다 (${data.trips.length}개 여행, ${data.plans.length}개 일정)`)
+      if (validation.needsMigration) {
+        toast.info(`이전 버전(v${validation.appVersion || 'unknown'})의 백업을 복원합니다`)
+      }
+
+      await importAllData(data as BackupData)
+      toast.success(`데이터를 복원했습니다 (${data.trips.length}개 여행, ${data.plans?.length || 0}개 일정)`)
       window.location.reload()
     } catch (error) {
-      console.error('Drive restore failed:', error)
-      toast.error('복원 실패')
+      if (error instanceof SyntaxError) {
+        toast.error('백업 파일 형식이 올바르지 않습니다')
+      } else {
+        handleDriveError(error, '복원')
+      }
     } finally {
       setIsDriveRestoring(false)
       setSelectedDriveFile(null)
@@ -183,8 +226,7 @@ export function Settings() {
       toast.success('백업이 삭제되었습니다')
       loadDriveBackups()
     } catch (error) {
-      console.error('Drive delete failed:', error)
-      toast.error('삭제 실패')
+      handleDriveError(error, '백업 삭제')
     }
   }
 
@@ -226,17 +268,28 @@ export function Settings() {
     setIsImporting(true)
     try {
       const text = await file.text()
-      const data: BackupData = JSON.parse(text)
+      const data = JSON.parse(text)
 
-      if (!data.version || !data.trips) {
-        throw new Error('Invalid backup file')
+      // Validate backup data
+      const validation = validateBackupData(data)
+      if (!validation.valid) {
+        toast.error(validation.error || '유효하지 않은 백업 파일입니다')
+        return
       }
 
-      await importAllData(data)
-      toast.success(`데이터를 복원했습니다 (${data.trips.length}개 여행, ${data.plans.length}개 일정)`)
+      if (validation.needsMigration) {
+        toast.info(`이전 버전(v${validation.appVersion || 'unknown'})의 백업을 복원합니다`)
+      }
+
+      await importAllData(data as BackupData)
+      toast.success(`데이터를 복원했습니다 (${data.trips.length}개 여행, ${data.plans?.length || 0}개 일정)`)
       window.location.reload()
-    } catch {
-      toast.error('복원 실패: 올바른 백업 파일인지 확인해주세요')
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        toast.error('백업 파일 형식이 올바르지 않습니다 (JSON 파싱 오류)')
+      } else {
+        toast.error('복원 실패: 올바른 백업 파일인지 확인해주세요')
+      }
     } finally {
       setIsImporting(false)
       e.target.value = ''

@@ -231,7 +231,14 @@ function deserializeDates<T>(obj: T, dateFields: string[]): T {
   return obj
 }
 
-const DATE_FIELDS = ['createdAt', 'updatedAt', 'startDate', 'endDate', 'lastBackupDate']
+const DATE_FIELDS = [
+  'createdAt',
+  'updatedAt',
+  'startDate',
+  'endDate',
+  'lastBackupDate',
+  'extractedAt', // for googleInfo.extractedAt in Plan type
+]
 
 export async function exportAllData(): Promise<BackupData> {
   const [trips, plans, places, settings] = await Promise.all([
@@ -284,4 +291,76 @@ export async function clearAllData(): Promise<void> {
   })
 
   sendBroadcast('DATA_CLEARED')
+}
+
+// ============================================
+// Backup Validation
+// ============================================
+
+export interface BackupValidationResult {
+  valid: boolean
+  error?: string
+  needsMigration: boolean
+  schemaVersion?: number
+  appVersion?: string
+}
+
+export function validateBackupData(data: unknown): BackupValidationResult {
+  // Basic type check
+  if (!data || typeof data !== 'object') {
+    return {
+      valid: false,
+      error: '유효하지 않은 백업 파일입니다',
+      needsMigration: false,
+    }
+  }
+
+  const backup = data as Partial<BackupData>
+
+  // Required fields check
+  if (!backup.version || !backup.trips) {
+    return {
+      valid: false,
+      error: '필수 데이터가 누락되었습니다 (version, trips)',
+      needsMigration: false,
+    }
+  }
+
+  // Validate trips is an array
+  if (!Array.isArray(backup.trips)) {
+    return {
+      valid: false,
+      error: 'trips 데이터가 올바르지 않습니다',
+      needsMigration: false,
+    }
+  }
+
+  // Schema version check
+  const backupSchema = backup.schemaVersion || 0
+
+  if (backupSchema > SCHEMA_VERSION) {
+    return {
+      valid: false,
+      error: `이 백업은 더 최신 버전의 앱에서 생성되었습니다 (v${backup.appVersion || 'unknown'}). 앱을 업데이트해주세요.`,
+      needsMigration: false,
+      schemaVersion: backupSchema,
+      appVersion: backup.appVersion,
+    }
+  }
+
+  if (backupSchema < SCHEMA_VERSION) {
+    return {
+      valid: true,
+      needsMigration: true,
+      schemaVersion: backupSchema,
+      appVersion: backup.appVersion,
+    }
+  }
+
+  return {
+    valid: true,
+    needsMigration: false,
+    schemaVersion: backupSchema,
+    appVersion: backup.appVersion,
+  }
 }
