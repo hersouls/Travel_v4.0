@@ -9,7 +9,8 @@ const REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://travel1.moonwav
 
 // Google Drive 파일 접근 스코프
 const SCOPES = [
-  'https://www.googleapis.com/auth/drive.file', // 앱이 생성한 파일만 접근
+  'https://www.googleapis.com/auth/drive.file',    // 앱이 생성한 파일만 접근
+  'https://www.googleapis.com/auth/drive.appdata', // 앱 전용 숨김 폴더 접근
 ]
 
 export default function handler(req: VercelRequest, res: VercelResponse) {

@@ -30,3 +30,7 @@ npm-debug.log*
 
 # Claude
 .claude/
+
+# Build artifacts
+tsconfig.tsbuildinfo
+nul
