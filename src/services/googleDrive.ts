@@ -39,6 +39,8 @@ export enum DriveErrorCode {
   PERMISSION_DENIED = 'PERMISSION_DENIED',
   INVALID_FILE = 'INVALID_FILE',
   CONFIG_MISSING = 'CONFIG_MISSING',
+  AUTH_IN_PROGRESS = 'AUTH_IN_PROGRESS',
+  AUTH_CANCELLED = 'AUTH_CANCELLED',
   UNKNOWN = 'UNKNOWN',
 }
 
@@ -109,6 +111,12 @@ class GoogleDriveService {
   private _isConnected = false
   private initialized = false
   private tokens: StoredTokens | null = null
+
+  // Pending Promise 패턴을 위한 필드
+  private pendingAuthPromise: {
+    resolve: () => void
+    reject: (error: DriveError) => void
+  } | null = null
 
   // Dynamic Script Loading
   private loadScript(src: string): Promise<void> {
@@ -242,15 +250,57 @@ class GoogleDriveService {
         })
       })
 
+      // initTokenClient - 초기 콜백에서 pendingAuthPromise 처리
       this.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: (resp: any) => {
+          console.log('[GoogleDrive] OAuth callback received:', resp.error ? 'error' : 'success')
+
           if (resp.error) {
-            console.error('Auth Error:', resp)
+            console.error('[GoogleDrive] OAuth error:', resp)
+            // 에러 처리
+            if (this.pendingAuthPromise) {
+              this.pendingAuthPromise.reject(mapApiError(resp))
+              this.pendingAuthPromise = null
+            }
             return
           }
+
+          console.log('[GoogleDrive] OAuth success, saving tokens...')
+
+          // 토큰 저장
+          const newTokens: StoredTokens = {
+            access_token: resp.access_token,
+            expires_at: Date.now() + (resp.expires_in || 3600) * 1000,
+            scope: resp.scope,
+            token_type: resp.token_type,
+          }
+          this.saveTokens(newTokens)
+
+          // gapi에 토큰 설정
+          if (window.gapi?.client) {
+            window.gapi.client.setToken(resp)
+            console.log('[GoogleDrive] Token set to gapi client')
+          }
+
           this._isConnected = true
+          console.log('[GoogleDrive] Connection established, isConnected:', this.isConnected())
+
+          // Pending Promise가 있으면 resolve 호출
+          if (this.pendingAuthPromise) {
+            this.pendingAuthPromise.resolve()
+            this.pendingAuthPromise = null
+          }
+        },
+        error_callback: (error: any) => {
+          console.error('[GoogleDrive] OAuth error_callback:', error)
+          if (this.pendingAuthPromise) {
+            this.pendingAuthPromise.reject(
+              new DriveError(DriveErrorCode.AUTH_CANCELLED, error?.message || '인증이 취소되었습니다')
+            )
+            this.pendingAuthPromise = null
+          }
         },
       })
 
@@ -283,30 +333,41 @@ class GoogleDriveService {
   async connect(): Promise<void> {
     if (!this.initialized) await this.init()
 
-    return new Promise((resolve, reject) => {
-      this.tokenClient.callback = (resp: any) => {
-        if (resp.error) {
-          reject(mapApiError(resp))
-        } else {
-          // Save tokens
-          const newTokens: StoredTokens = {
-            access_token: resp.access_token,
-            expires_at: Date.now() + (resp.expires_in || 3600) * 1000,
-            scope: resp.scope,
-            token_type: resp.token_type,
-          }
-          this.saveTokens(newTokens)
+    // 이미 연결된 경우 바로 반환
+    if (this.isConnected()) {
+      console.log('[GoogleDrive] Already connected')
+      return
+    }
 
-          // Set the token for gapi
-          if (window.gapi) {
-            window.gapi.client.setToken(resp)
-          }
-          this._isConnected = true
-          resolve()
+    // 이미 진행 중인 인증이 있으면 에러
+    if (this.pendingAuthPromise) {
+      throw new DriveError(DriveErrorCode.AUTH_IN_PROGRESS, '이미 인증이 진행 중입니다')
+    }
+
+    console.log('[GoogleDrive] Starting OAuth flow...')
+
+    return new Promise<void>((resolve, reject) => {
+      // 타임아웃 설정 (5분)
+      const timeoutId = setTimeout(() => {
+        if (this.pendingAuthPromise) {
+          this.pendingAuthPromise = null
+          reject(new DriveError(DriveErrorCode.NETWORK_ERROR, '인증 시간이 초과되었습니다', true))
         }
+      }, 5 * 60 * 1000)
+
+      // Pending Promise 저장 (타임아웃 클리어 포함)
+      this.pendingAuthPromise = {
+        resolve: () => {
+          clearTimeout(timeoutId)
+          resolve()
+        },
+        reject: (error: DriveError) => {
+          clearTimeout(timeoutId)
+          reject(error)
+        },
       }
 
-      // Prompt the user to select an account
+      // OAuth 팝업 요청
       this.tokenClient.requestAccessToken({ prompt: 'consent' })
     })
   }

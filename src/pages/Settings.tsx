@@ -138,12 +138,16 @@ export function Settings() {
   }, [loadDriveBackups])
 
   const handleDriveConnect = async () => {
+    console.log('[Settings] handleDriveConnect called')
     try {
       await googleDrive.connect()
+      console.log('[Settings] googleDrive.connect() resolved')
+      console.log('[Settings] googleDrive.isConnected():', googleDrive.isConnected())
       setIsDriveConnected(true)
       toast.success('Google Drive가 연결되었습니다')
       loadDriveBackups()
     } catch (error) {
+      console.error('[Settings] handleDriveConnect error:', error)
       handleDriveError(error, 'Google Drive 연결')
     }
   }
