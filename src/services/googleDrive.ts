@@ -254,6 +254,7 @@ class GoogleDriveService {
       this.tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
+        ux_mode: 'popup',
         callback: (resp: any) => {
           console.log('[GoogleDrive] OAuth callback received:', resp.error ? 'error' : 'success')
 
@@ -296,9 +297,15 @@ class GoogleDriveService {
         error_callback: (error: any) => {
           console.error('[GoogleDrive] OAuth error_callback:', error)
           if (this.pendingAuthPromise) {
-            this.pendingAuthPromise.reject(
-              new DriveError(DriveErrorCode.AUTH_CANCELLED, error?.message || '인증이 취소되었습니다')
-            )
+            // popup_closed_by_user, access_denied 등 처리
+            const errorType = error?.type || error?.error || 'unknown'
+            const message =
+              errorType === 'popup_closed_by_user'
+                ? '팝업이 닫혔습니다. 다시 시도해주세요.'
+                : errorType === 'popup_blocked_by_browser'
+                  ? '팝업이 차단되었습니다. 팝업 차단을 해제해주세요.'
+                  : error?.message || '인증이 취소되었습니다'
+            this.pendingAuthPromise.reject(new DriveError(DriveErrorCode.AUTH_CANCELLED, message))
             this.pendingAuthPromise = null
           }
         },
@@ -368,7 +375,10 @@ class GoogleDriveService {
       }
 
       // OAuth 팝업 요청
-      this.tokenClient.requestAccessToken({ prompt: 'consent' })
+      // prompt: '' - Google이 자동으로 적절한 흐름 선택
+      // prompt: 'consent' - 매번 동의 요청 (문제 발생 가능)
+      // prompt: 'select_account' - 계정 선택만
+      this.tokenClient.requestAccessToken({ prompt: '' })
     })
   }
 
