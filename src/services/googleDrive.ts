@@ -346,40 +346,16 @@ class GoogleDriveService {
       return
     }
 
-    // 이미 진행 중인 인증이 있으면 에러
-    if (this.pendingAuthPromise) {
-      throw new DriveError(DriveErrorCode.AUTH_IN_PROGRESS, '이미 인증이 진행 중입니다')
-    }
+    // Redirect OAuth 흐름 사용 (COOP 문제 회피)
+    // 팝업 방식은 Cross-Origin-Opener-Policy로 인해 window.closed 호출이 차단됨
+    const returnUrl = window.location.pathname + window.location.search
+    const authUrl = `/api/drive/auth?state=${encodeURIComponent(returnUrl)}`
 
-    console.log('[GoogleDrive] Starting OAuth flow...')
+    console.log('[GoogleDrive] Redirecting to OAuth...')
+    window.location.href = authUrl
 
-    return new Promise<void>((resolve, reject) => {
-      // 타임아웃 설정 (5분)
-      const timeoutId = setTimeout(() => {
-        if (this.pendingAuthPromise) {
-          this.pendingAuthPromise = null
-          reject(new DriveError(DriveErrorCode.NETWORK_ERROR, '인증 시간이 초과되었습니다', true))
-        }
-      }, 5 * 60 * 1000)
-
-      // Pending Promise 저장 (타임아웃 클리어 포함)
-      this.pendingAuthPromise = {
-        resolve: () => {
-          clearTimeout(timeoutId)
-          resolve()
-        },
-        reject: (error: DriveError) => {
-          clearTimeout(timeoutId)
-          reject(error)
-        },
-      }
-
-      // OAuth 팝업 요청
-      // prompt: '' - Google이 자동으로 적절한 흐름 선택
-      // prompt: 'consent' - 매번 동의 요청 (문제 발생 가능)
-      // prompt: 'select_account' - 계정 선택만
-      this.tokenClient.requestAccessToken({ prompt: '' })
-    })
+    // 페이지가 이동하므로 Promise는 resolve되지 않음
+    return new Promise(() => {})
   }
 
   disconnect(): void {

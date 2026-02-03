@@ -1,5 +1,5 @@
 // Moonwave Travel Service Worker v4.0.0
-const CACHE_VERSION = 'travel-v4.0.0';
+const CACHE_VERSION = 'travel-v4.0.1';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const MAP_TILE_CACHE = `${CACHE_VERSION}-tiles`;
@@ -70,6 +70,12 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip service worker caching for audio/media files
+  // They use Range requests (206 Partial Content) which Cache API cannot handle
+  if (isMediaRequest(url)) {
+    return; // Let browser handle directly without SW interference
+  }
+
   // Handle API requests (network-first)
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request, DYNAMIC_CACHE));
@@ -115,6 +121,26 @@ function isStaticAsset(pathname) {
   );
 }
 
+// Check if response can be safely cached (only complete 200 responses)
+// Cache API does not support partial responses (206)
+function isCacheableResponse(response) {
+  return response.status === 200;
+}
+
+// Check if request is for audio/media files that use Range requests
+function isMediaRequest(url) {
+  const pathname = url.pathname.toLowerCase();
+  return (
+    pathname.startsWith('/music/') ||
+    pathname.endsWith('.wav') ||
+    pathname.endsWith('.mp3') ||
+    pathname.endsWith('.m4a') ||
+    pathname.endsWith('.ogg') ||
+    pathname.endsWith('.webm') ||
+    pathname.endsWith('.flac')
+  );
+}
+
 // Cache-first strategy
 async function cacheFirst(request, cacheName) {
   const cached = await caches.match(request);
@@ -122,7 +148,7 @@ async function cacheFirst(request, cacheName) {
 
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (isCacheableResponse(response)) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
@@ -137,7 +163,7 @@ async function cacheFirst(request, cacheName) {
 async function networkFirst(request, cacheName) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (isCacheableResponse(response)) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
@@ -156,7 +182,7 @@ async function staleWhileRevalidate(request, cacheName) {
 
   const fetchPromise = fetch(request)
     .then((response) => {
-      if (response.ok) {
+      if (isCacheableResponse(response)) {
         cache.put(request, response.clone());
         trimCache(cacheName, CACHE_LIMITS.dynamic);
       }
@@ -234,7 +260,7 @@ async function handleMapTile(request) {
     // Return cached tile immediately, but revalidate in background
     fetch(request)
       .then((response) => {
-        if (response.ok) {
+        if (isCacheableResponse(response)) {
           cache.put(request, response);
           trimCache(MAP_TILE_CACHE, CACHE_LIMITS.tiles);
         }
@@ -245,7 +271,7 @@ async function handleMapTile(request) {
 
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (isCacheableResponse(response)) {
       cache.put(request, response.clone());
       trimCache(MAP_TILE_CACHE, CACHE_LIMITS.tiles);
     }
@@ -305,7 +331,7 @@ async function warmCaches(routes, resources) {
       const cached = await staticCache.match(route);
       if (!cached) {
         const response = await fetch(route);
-        if (response.ok) {
+        if (isCacheableResponse(response)) {
           await staticCache.put(route, response);
           console.log('[SW] Cached route:', route);
         }
@@ -321,7 +347,7 @@ async function warmCaches(routes, resources) {
       const cached = await dynamicCache.match(url);
       if (!cached) {
         const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
-        if (response.ok) {
+        if (isCacheableResponse(response)) {
           await dynamicCache.put(url, response);
           console.log('[SW] Cached resource:', url);
         }

@@ -72,12 +72,34 @@ export function Settings() {
     // Check URL params for Drive connection result
     const params = new URLSearchParams(window.location.search)
     if (params.get('drive_connected') === 'true') {
-      setIsDriveConnected(true)
-      toast.success('Google Drive가 연결되었습니다')
+      // Drive 서비스 재초기화하여 새 토큰 적용
+      const reinitDrive = async () => {
+        try {
+          await googleDrive.init()
+          if (googleDrive.isConnected()) {
+            setIsDriveConnected(true)
+            toast.success('Google Drive가 연결되었습니다')
+            // 연결 후 백업 목록 자동 로드
+            const files = await googleDrive.listBackups()
+            setDriveBackups(files)
+          }
+        } catch (error) {
+          console.error('Failed to reinitialize after OAuth:', error)
+          toast.error('Google Drive 초기화 실패')
+        }
+      }
+      reinitDrive()
       window.history.replaceState({}, '', '/settings')
     }
     if (params.get('drive_error')) {
-      toast.error('Google Drive 연결 실패')
+      const errorType = params.get('drive_error')
+      const errorMessages: Record<string, string> = {
+        access_denied: '사용자가 권한을 거부했습니다',
+        no_code: '인증 코드를 받지 못했습니다',
+        token_exchange_failed: '토큰 교환에 실패했습니다',
+        server_error: '서버 오류가 발생했습니다',
+      }
+      toast.error(errorMessages[errorType as string] || 'Google Drive 연결 실패')
       window.history.replaceState({}, '', '/settings')
     }
   }, [])
