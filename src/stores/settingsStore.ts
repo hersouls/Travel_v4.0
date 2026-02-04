@@ -94,18 +94,21 @@ export const useSettingsStore = create<SettingsState>()(
         setLanguage: (language) => {
           set({ language })
           get().saveToDatabase()
+          sendBroadcast('SETTINGS_CHANGED', { field: 'language', value: language })
         },
 
         // Toggle music player
         setMusicPlayerEnabled: (enabled) => {
           set({ isMusicPlayerEnabled: enabled })
           get().saveToDatabase()
+          sendBroadcast('SETTINGS_CHANGED', { field: 'isMusicPlayerEnabled', value: enabled })
         },
 
         // Update last backup date
         updateLastBackupDate: () => {
           set({ lastBackupDate: new Date() })
           get().saveToDatabase()
+          sendBroadcast('SETTINGS_CHANGED', { field: 'lastBackupDate' })
         },
 
         // Set timezone auto-detect
@@ -119,6 +122,7 @@ export const useSettingsStore = create<SettingsState>()(
         updateDetectedTimezone: (timezone) => {
           set({ detectedTimezone: timezone })
           get().saveToDatabase()
+          sendBroadcast('SETTINGS_CHANGED', { field: 'detectedTimezone', value: timezone })
         },
 
         // Save to database

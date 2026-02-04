@@ -74,6 +74,7 @@ export default function App() {
       if (type === 'DATA_IMPORTED' || type === 'DATA_CLEARED') {
         useTripStore.getState().loadTrips()
         usePlaceStore.getState().loadPlaces()
+        useSettingsStore.getState().initialize()
       }
     }
 

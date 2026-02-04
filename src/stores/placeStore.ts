@@ -120,6 +120,7 @@ export const usePlaceStore = create<PlaceState>()(
           await db.togglePlaceFavorite(id)
           const places = await db.getAllPlaces()
           set({ places })
+          sendBroadcast('PLACE_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message })
         }
@@ -131,6 +132,7 @@ export const usePlaceStore = create<PlaceState>()(
           await db.incrementPlaceUsage(id)
           const places = await db.getAllPlaces()
           set({ places })
+          sendBroadcast('PLACE_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message })
         }

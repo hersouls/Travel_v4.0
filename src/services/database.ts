@@ -261,11 +261,20 @@ export async function exportAllData(): Promise<BackupData> {
 }
 
 export async function importAllData(data: BackupData): Promise<void> {
-  // Deserialize dates
-  const trips = deserializeDates(data.trips, DATE_FIELDS)
-  const plans = deserializeDates(data.plans, DATE_FIELDS)
-  const places = deserializeDates(data.places, DATE_FIELDS)
-  const settings = deserializeDates(data.settings, DATE_FIELDS)
+  // Trip: startDate/endDate는 문자열(YYYY-MM-DD)로 유지
+  const TRIP_DATE_FIELDS = ['createdAt', 'updatedAt']
+  const PLAN_DATE_FIELDS = ['createdAt', 'updatedAt', 'extractedAt']
+  const TIMESTAMP_FIELDS = ['createdAt', 'updatedAt', 'lastBackupDate']
+
+  // Trip 날짜 처리: startDate/endDate를 문자열로 정규화
+  const trips = data.trips.map(trip => ({
+    ...deserializeDates(trip, TRIP_DATE_FIELDS),
+    startDate: normalizeToDateString(trip.startDate),
+    endDate: normalizeToDateString(trip.endDate),
+  }))
+  const plans = deserializeDates(data.plans, PLAN_DATE_FIELDS)
+  const places = deserializeDates(data.places, TIMESTAMP_FIELDS)
+  const settings = deserializeDates(data.settings, TIMESTAMP_FIELDS)
 
   await db.transaction('rw', [db.trips, db.plans, db.places, db.settings], async () => {
     // Clear existing data
@@ -414,20 +423,54 @@ export async function exportSingleTrip(tripId: number): Promise<SingleTripBackup
   }
 }
 
+// 날짜 값을 YYYY-MM-DD 형식 문자열로 정규화
+function normalizeToDateString(value: unknown): string {
+  if (typeof value === 'string') {
+    // 이미 YYYY-MM-DD 형식이면 그대로 반환
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return value
+    }
+    // ISO 형식(YYYY-MM-DDTHH:mm:ss)이면 날짜 부분만 추출
+    if (/^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      return value.split('T')[0]
+    }
+    // 다른 형식이면 Date로 파싱 후 변환
+    const date = new Date(value)
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0]
+    }
+  }
+  if (value instanceof Date) {
+    return value.toISOString().split('T')[0]
+  }
+  // 기본값 (오늘 날짜)
+  return new Date().toISOString().split('T')[0]
+}
+
 // Import a single trip with its plans
 export async function importSingleTrip(data: SingleTripBackup): Promise<number> {
-  // Deserialize dates
-  const trip = deserializeDates(data.trip, DATE_FIELDS)
-  const plans = deserializeDates(data.plans || [], DATE_FIELDS)
+  // Trip과 Plan에 대해 별도의 DATE_FIELDS 사용
+  // startDate, endDate는 문자열(YYYY-MM-DD)로 유지해야 함
+  const TRIP_DATE_FIELDS = ['createdAt', 'updatedAt']
+  const PLAN_DATE_FIELDS = ['createdAt', 'updatedAt', 'extractedAt']
 
-  return await db.transaction('rw', [db.trips, db.plans], async () => {
+  // Deserialize dates (startDate, endDate는 문자열로 유지)
+  const trip = deserializeDates(data.trip, TRIP_DATE_FIELDS)
+  const plans = deserializeDates(data.plans || [], PLAN_DATE_FIELDS)
+
+  const newTripId = await db.transaction('rw', [db.trips, db.plans], async () => {
+    // startDate, endDate를 YYYY-MM-DD 형식으로 정규화
+    // ISO 형식("2026-02-18T00:00:00.000Z")도 올바르게 처리
+    const startDateStr = normalizeToDateString(data.trip.startDate)
+    const endDateStr = normalizeToDateString(data.trip.endDate)
+
     // Create trip without id (auto-generate)
     const tripData: Omit<Trip, 'id'> = {
       title: trip.title,
       country: trip.country,
       timezone: trip.timezone,
-      startDate: trip.startDate,
-      endDate: trip.endDate,
+      startDate: startDateStr,
+      endDate: endDateStr,
       coverImage: trip.coverImage || '',
       plansCount: plans.length,
       isFavorite: trip.isFavorite || false,
@@ -435,13 +478,13 @@ export async function importSingleTrip(data: SingleTripBackup): Promise<number> 
       updatedAt: new Date(),
     }
 
-    const newTripId = await db.trips.add(tripData as Trip)
+    const tripId = await db.trips.add(tripData as Trip)
 
     // Map plans to new tripId and add them
     if (plans.length > 0) {
       const mappedPlans = plans.map((plan, index) => ({
         ...plan,
-        tripId: newTripId,
+        tripId: tripId,
         order: plan.order ?? index,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -450,8 +493,13 @@ export async function importSingleTrip(data: SingleTripBackup): Promise<number> 
       await db.plans.bulkAdd(mappedPlans as Plan[])
     }
 
-    return newTripId
+    return tripId
   })
+
+  // Zustand 스토어 동기화를 위한 브로드캐스트
+  sendBroadcast('TRIP_CREATED', { id: newTripId })
+
+  return newTripId
 }
 
 // Validate single trip backup data
@@ -617,6 +665,9 @@ export async function importSinglePlan(
     await db.trips.update(tripId, { plansCount, updatedAt: new Date() })
   }
 
+  // Zustand 스토어 동기화를 위한 브로드캐스트
+  sendBroadcast('PLAN_CREATED', { id: newPlanId, tripId })
+
   return newPlanId
 }
 
@@ -741,6 +792,10 @@ export async function importSinglePlace(
   }
 
   const newPlaceId = await db.places.add(newPlace as Place)
+
+  // Zustand 스토어 동기화를 위한 브로드캐스트
+  sendBroadcast('PLACE_CREATED', { id: newPlaceId })
+
   return newPlaceId
 }
 

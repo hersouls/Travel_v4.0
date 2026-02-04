@@ -166,6 +166,7 @@ export const useTripStore = create<TripState>()(
                 ? { ...currentTrip, isFavorite: !currentTrip.isFavorite }
                 : currentTrip,
           })
+          sendBroadcast('TRIP_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message })
         }
