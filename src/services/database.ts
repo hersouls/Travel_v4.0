@@ -21,6 +21,14 @@ class TravelDatabase extends Dexie {
       places: '++id, name, type, isFavorite, usageCount',
       settings: 'id',
     })
+
+    // v2: Add firebaseId indexes for cloud sync
+    this.version(2).stores({
+      trips: '++id, title, country, startDate, isFavorite, updatedAt, firebaseId',
+      plans: '++id, tripId, day, type, [tripId+day], firebaseId, tripFirebaseId',
+      places: '++id, name, type, isFavorite, usageCount, firebaseId',
+      settings: 'id',
+    })
   }
 }
 
@@ -70,6 +78,22 @@ export async function toggleTripFavorite(id: number): Promise<void> {
 export async function updateTripPlansCount(tripId: number): Promise<void> {
   const count = await db.plans.where('tripId').equals(tripId).count()
   await db.trips.update(tripId, { plansCount: count })
+}
+
+// ============================================
+// Firebase ID Lookups (for cloud sync)
+// ============================================
+
+export async function getTripByFirebaseId(firebaseId: string): Promise<Trip | undefined> {
+  return db.trips.where('firebaseId').equals(firebaseId).first()
+}
+
+export async function getPlanByFirebaseId(firebaseId: string): Promise<Plan | undefined> {
+  return db.plans.where('firebaseId').equals(firebaseId).first()
+}
+
+export async function getPlaceByFirebaseId(firebaseId: string): Promise<Place | undefined> {
+  return db.places.where('firebaseId').equals(firebaseId).first()
 }
 
 // ============================================

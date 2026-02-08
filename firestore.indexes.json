@@ -1,0 +1,29 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "trips",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isFavorite", "order": "DESCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "plans",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "day", "order": "ASCENDING" },
+        { "fieldPath": "order", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "places",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isFavorite", "order": "DESCENDING" },
+        { "fieldPath": "usageCount", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

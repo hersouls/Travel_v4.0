@@ -8,6 +8,7 @@ import type { Trip, Plan } from '@/types'
 import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
 import { getTimezoneFromCountry } from '@/utils/timezone'
+import { syncManager } from '@/services/firestoreSync'
 
 interface TripState {
   // State
@@ -108,6 +109,16 @@ export const useTripStore = create<TripState>()(
             updatedAt: new Date(),
           }
           const id = await db.addTrip(trip)
+
+          // Sync to Firestore
+          if (syncManager.isActive()) {
+            const savedTrip = await db.getTrip(id)
+            if (savedTrip) {
+              const firebaseId = await syncManager.uploadTrip(savedTrip)
+              await db.updateTrip(id, { firebaseId })
+            }
+          }
+
           const trips = await db.getAllTrips()
           set({ trips, isLoading: false })
           sendBroadcast('TRIP_CREATED', { id })
@@ -123,6 +134,18 @@ export const useTripStore = create<TripState>()(
         set({ isLoading: true, error: null })
         try {
           await db.updateTrip(id, updates)
+
+          // Sync to Firestore
+          if (syncManager.isActive()) {
+            const updatedTrip = await db.getTrip(id)
+            if (updatedTrip) {
+              const firebaseId = await syncManager.uploadTrip(updatedTrip)
+              if (!updatedTrip.firebaseId && firebaseId) {
+                await db.updateTrip(id, { firebaseId })
+              }
+            }
+          }
+
           const [trips, currentTrip] = await Promise.all([db.getAllTrips(), db.getTrip(id)])
           set({
             trips,
@@ -139,7 +162,18 @@ export const useTripStore = create<TripState>()(
       deleteTrip: async (id) => {
         set({ isLoading: true, error: null })
         try {
+          // Save firebaseId before deleting
+          const tripToDelete = await db.getTrip(id)
+          const firebaseId = tripToDelete?.firebaseId
+
           await db.deleteTrip(id)
+
+          // Sync deletion to Firestore
+          if (syncManager.isActive() && firebaseId) {
+            syncManager.deleteRemoteTrip(firebaseId).catch((e) =>
+              console.error('[Sync] Failed to delete remote trip:', e))
+          }
+
           const trips = await db.getAllTrips()
           set({
             trips,
@@ -157,6 +191,13 @@ export const useTripStore = create<TripState>()(
       toggleFavorite: async (id) => {
         try {
           await db.toggleTripFavorite(id)
+
+          // Sync to Firestore
+          if (syncManager.isActive()) {
+            const updatedTrip = await db.getTrip(id)
+            if (updatedTrip) syncManager.uploadTrip(updatedTrip).catch(console.error)
+          }
+
           const trips = await db.getAllTrips()
           const currentTrip = get().currentTrip
           set({
@@ -192,6 +233,16 @@ export const useTripStore = create<TripState>()(
             updatedAt: new Date(),
           }
           const id = await db.addPlan(plan)
+
+          // Sync to Firestore
+          if (syncManager.isActive()) {
+            const savedPlan = await db.getPlan(id)
+            if (savedPlan) {
+              const firebaseId = await syncManager.uploadPlan(savedPlan)
+              await db.updatePlan(id, { firebaseId })
+            }
+          }
+
           const [plans, trips] = await Promise.all([
             db.getPlansForTrip(planData.tripId),
             db.getAllTrips(),
@@ -212,6 +263,14 @@ export const useTripStore = create<TripState>()(
           await db.updatePlan(id, updates)
           const plan = await db.getPlan(id)
           if (plan) {
+            // Sync to Firestore
+            if (syncManager.isActive()) {
+              const firebaseId = await syncManager.uploadPlan(plan)
+              if (!plan.firebaseId && firebaseId) {
+                await db.updatePlan(id, { firebaseId })
+              }
+            }
+
             const plans = await db.getPlansForTrip(plan.tripId)
             set({ currentPlans: plans, isLoading: false })
             sendBroadcast('PLAN_UPDATED', { id, tripId: plan.tripId })
@@ -230,7 +289,16 @@ export const useTripStore = create<TripState>()(
           const plan = await db.getPlan(id)
           if (plan) {
             const tripId = plan.tripId
+            const firebaseId = plan.firebaseId
+
             await db.deletePlan(id)
+
+            // Sync deletion to Firestore
+            if (syncManager.isActive() && firebaseId) {
+              syncManager.deleteRemotePlan(firebaseId).catch((e) =>
+                console.error('[Sync] Failed to delete remote plan:', e))
+            }
+
             const [plans, trips] = await Promise.all([
               db.getPlansForTrip(tripId),
               db.getAllTrips(),
@@ -252,6 +320,15 @@ export const useTripStore = create<TripState>()(
           await Promise.all(
             planIds.map((id, index) => db.updatePlan(id, { order: index }))
           )
+
+          // Sync reordered plans to Firestore
+          if (syncManager.isActive()) {
+            for (const planId of planIds) {
+              const plan = await db.getPlan(planId)
+              if (plan) syncManager.uploadPlan(plan).catch(console.error)
+            }
+          }
+
           // Reload plans
           const plans = await db.getPlansForTrip(tripId)
           set({ currentPlans: plans })

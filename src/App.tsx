@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { useTripStore } from '@/stores/tripStore'
 import { usePlaceStore } from '@/stores/placeStore'
 import { useSettingsStore, useMusicPlayerEnabled, useTimezoneAutoDetect } from '@/stores/settingsStore'
+import { useAuthStore } from '@/stores/authStore'
 import { useUIStore, useToasts } from '@/stores/uiStore'
 import { ToastContainer } from '@/components/ui/Toast'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -11,6 +12,7 @@ import { TimezoneAlert } from '@/components/timezone'
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
 import { useTimezoneDetection } from '@/hooks/useTimezoneDetection'
 import { subscribeToBroadcast, type BroadcastMessage } from '@/services/broadcast'
+import { useSync } from '@/hooks/useSync'
 
 // Lazy load layout components
 const Header = lazy(() => import('@/components/layout/Header').then(m => ({ default: m.Header })))
@@ -46,7 +48,7 @@ export default function App() {
     dismissChange
   } = useTimezoneDetection()
 
-  // Initialize stores on mount
+  // Initialize stores and auth on mount
   useEffect(() => {
     const initialize = async () => {
       await useSettingsStore.getState().initialize()
@@ -54,7 +56,14 @@ export default function App() {
       await usePlaceStore.getState().initialize()
     }
     initialize()
+
+    // Initialize Firebase Auth listener
+    const unsubAuth = useAuthStore.getState().initialize()
+    return () => unsubAuth()
   }, [])
+
+  // Start/stop Firestore sync based on auth state
+  useSync()
 
   // Subscribe to cross-tab broadcasts
   useEffect(() => {

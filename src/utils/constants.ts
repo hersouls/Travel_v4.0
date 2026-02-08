@@ -5,7 +5,7 @@
 export const APP_NAME = 'Moonwave Travel'
 export const APP_VERSION = '4.0.0'
 export const APP_DESCRIPTION = '여행 일정 관리 및 추억 기록 도구'
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 // Storage Keys
 export const STORAGE_KEYS = {

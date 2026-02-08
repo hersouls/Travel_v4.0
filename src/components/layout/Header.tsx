@@ -6,6 +6,7 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { useUIStore, toast } from '@/stores/uiStore'
 import { useOnlineStatus } from '@/hooks/useOnlineStatus'
 import { APP_NAME } from '@/utils/constants'
+import { AuthButton } from '@/components/auth/AuthButton'
 
 // Enhanced Offline/Online Indicator Component
 function ConnectionIndicator({ isOnline }: { isOnline: boolean }) {
@@ -152,6 +153,9 @@ export function Header() {
           >
             <span className="hidden sm:inline">새 여행</span>
           </Button>
+
+          {/* Auth / Sync */}
+          <AuthButton />
 
           {/* Settings */}
           <IconButton plain color="secondary" to="/settings" aria-label="설정">

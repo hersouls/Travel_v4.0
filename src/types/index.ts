@@ -16,6 +16,7 @@ export type PlanType =
 // Trip (여행)
 export interface Trip {
   id?: number
+  firebaseId?: string // Firestore document ID (for cloud sync)
   title: string
   country: string
   timezone?: string // IANA timezone (e.g., 'Asia/Tokyo')
@@ -44,7 +45,9 @@ export interface GooglePlaceInfo {
 // Plan (일정)
 export interface Plan {
   id?: number
+  firebaseId?: string // Firestore document ID (for cloud sync)
   tripId: number
+  tripFirebaseId?: string // Parent trip's Firestore ID (for cloud sync)
   day: number // 1, 2, 3...
   order?: number // 드래그앤드롭 정렬 순서
   placeName: string
@@ -70,6 +73,7 @@ export interface Plan {
 // Place (장소 라이브러리)
 export interface Place {
   id?: number
+  firebaseId?: string // Firestore document ID (for cloud sync)
   name: string
   type: PlanType
   address?: string

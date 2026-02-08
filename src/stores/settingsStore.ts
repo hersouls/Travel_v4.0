@@ -8,6 +8,7 @@ import type { ThemeMode, ColorPalette, Settings } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
+import { syncManager } from '@/services/firestoreSync'
 
 interface SettingsState extends Settings {
   // Actions
@@ -128,7 +129,7 @@ export const useSettingsStore = create<SettingsState>()(
         // Save to database
         saveToDatabase: async () => {
           const state = get()
-          await db.updateSettings({
+          const settings = {
             id: 'main',
             theme: state.theme,
             colorPalette: state.colorPalette,
@@ -137,7 +138,13 @@ export const useSettingsStore = create<SettingsState>()(
             lastBackupDate: state.lastBackupDate,
             timezoneAutoDetect: state.timezoneAutoDetect,
             detectedTimezone: state.detectedTimezone,
-          })
+          }
+          await db.updateSettings(settings)
+
+          // Sync to Firestore
+          if (syncManager.isActive()) {
+            syncManager.uploadSettings(settings as import('@/types').Settings).catch(console.error)
+          }
         },
       }),
       {

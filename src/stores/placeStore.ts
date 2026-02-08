@@ -7,6 +7,7 @@ import { devtools } from 'zustand/middleware'
 import type { Place, PlanType } from '@/types'
 import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
+import { syncManager } from '@/services/firestoreSync'
 
 interface PlaceState {
   // State
@@ -78,6 +79,16 @@ export const usePlaceStore = create<PlaceState>()(
             updatedAt: new Date(),
           }
           const id = await db.addPlace(place)
+
+          // Sync to Firestore
+          if (syncManager.isActive()) {
+            const savedPlace = await db.getPlace(id)
+            if (savedPlace) {
+              const firebaseId = await syncManager.uploadPlace(savedPlace)
+              await db.updatePlace(id, { firebaseId })
+            }
+          }
+
           const places = await db.getAllPlaces()
           set({ places, isLoading: false })
           sendBroadcast('PLACE_CREATED', { id })
@@ -93,6 +104,18 @@ export const usePlaceStore = create<PlaceState>()(
         set({ isLoading: true, error: null })
         try {
           await db.updatePlace(id, updates)
+
+          // Sync to Firestore
+          if (syncManager.isActive()) {
+            const updatedPlace = await db.getPlace(id)
+            if (updatedPlace) {
+              const firebaseId = await syncManager.uploadPlace(updatedPlace)
+              if (!updatedPlace.firebaseId && firebaseId) {
+                await db.updatePlace(id, { firebaseId })
+              }
+            }
+          }
+
           const places = await db.getAllPlaces()
           set({ places, isLoading: false })
           sendBroadcast('PLACE_UPDATED', { id })
@@ -105,7 +128,17 @@ export const usePlaceStore = create<PlaceState>()(
       deletePlace: async (id) => {
         set({ isLoading: true, error: null })
         try {
+          const placeToDelete = await db.getPlace(id)
+          const firebaseId = placeToDelete?.firebaseId
+
           await db.deletePlace(id)
+
+          // Sync deletion to Firestore
+          if (syncManager.isActive() && firebaseId) {
+            syncManager.deleteRemotePlace(firebaseId).catch((e) =>
+              console.error('[Sync] Failed to delete remote place:', e))
+          }
+
           const places = await db.getAllPlaces()
           set({ places, isLoading: false })
           sendBroadcast('PLACE_DELETED', { id })
@@ -118,6 +151,12 @@ export const usePlaceStore = create<PlaceState>()(
       toggleFavorite: async (id) => {
         try {
           await db.togglePlaceFavorite(id)
+
+          if (syncManager.isActive()) {
+            const updatedPlace = await db.getPlace(id)
+            if (updatedPlace) syncManager.uploadPlace(updatedPlace).catch(console.error)
+          }
+
           const places = await db.getAllPlaces()
           set({ places })
           sendBroadcast('PLACE_UPDATED', { id })
@@ -130,6 +169,12 @@ export const usePlaceStore = create<PlaceState>()(
       incrementUsage: async (id) => {
         try {
           await db.incrementPlaceUsage(id)
+
+          if (syncManager.isActive()) {
+            const updatedPlace = await db.getPlace(id)
+            if (updatedPlace) syncManager.uploadPlace(updatedPlace).catch(console.error)
+          }
+
           const places = await db.getAllPlaces()
           set({ places })
           sendBroadcast('PLACE_UPDATED', { id })
