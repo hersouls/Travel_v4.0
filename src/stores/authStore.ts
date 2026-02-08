@@ -1,6 +1,6 @@
 // ============================================
 // Auth Store (Zustand)
-// Firebase Google Authentication (Redirect flow)
+// Firebase Google Authentication
 // ============================================
 
 import { create } from 'zustand'
@@ -8,8 +8,6 @@ import { devtools } from 'zustand/middleware'
 import {
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   signOut,
   onAuthStateChanged,
   type User,
@@ -38,24 +36,13 @@ export const useAuthStore = create<AuthState>()(
 
       initialize: () => {
         if (!isFirebaseConfigured()) {
+          console.warn('[Auth] Firebase not configured')
           set({ isInitialized: true })
           return () => {}
         }
 
         set({ isLoading: true })
         const auth = getFirebaseAuth()
-
-        // Check for redirect result (after page reload from redirect login)
-        getRedirectResult(auth)
-          .then((result) => {
-            if (result?.user) {
-              console.log('[Auth] Redirect login successful:', result.user.email)
-            }
-          })
-          .catch((error) => {
-            console.error('[Auth] Redirect result error:', error)
-          })
-
         const unsubscribe = onAuthStateChanged(auth, (user) => {
           console.log('[Auth] State changed:', user?.email || 'signed out')
           set({ user, isLoading: false, isInitialized: true })
@@ -65,41 +52,29 @@ export const useAuthStore = create<AuthState>()(
 
       signInWithGoogle: async () => {
         if (!isFirebaseConfigured()) {
-          set({ error: 'Firebase가 설정되지 않았습니다' })
-          return
+          const msg = 'Firebase가 설정되지 않았습니다'
+          set({ error: msg, isLoading: false })
+          throw new Error(msg)
         }
         set({ isLoading: true, error: null })
         const auth = getFirebaseAuth()
         const provider = new GoogleAuthProvider()
 
         try {
-          // Try popup first (works on desktop browsers)
           await signInWithPopup(auth, provider)
-          console.log('[Auth] Popup login successful')
-        } catch (popupError) {
-          const message = (popupError as Error).message || ''
-          console.warn('[Auth] Popup failed, trying redirect:', message)
+          console.log('[Auth] Login successful')
+        } catch (error) {
+          const message = (error as Error).message || 'Unknown error'
+          console.error('[Auth] Login failed:', message)
 
-          // If popup blocked or failed, fall back to redirect
-          if (
-            message.includes('popup-blocked') ||
-            message.includes('popup-closed-by-user') ||
-            message.includes('cancelled-popup-request') ||
-            message.includes('unauthorized-domain') ||
-            message.includes('operation-not-allowed') ||
-            message.includes('internal-error')
-          ) {
-            try {
-              await signInWithRedirect(auth, provider)
-              // Page will reload, getRedirectResult handles the rest
-            } catch (redirectError) {
-              set({ error: (redirectError as Error).message, isLoading: false })
-            }
-          } else if (!message.includes('popup-closed-by-user')) {
-            set({ error: message, isLoading: false })
-          } else {
+          // popup-closed-by-user is a user action, not an error
+          if (message.includes('popup-closed-by-user')) {
             set({ isLoading: false })
+            return
           }
+
+          set({ error: message, isLoading: false })
+          throw error
         }
       },
 
