@@ -22,9 +22,55 @@ interface DirectionsResponse {
     distance: string
     duration: string
   }>
+  fallback?: boolean
 }
 
 const VALID_TRAVEL_MODES = ['DRIVE', 'WALK', 'TRANSIT', 'BICYCLE'] as const
+
+// Average speeds (km/h) for Haversine fallback (e.g. South Korea where Routes API has no coverage)
+const FALLBACK_SPEEDS: Record<string, number> = {
+  DRIVE: 40,
+  WALK: 5,
+  TRANSIT: 30,
+  BICYCLE: 15,
+}
+
+function haversineDistance(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number,
+): number {
+  const R = 6371000
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function buildFallbackResult(
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  mode: string,
+): DirectionsResponse {
+  const straightLine = haversineDistance(origin.lat, origin.lng, destination.lat, destination.lng)
+  // Road distance is roughly 1.3x straight-line distance
+  const distanceMeters = Math.round(straightLine * 1.3)
+  const speedKmH = FALLBACK_SPEEDS[mode] || 40
+  const durationSeconds = Math.round((distanceMeters / 1000 / speedKmH) * 3600)
+  const duration = `${durationSeconds}s`
+
+  return {
+    distanceMeters,
+    duration,
+    durationText: formatDuration(duration),
+    distanceText: formatDistance(distanceMeters),
+    encodedPolyline: '',
+    steps: [],
+    fallback: true,
+  }
+}
 
 function formatDuration(durationStr: string): string {
   // "1200s" -> seconds
@@ -135,7 +181,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await response.json()
 
     if (!data.routes || data.routes.length === 0) {
-      return res.status(404).json({ error: 'No route found between the given locations' })
+      // Fallback for regions without Routes API coverage (e.g. South Korea)
+      const fallback = buildFallbackResult(origin, destination, mode)
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      return res.status(200).json(fallback)
     }
 
     const route = data.routes[0]
