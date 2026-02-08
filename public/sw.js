@@ -1,5 +1,5 @@
 // Moonwave Travel Service Worker v4.0.0
-const CACHE_VERSION = 'travel-v4.0.1';
+const CACHE_VERSION = 'travel-v4.1.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const MAP_TILE_CACHE = `${CACHE_VERSION}-tiles`;
@@ -20,9 +20,10 @@ const CACHE_LIMITS = {
   tiles: 500,
 };
 
-// Install event - cache static assets
+// Install event - cache static assets and activate immediately
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing...');
+  self.skipWaiting();
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
       console.log('[SW] Caching static assets');
