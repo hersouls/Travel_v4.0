@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Wand2 } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { LocalTimeComparison } from '@/components/timezone'
 import { TripStatistics } from '@/components/trip/TripStatistics'
+import { AutoDistributeButton } from '@/components/trip/AutoDistributeButton'
 import { useDirections } from '@/hooks/useDirections'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { TravelMode } from '@/types'
@@ -41,6 +42,7 @@ export function TripDetail() {
   const deleteTrip = useTripStore((state) => state.deleteTrip)
   const toggleFavorite = useTripStore((state) => state.toggleFavorite)
   const deletePlan = useTripStore((state) => state.deletePlan)
+  const updatePlan = useTripStore((state) => state.updatePlan)
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [planToDelete, setPlanToDelete] = useState<number | null>(null)
@@ -196,6 +198,25 @@ export function TripDetail() {
             >
               지도 보기
             </Button>
+            <Button
+              to={`/trips/${trip.id}/navigate`}
+              outline
+              color="secondary"
+              size="sm"
+              leftIcon={<Navigation className="size-4" />}
+            >
+              내비게이션
+            </Button>
+            <AutoDistributeButton
+              plans={plans}
+              totalDays={getTripDuration(trip.startDate, trip.endDate)}
+              onApply={async (assignments) => {
+                for (const { planId, day } of assignments) {
+                  await updatePlan(planId, { day })
+                }
+                toast.success('일정이 자동 배분되었습니다')
+              }}
+            />
           </div>
         </div>
       </Card>

@@ -31,6 +31,7 @@ import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
+import { toast } from '@/stores/uiStore'
 import { formatTime } from '@/utils/format'
 import { formatReviewCount } from '@/services/googleMaps'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
@@ -55,6 +56,7 @@ export function PlanDetail() {
     const navigate = useNavigate()
 
     const loadTrip = useTripStore((state) => state.loadTrip)
+    const addPlan = useTripStore((state) => state.addPlan)
     const currentTrip = useTripStore((state) => state.currentTrip)
     const plans = useCurrentPlans()
     const isLoading = useTripLoading()
@@ -370,6 +372,27 @@ export function PlanDetail() {
                         latitude={plan.latitude}
                         longitude={plan.longitude}
                         className="px-0"
+                        onAddPlace={async (nearbyPlace) => {
+                            try {
+                                await addPlan({
+                                    tripId: parseInt(tripId!),
+                                    day: plan.day,
+                                    placeName: nearbyPlace.name,
+                                    address: nearbyPlace.address || '',
+                                    latitude: nearbyPlace.latitude,
+                                    longitude: nearbyPlace.longitude,
+                                    googlePlaceId: nearbyPlace.placeId,
+                                    startTime: plan.endTime || plan.startTime,
+                                    endTime: '',
+                                    type: 'attraction' as const,
+                                    photos: [],
+                                    order: plans.filter((p) => p.day === plan.day).length,
+                                })
+                                toast.success(`"${nearbyPlace.name}" Day ${plan.day}에 추가됨`)
+                            } catch {
+                                toast.error('일정 추가에 실패했습니다')
+                            }
+                        }}
                     />
                 )}
             </div>

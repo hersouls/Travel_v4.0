@@ -9,6 +9,7 @@ import { IconButton, Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { PageContainer } from '@/components/layout'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 
 interface GeoPosition {
   lat: number
@@ -39,6 +40,13 @@ function formatDistance(meters: number): string {
   return `${Math.round(meters)} m`
 }
 
+const TRAVEL_SPEEDS: Record<string, number> = {
+  DRIVE: 40,
+  WALK: 5,
+  TRANSIT: 30,
+  BICYCLE: 15,
+}
+
 function formatETA(meters: number, speedKmh = 4.5): string {
   const hours = meters / 1000 / speedKmh
   const mins = Math.round(hours * 60)
@@ -54,6 +62,8 @@ export function NavigationView() {
   const plans = useCurrentPlans()
   const isLoading = useTripLoading()
   const loadTrip = useTripStore((state) => state.loadTrip)
+  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) || 'DRIVE'
+  const travelSpeed = TRAVEL_SPEEDS[defaultTravelMode] || 40
 
   const [position, setPosition] = useState<GeoPosition | null>(null)
   const [geoError, setGeoError] = useState<string | null>(null)
@@ -225,7 +235,7 @@ export function NavigationView() {
                   </div>
                   <div>
                     <p className="text-3xl font-bold text-amber-600 dark:text-amber-400">
-                      {formatETA(distanceToTarget)}
+                      {formatETA(distanceToTarget, travelSpeed)}
                     </p>
                     <p className="text-xs text-zinc-500">예상 도착</p>
                   </div>
@@ -237,7 +247,11 @@ export function NavigationView() {
                 color="primary"
                 size="sm"
                 onClick={() => {
-                  const url = `https://www.google.com/maps/dir/?api=1&destination=${currentTarget.latitude},${currentTarget.longitude}&travelmode=walking`
+                  const gmapMode = defaultTravelMode === 'WALK' ? 'walking'
+                    : defaultTravelMode === 'TRANSIT' ? 'transit'
+                    : defaultTravelMode === 'BICYCLE' ? 'bicycling'
+                    : 'driving'
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${currentTarget.latitude},${currentTarget.longitude}&travelmode=${gmapMode}`
                   window.open(url, '_blank')
                 }}
               >

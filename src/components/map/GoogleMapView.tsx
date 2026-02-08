@@ -2,9 +2,8 @@
 // Google Maps View Component
 // ============================================
 
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect } from 'react'
 import { useGoogleMapsLoader } from '@/hooks/useGoogleMapsLoader'
-import { getMapStyles } from '@/utils/mapStyles'
 import { MARKER_COLORS, ROUTE_COLORS } from '@/utils/mapStyles'
 import type { Plan, RouteSegment, TravelMode } from '@/types'
 
@@ -34,20 +33,6 @@ export function GoogleMapView({
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
   const polylinesRef = useRef<google.maps.Polyline[]>([])
   const { isLoaded, isError } = useGoogleMapsLoader()
-  const [isDark, setIsDark] = useState(false)
-
-  // Detect dark mode
-  useEffect(() => {
-    const checkDark = () =>
-      setIsDark(document.documentElement.classList.contains('dark'))
-    checkDark()
-    const observer = new MutationObserver(checkDark)
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class'],
-    })
-    return () => observer.disconnect()
-  }, [])
 
   // Filter plans
   const filteredPlans = plans.filter((p) => {
@@ -74,7 +59,6 @@ export function GoogleMapView({
     mapInstanceRef.current = new google.maps.Map(mapRef.current, {
       center: mapCenter,
       zoom,
-      styles: getMapStyles(isDark),
       mapTypeControl,
       streetViewControl: false,
       fullscreenControl: true,
@@ -83,11 +67,6 @@ export function GoogleMapView({
     })
   }, [isLoaded])
 
-  // Update styles on dark mode change
-  useEffect(() => {
-    if (!mapInstanceRef.current) return
-    mapInstanceRef.current.setOptions({ styles: getMapStyles(isDark) })
-  }, [isDark])
 
   // Update markers
   useEffect(() => {

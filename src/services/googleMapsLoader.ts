@@ -20,7 +20,11 @@ export function loadGoogleMaps(): Promise<typeof google> {
     optionsSet = true
   }
 
-  googleMapsPromise = importLibrary('maps').then(() => google)
+  googleMapsPromise = Promise.all([
+    importLibrary('maps'),
+    importLibrary('marker'),
+    importLibrary('geometry'),
+  ]).then(() => google)
   return googleMapsPromise
 }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, List } from 'lucide-react'
+import { ArrowLeft, List, Navigation } from 'lucide-react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import { Icon, divIcon } from 'leaflet'
 import { IconButton, Button } from '@/components/ui/Button'
@@ -163,6 +163,9 @@ export function TripMap() {
         </div>
         <div className="flex items-center gap-2">
           <MapProviderSwitch value={mapProvider} onChange={setMapProvider} />
+          <Button to={`/trips/${trip.id}/navigate`} outline color="secondary" size="sm" leftIcon={<Navigation className="size-4" />}>
+            내비
+          </Button>
           <Button to={`/trips/${trip.id}`} outline color="secondary" size="sm" leftIcon={<List className="size-4" />}>
             목록
           </Button>

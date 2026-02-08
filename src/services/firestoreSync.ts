@@ -307,6 +307,7 @@ class SyncManager {
       await this.syncPlansInitial()
       await this.syncPlacesInitial()
       await this.syncSettingsInitial()
+      await this.syncRouteSegmentsInitial()
       this.notifyUpdate()
     } catch (error) {
       console.error('[Sync] Initial sync error:', error)
@@ -528,6 +529,66 @@ class SyncManager {
     }
   }
 
+  private async syncRouteSegmentsInitial(): Promise<void> {
+    if (!this.userId) return
+    const firestore = getFirebaseDb()
+    const segmentsRef = collection(firestore, 'users', this.userId, 'routeSegments')
+
+    const [snapshot, localSegments] = await Promise.all([
+      getDocs(segmentsRef),
+      dexieDb.routeSegments.toArray(),
+    ])
+
+    const remoteMap = new Map<string, { docId: string; data: DocumentData }>()
+    for (const docSnap of snapshot.docs) {
+      remoteMap.set(docSnap.id, { docId: docSnap.id, data: docSnap.data() })
+    }
+
+    const localByFbId = new Map<string, RouteSegment>()
+    for (const seg of localSegments) {
+      if (seg.firebaseId) localByFbId.set(seg.firebaseId, seg)
+    }
+
+    // Remote-only → create locally
+    for (const [fbId, { data }] of remoteMap) {
+      if (!localByFbId.has(fbId)) {
+        const segData = firestoreToRouteSegmentData(data)
+        const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
+        if (localTripId === null) continue
+        await dexieDb.routeSegments.add({
+          ...segData,
+          firebaseId: fbId,
+          tripId: localTripId,
+        } as RouteSegment)
+      } else {
+        const local = localByFbId.get(fbId)!
+        const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
+        const localMs = dateToMs(local.updatedAt)
+        if (remoteMs > localMs) {
+          const segData = firestoreToRouteSegmentData(data)
+          await dexieDb.routeSegments.update(local.id!, { ...segData, firebaseId: fbId })
+        } else if (localMs > remoteMs) {
+          await setDoc(doc(segmentsRef, fbId), routeSegmentToFirestore(local))
+        }
+      }
+    }
+
+    // Local-only → upload
+    for (const seg of localSegments) {
+      if (!seg.firebaseId) {
+        const tripFirebaseId = await this.resolveTripFirebaseId(seg.tripId)
+        if (!tripFirebaseId) continue
+        const newDocRef = doc(segmentsRef)
+        const segWithFbTripId = { ...seg, tripFirebaseId }
+        await setDoc(newDocRef, routeSegmentToFirestore(segWithFbTripId))
+        await dexieDb.routeSegments.update(seg.id!, {
+          firebaseId: newDocRef.id,
+          tripFirebaseId,
+        })
+      }
+    }
+  }
+
   // ============================================
   // Real-time Listeners
   // ============================================
@@ -567,6 +628,7 @@ class SyncManager {
           const local = await database.getTripByFirebaseId(docId)
           if (local?.id) {
             await dexieDb.plans.where('tripId').equals(local.id).delete()
+            await dexieDb.routeSegments.where('tripId').equals(local.id).delete()
             await dexieDb.trips.delete(local.id)
             changed = true
           }
@@ -681,6 +743,51 @@ class SyncManager {
       }
     }, (error) => console.error('[Sync] Settings listener error:', error))
     this.unsubscribers.push(settingsUnsub)
+
+    // RouteSegment listener
+    const segmentsRef = collection(firestore, 'users', this.userId, 'routeSegments')
+    const segmentUnsub = onSnapshot(segmentsRef, async (snapshot) => {
+      let changed = false
+      for (const change of snapshot.docChanges()) {
+        const docId = change.doc.id
+        if (this.suppressEcho.has(`routeSegment:${docId}`)) {
+          this.suppressEcho.delete(`routeSegment:${docId}`)
+          continue
+        }
+
+        if (change.type === 'added' || change.type === 'modified') {
+          const data = change.doc.data()
+          const local = await database.getRouteSegmentByFirebaseId(docId)
+          if (!local) {
+            const segData = firestoreToRouteSegmentData(data)
+            const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
+            if (localTripId === null) continue
+            await dexieDb.routeSegments.add({
+              ...segData,
+              firebaseId: docId,
+              tripId: localTripId,
+            } as RouteSegment)
+            changed = true
+          } else {
+            const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
+            const localMs = dateToMs(local.updatedAt)
+            if (remoteMs > localMs) {
+              const segData = firestoreToRouteSegmentData(data)
+              await dexieDb.routeSegments.update(local.id!, { ...segData, firebaseId: docId })
+              changed = true
+            }
+          }
+        } else if (change.type === 'removed') {
+          const local = await database.getRouteSegmentByFirebaseId(docId)
+          if (local?.id) {
+            await dexieDb.routeSegments.delete(local.id)
+            changed = true
+          }
+        }
+      }
+      if (changed) this.notifyUpdate()
+    }, (error) => console.error('[Sync] RouteSegment listener error:', error))
+    this.unsubscribers.push(segmentUnsub)
   }
 
   // ============================================

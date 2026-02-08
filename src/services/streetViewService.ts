@@ -56,6 +56,7 @@ export function getStreetViewPageUrl(
 // Server-side proxy with in-memory cache
 // ============================================
 
+const MAX_CACHE_SIZE = 100
 const availabilityCache = new Map<string, { url: string | null; available: boolean }>()
 
 /**
@@ -73,11 +74,19 @@ export async function getStreetViewWithAvailability(
     const res = await fetch(`/api/maps/streetview?lat=${lat}&lng=${lng}`)
     if (!res.ok) throw new Error('Street View API error')
     const data = await res.json()
+    if (availabilityCache.size >= MAX_CACHE_SIZE) {
+      const firstKey = availabilityCache.keys().next().value
+      if (firstKey !== undefined) availabilityCache.delete(firstKey)
+    }
     availabilityCache.set(key, data)
     return data
   } catch (err) {
     console.warn('[StreetView] Error:', err)
     const fallback = { url: null, available: false }
+    if (availabilityCache.size >= MAX_CACHE_SIZE) {
+      const firstKey = availabilityCache.keys().next().value
+      if (firstKey !== undefined) availabilityCache.delete(firstKey)
+    }
     availabilityCache.set(key, fallback)
     return fallback
   }

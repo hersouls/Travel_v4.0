@@ -8,6 +8,7 @@ import {
   upsertRouteSegment,
   deleteRouteSegmentsForTrip,
 } from '@/services/database'
+import { syncManager } from '@/services/firestoreSync'
 
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 
@@ -94,8 +95,15 @@ export async function fetchDirections(
 
   // Cache in IndexedDB
   const id = await upsertRouteSegment(segment)
+  const saved = { ...segment, id } as RouteSegment
 
-  return { ...segment, id }
+  // Sync to Firestore
+  if (syncManager.isActive()) {
+    syncManager.uploadRouteSegment(saved).catch((e) =>
+      console.error('[Directions] Failed to sync route segment:', e))
+  }
+
+  return saved
 }
 
 export async function fetchDirectionsForTrip(

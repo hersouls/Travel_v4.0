@@ -291,12 +291,29 @@ export const useTripStore = create<TripState>()(
             const tripId = plan.tripId
             const firebaseId = plan.firebaseId
 
+            // Collect route segments referencing this plan for remote cleanup
+            const tripSegments = await db.getRouteSegmentsForTrip(tripId)
+            const affectedSegments = tripSegments.filter(
+              (s) => s.fromPlanId === id || s.toPlanId === id,
+            )
+
             await db.deletePlan(id)
 
+            // Clean up local route segments for this plan
+            await db.deleteRouteSegmentsForPlan(id)
+
             // Sync deletion to Firestore
-            if (syncManager.isActive() && firebaseId) {
-              syncManager.deleteRemotePlan(firebaseId).catch((e) =>
-                console.error('[Sync] Failed to delete remote plan:', e))
+            if (syncManager.isActive()) {
+              if (firebaseId) {
+                syncManager.deleteRemotePlan(firebaseId).catch((e) =>
+                  console.error('[Sync] Failed to delete remote plan:', e))
+              }
+              for (const seg of affectedSegments) {
+                if (seg.firebaseId) {
+                  syncManager.deleteRemoteRouteSegment(seg.firebaseId).catch((e) =>
+                    console.error('[Sync] Failed to delete remote route segment:', e))
+                }
+              }
             }
 
             const [plans, trips] = await Promise.all([
