@@ -1,5 +1,5 @@
 // Moonwave Travel Service Worker v4.0.0
-const CACHE_VERSION = 'travel-v4.2.0';
+const CACHE_VERSION = 'travel-v4.3.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const MAP_TILE_CACHE = `${CACHE_VERSION}-tiles`;

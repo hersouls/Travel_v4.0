@@ -4,7 +4,7 @@
 
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-import type { ThemeMode, ColorPalette, Settings } from '@/types'
+import type { ThemeMode, ColorPalette, ClaudeModel, Settings } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
@@ -23,6 +23,10 @@ interface SettingsState extends Settings {
   updateDetectedTimezone: (timezone: string) => void
   setMapProvider: (provider: import('@/types').MapProvider) => void
   setDefaultTravelMode: (mode: import('@/types').TravelMode) => void
+  // Claude AI actions
+  setClaudeApiKey: (key: string) => void
+  setClaudeModel: (model: ClaudeModel) => void
+  setClaudeEnabled: (enabled: boolean) => void
   saveToDatabase: () => Promise<void>
 }
 
@@ -142,6 +146,24 @@ export const useSettingsStore = create<SettingsState>()(
           sendBroadcast('SETTINGS_CHANGED', { field: 'defaultTravelMode', value: defaultTravelMode })
         },
 
+        // Claude AI: set API key (localStorage only, NOT synced to DB/Firestore)
+        setClaudeApiKey: (claudeApiKey) => {
+          set({ claudeApiKey })
+          // Intentionally NOT calling saveToDatabase — key stays in localStorage only
+        },
+
+        // Claude AI: set model preference
+        setClaudeModel: (claudeModel) => {
+          set({ claudeModel })
+          get().saveToDatabase()
+        },
+
+        // Claude AI: toggle enabled
+        setClaudeEnabled: (claudeEnabled) => {
+          set({ claudeEnabled })
+          get().saveToDatabase()
+        },
+
         // Save to database
         saveToDatabase: async () => {
           const state = get()
@@ -156,6 +178,9 @@ export const useSettingsStore = create<SettingsState>()(
             detectedTimezone: state.detectedTimezone,
             mapProvider: state.mapProvider,
             defaultTravelMode: state.defaultTravelMode,
+            claudeModel: state.claudeModel,
+            claudeEnabled: state.claudeEnabled,
+            // NOTE: claudeApiKey is intentionally excluded — stored in localStorage only
           }
           await db.updateSettings(settings)
 
@@ -175,6 +200,9 @@ export const useSettingsStore = create<SettingsState>()(
           timezoneAutoDetect: state.timezoneAutoDetect,
           mapProvider: state.mapProvider,
           defaultTravelMode: state.defaultTravelMode,
+          claudeApiKey: state.claudeApiKey,
+          claudeModel: state.claudeModel,
+          claudeEnabled: state.claudeEnabled,
         }),
       }
     ),
@@ -190,3 +218,5 @@ export const useMusicPlayerEnabled = () => useSettingsStore((state) => state.isM
 export const useTimezoneAutoDetect = () => useSettingsStore((state) => state.timezoneAutoDetect)
 export const useMapProvider = () => useSettingsStore((state) => state.mapProvider)
 export const useDefaultTravelMode = () => useSettingsStore((state) => state.defaultTravelMode)
+export const useClaudeEnabled = () => useSettingsStore((state) => state.claudeEnabled)
+export const useClaudeModel = () => useSettingsStore((state) => state.claudeModel)

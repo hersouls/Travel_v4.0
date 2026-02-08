@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson, Music, Map, Navigation } from 'lucide-react'
+import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson, Music, Map, Navigation, Sparkles, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
@@ -9,11 +9,12 @@ import { useSettingsStore, useTheme, useColorPalette, useMusicPlayerEnabled } fr
 import { toast } from '@/stores/uiStore'
 import { exportAllData, importAllData, clearAllData, validateBackupData, type BackupData } from '@/services/database'
 import { importFromFirebase, validateBackupFile, type MigrationProgress } from '@/services/migration'
+import { testConnection } from '@/services/claudeService'
 import { APP_VERSION, COLOR_PALETTES, SCHEMA_VERSION, TRAVEL_MODE_LABELS } from '@/utils/constants'
 import { DEFAULT_SETTINGS } from '@/types'
 import { getStorageInfo, formatBytes, requestPersistentStorage, type StorageInfo } from '@/services/storageQuota'
 import { googleDrive, DriveError, DriveErrorCode, type DriveFile, type UploadProgress } from '@/services/googleDrive'
-import type { ThemeMode, ColorPalette, MapProvider, TravelMode } from '@/types'
+import type { ThemeMode, ColorPalette, MapProvider, TravelMode, ClaudeModel } from '@/types'
 
 const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
   { value: 'light', label: '라이트', icon: Sun },
@@ -34,6 +35,32 @@ export function Settings() {
   const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
   const setMapProvider = useSettingsStore((state) => state.setMapProvider)
   const setDefaultTravelMode = useSettingsStore((state) => state.setDefaultTravelMode)
+
+  // Claude AI settings
+  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled) ?? false
+  const claudeApiKey = useSettingsStore((state) => state.claudeApiKey) ?? ''
+  const claudeModel = (useSettingsStore((state) => state.claudeModel) ?? 'sonnet') as ClaudeModel
+  const setClaudeEnabled = useSettingsStore((state) => state.setClaudeEnabled)
+  const setClaudeApiKey = useSettingsStore((state) => state.setClaudeApiKey)
+  const setClaudeModel = useSettingsStore((state) => state.setClaudeModel)
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [isTestingConnection, setIsTestingConnection] = useState(false)
+
+  const handleTestConnection = async () => {
+    if (!claudeApiKey) {
+      toast.error('API 키를 입력하세요')
+      return
+    }
+    setIsTestingConnection(true)
+    try {
+      await testConnection(claudeApiKey, claudeModel)
+      toast.success('Claude AI 연결 성공!')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Claude AI 연결 실패')
+    } finally {
+      setIsTestingConnection(false)
+    }
+  }
 
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -629,6 +656,121 @@ export function Settings() {
               ))}
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* AI Settings */}
+      <Card padding="lg">
+        <CardHeader
+          title="AI 설정"
+          description="Anthropic Claude API로 AI 여행 어시스턴트를 사용합니다"
+          icon={<Sparkles className="size-5" />}
+        />
+        <CardContent className="space-y-4">
+          {/* Enable Toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-zinc-600 dark:text-zinc-400">
+              AI 기능 활성화
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={claudeEnabled}
+              onClick={() => setClaudeEnabled(!claudeEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                claudeEnabled ? 'bg-primary-500' : 'bg-zinc-300 dark:bg-zinc-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  claudeEnabled ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          {claudeEnabled && (
+            <>
+              {/* API Key */}
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)] mb-2">API 키</p>
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      type={showApiKey ? 'text' : 'password'}
+                      value={claudeApiKey}
+                      onChange={(e) => setClaudeApiKey(e.target.value)}
+                      placeholder="sk-ant-..."
+                      className="w-full h-10 px-3 pr-10 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                    >
+                      {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                  <Button
+                    color="secondary"
+                    outline
+                    size="sm"
+                    onClick={handleTestConnection}
+                    isLoading={isTestingConnection}
+                    disabled={!claudeApiKey}
+                  >
+                    {isTestingConnection ? '' : '연결 테스트'}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Model Selection */}
+              <div>
+                <p className="text-sm font-medium text-[var(--foreground)] mb-2">모델</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: 'haiku' as ClaudeModel, label: 'Haiku', desc: '빠른 응답, 경제적' },
+                    { value: 'sonnet' as ClaudeModel, label: 'Sonnet', desc: '균형 잡힌 성능 (추천)' },
+                    { value: 'opus' as ClaudeModel, label: 'Opus', desc: '최고 품질' },
+                  ]).map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setClaudeModel(option.value)}
+                      className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                        claudeModel === option.value
+                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                          : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                      }`}
+                    >
+                      <span className={`text-sm font-medium ${
+                        claudeModel === option.value
+                          ? 'text-primary-600 dark:text-primary-400'
+                          : 'text-zinc-600 dark:text-zinc-400'
+                      }`}>
+                        {option.label}
+                      </span>
+                      <p className="text-xs text-zinc-500 mt-0.5">{option.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Info */}
+              <div className="pt-2 space-y-1">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  API 키는 이 기기에만 저장되며 클라우드에 동기화되지 않습니다.
+                </p>
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                >
+                  API 키 발급: console.anthropic.com
+                </a>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 

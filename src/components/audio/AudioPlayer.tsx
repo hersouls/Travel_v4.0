@@ -4,6 +4,7 @@
 
 import { Play, Pause, Square, Volume2, VolumeX, Mic, ExternalLink, Sparkles } from 'lucide-react'
 import { useTTS } from './useTTS'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { cn } from '@/utils/cn'
 
 interface AudioPlayerProps {
@@ -23,6 +24,7 @@ const SPEED_OPTIONS = [
 const MOONYOU_GUIDE_GEM_URL = 'https://gemini.google.com/gem/1pSqw6tcLNq--HKClJEGOBlK-qRiBsGqr?usp=sharing'
 
 export function AudioPlayer({ text, compact = false, className }: AudioPlayerProps) {
+  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
   const {
     isSupported,
     isPlaying,
@@ -325,18 +327,25 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
         </div>
       </details>
 
-      {/* Moonyou Guide Gem 링크 */}
-      <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
-        <a
-          href={MOONYOU_GUIDE_GEM_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-        >
-          <Sparkles className="size-4" />
-          <span>Moonyou Guide Gem으로 스크립트 생성</span>
-          <ExternalLink className="size-3" />
-        </a>
+      {/* Script Generation Links */}
+      <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-center gap-3">
+        {!claudeEnabled && (
+          <a
+            href={MOONYOU_GUIDE_GEM_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+          >
+            <Sparkles className="size-4" />
+            <span>Moonyou Guide Gem으로 스크립트 생성</span>
+            <ExternalLink className="size-3" />
+          </a>
+        )}
+        {claudeEnabled && (
+          <span className="text-xs text-zinc-400">
+            AI 가이드는 상세 화면에서 생성할 수 있습니다
+          </span>
+        )}
       </div>
     </div>
   )

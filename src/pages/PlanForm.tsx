@@ -8,7 +8,9 @@ import { Input, Textarea, Label } from '@/components/ui/Input'
 import { PlacesAutocomplete } from '@/components/ui/PlacesAutocomplete'
 import { TimePicker } from '@/components/ui/TimePicker'
 import { PageContainer } from '@/components/layout'
+import { AIMemoGenerator, AIGuideGenerator, AIPhotoAnalyzer } from '@/components/ai'
 import { useTripStore } from '@/stores/tripStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { usePlaceStore, usePlaces } from '@/stores/placeStore'
 import { toast } from '@/stores/uiStore'
 import { processImages } from '@/services/imageStorage'
@@ -39,8 +41,13 @@ export function PlanForm() {
   const incrementPlaceUsage = usePlaceStore((state) => state.incrementUsage)
   const localPlaces = usePlaces() // Get all saved places
 
+  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [saveToLibrary, setSaveToLibrary] = useState(true)
+  const [isAIMemoOpen, setIsAIMemoOpen] = useState(false)
+  const [isAIGuideOpen, setIsAIGuideOpen] = useState(false)
+  const [isAIPhotoOpen, setIsAIPhotoOpen] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -783,7 +790,21 @@ export function PlanForm() {
             {/* Memo */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label>메모</Label>
+                <div className="flex items-center gap-2">
+                  <Label>메모</Label>
+                  {claudeEnabled && formData.placeName && (
+                    <Button
+                      type="button"
+                      size="xs"
+                      outline
+                      color="primary"
+                      leftIcon={<Sparkles className="size-3" />}
+                      onClick={() => setIsAIMemoOpen(true)}
+                    >
+                      AI 메모
+                    </Button>
+                  )}
+                </div>
                 {formData.memo && (
                   <button
                     type="button"
@@ -825,16 +846,30 @@ export function PlanForm() {
                   <Volume2 className="size-5 text-emerald-600 dark:text-emerald-400" />
                   <Label className="text-emerald-700 dark:text-emerald-300">Moonyou Guide 음성 스크립트</Label>
                 </div>
-                <a
-                  href="https://gemini.google.com/gem/1pSqw6tcLNq--HKClJEGOBlK-qRiBsGqr?usp=sharing"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
-                >
-                  <Sparkles className="size-4" />
-                  Moonyou Guide Gem
-                  <ExternalLink className="size-3" />
-                </a>
+                <div className="flex items-center gap-2">
+                  {claudeEnabled && formData.placeName && (
+                    <Button
+                      type="button"
+                      size="xs"
+                      outline
+                      color="primary"
+                      leftIcon={<Sparkles className="size-3" />}
+                      onClick={() => setIsAIGuideOpen(true)}
+                    >
+                      AI 생성
+                    </Button>
+                  )}
+                  <a
+                    href="https://gemini.google.com/gem/1pSqw6tcLNq--HKClJEGOBlK-qRiBsGqr?usp=sharing"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
+                  >
+                    <Sparkles className="size-4" />
+                    Gem
+                    <ExternalLink className="size-3" />
+                  </a>
+                </div>
               </div>
               <Textarea
                 value={formData.audioScript}
@@ -849,7 +884,21 @@ export function PlanForm() {
 
             {/* Photos */}
             <div>
-              <Label>사진</Label>
+              <div className="flex items-center gap-2">
+                <Label>사진</Label>
+                {claudeEnabled && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    outline
+                    color="primary"
+                    leftIcon={<Camera className="size-3" />}
+                    onClick={() => setIsAIPhotoOpen(true)}
+                  >
+                    AI 분석
+                  </Button>
+                )}
+              </div>
               <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
                 {formData.photos.map((photo, index) => (
                   <div key={index} className="relative aspect-square rounded-lg overflow-hidden">
@@ -914,6 +963,59 @@ export function PlanForm() {
             </div>
           </form>
         </Card>
+      {/* AI Dialogs */}
+      {claudeEnabled && (
+        <>
+          <AIMemoGenerator
+            open={isAIMemoOpen}
+            onClose={() => setIsAIMemoOpen(false)}
+            plan={{
+              ...formData,
+              id: planId ? parseInt(planId) : undefined,
+              tripId: parseInt(tripId || '0'),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            }}
+            country={currentTrip?.country}
+            mode={formData.memo ? 'append' : 'replace'}
+            onApply={(memo) => setFormData((prev) => ({ ...prev, memo }))}
+          />
+          {currentTrip && (
+            <AIGuideGenerator
+              open={isAIGuideOpen}
+              onClose={() => setIsAIGuideOpen(false)}
+              plan={{
+                ...formData,
+                id: planId ? parseInt(planId) : undefined,
+                tripId: parseInt(tripId || '0'),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              }}
+              trip={currentTrip}
+              onApply={(script) => setFormData((prev) => ({ ...prev, audioScript: script }))}
+            />
+          )}
+          <AIPhotoAnalyzer
+            open={isAIPhotoOpen}
+            onClose={() => setIsAIPhotoOpen(false)}
+            onApply={(result) => {
+              setFormData((prev) => ({
+                ...prev,
+                placeName: result.placeName || prev.placeName,
+                type: (['attraction', 'restaurant', 'hotel', 'transport', 'other'].includes(result.type)
+                  ? result.type as import('@/types').PlanType
+                  : prev.type),
+                memo: result.description
+                  ? (prev.memo ? prev.memo + '\n\n' : '') + result.description +
+                    (result.tips?.length ? '\n\n💡 팁\n' + result.tips.map(t => `- ${t}`).join('\n') : '')
+                  : prev.memo,
+              }))
+              setIsAIPhotoOpen(false)
+              toast.success('AI 분석 결과가 적용되었습니다')
+            }}
+          />
+        </>
+      )}
       </div>
     </PageContainer>
   )

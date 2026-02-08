@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Wand2 } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Wand2, Sparkles } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
@@ -10,9 +10,10 @@ import { PageContainer } from '@/components/layout'
 import { LocalTimeComparison } from '@/components/timezone'
 import { TripStatistics } from '@/components/trip/TripStatistics'
 import { AutoDistributeButton } from '@/components/trip/AutoDistributeButton'
+import { AIItineraryDialog } from '@/components/ai'
 import { useDirections } from '@/hooks/useDirections'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { TravelMode } from '@/types'
+import type { TravelMode, GeneratedItinerary } from '@/types'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatDateRange, getTripDuration, formatTime } from '@/utils/format'
@@ -41,12 +42,15 @@ export function TripDetail() {
   const loadTrip = useTripStore((state) => state.loadTrip)
   const deleteTrip = useTripStore((state) => state.deleteTrip)
   const toggleFavorite = useTripStore((state) => state.toggleFavorite)
+  const addPlan = useTripStore((state) => state.addPlan)
   const deletePlan = useTripStore((state) => state.deletePlan)
   const updatePlan = useTripStore((state) => state.updatePlan)
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [planToDelete, setPlanToDelete] = useState<number | null>(null)
+  const [isAIItineraryOpen, setIsAIItineraryOpen] = useState(false)
 
+  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
   const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
   const tripId = trip?.id || 0
   const { segments: routeSegments } = useDirections(plans, tripId, defaultTravelMode)
@@ -217,6 +221,17 @@ export function TripDetail() {
                 toast.success('일정이 자동 배분되었습니다')
               }}
             />
+            {claudeEnabled && (
+              <Button
+                outline
+                color="secondary"
+                size="sm"
+                leftIcon={<Sparkles className="size-4" />}
+                onClick={() => setIsAIItineraryOpen(true)}
+              >
+                AI 일정
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -349,6 +364,39 @@ export function TripDetail() {
           </Button>
         </DialogActions>
       </Dialog>
+      {/* AI Itinerary Dialog */}
+      {claudeEnabled && trip && (
+        <AIItineraryDialog
+          open={isAIItineraryOpen}
+          onClose={() => setIsAIItineraryOpen(false)}
+          trip={trip}
+          totalDays={getTripDuration(trip.startDate, trip.endDate)}
+          existingPlansCount={plans.length}
+          onApply={async (itinerary: GeneratedItinerary) => {
+            let addedCount = 0
+            for (const day of itinerary.days) {
+              for (const plan of day.plans) {
+                await addPlan({
+                  tripId: trip.id!,
+                  day: day.day,
+                  placeName: plan.placeName,
+                  startTime: plan.startTime,
+                  endTime: plan.endTime || '',
+                  type: plan.type || 'attraction',
+                  address: plan.address || '',
+                  memo: plan.memo || '',
+                  latitude: plan.latitude,
+                  longitude: plan.longitude,
+                  photos: [],
+                  order: addedCount,
+                })
+                addedCount++
+              }
+            }
+            toast.success(`AI가 ${addedCount}개 일정을 생성했습니다`)
+          }}
+        />
+      )}
       </div>
     </PageContainer>
   )

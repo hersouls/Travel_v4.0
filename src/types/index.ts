@@ -165,6 +165,36 @@ export interface TripStatistics {
   typeBreakdown: Record<string, number>
 }
 
+// ============================================
+// Claude AI Types
+// ============================================
+
+export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
+
+export interface AIGenerateRequest {
+  type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'test'
+  context: Record<string, unknown>
+  image?: string // base64 (for vision)
+  model?: ClaudeModel
+  stream?: boolean
+}
+
+export interface GeneratedItinerary {
+  days: Array<{
+    day: number
+    plans: Array<{
+      placeName: string
+      startTime: string // HH:mm
+      endTime: string
+      type: PlanType
+      address?: string
+      memo?: string
+      latitude?: number
+      longitude?: number
+    }>
+  }>
+}
+
 // Theme Mode
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -196,6 +226,10 @@ export interface Settings {
   // 지도 설정
   mapProvider: MapProvider // 지도 제공자 (기본: 'google')
   defaultTravelMode: TravelMode // 기본 이동수단 (기본: 'DRIVE')
+  // Claude AI 설정 (API key는 localStorage에만 저장, DB/Firestore 제외)
+  claudeApiKey?: string
+  claudeModel?: ClaudeModel
+  claudeEnabled?: boolean
 }
 
 // Default settings
@@ -208,6 +242,8 @@ export const DEFAULT_SETTINGS: Settings = {
   timezoneAutoDetect: true,
   mapProvider: 'google',
   defaultTravelMode: 'DRIVE',
+  claudeEnabled: false,
+  claudeModel: 'sonnet',
 }
 
 // UI Types

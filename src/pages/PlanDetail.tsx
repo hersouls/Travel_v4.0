@@ -21,6 +21,7 @@ import {
     MapPin as DefaultMapPin,
     Volume2,
     FileText,
+    Sparkles,
     type LucideIcon
 } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
@@ -30,7 +31,9 @@ import { Button, IconButton } from '@/components/ui/Button'
 import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
+import { AIGuideGenerator, AIMemoGenerator } from '@/components/ai'
 import { useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/uiStore'
 import { formatTime } from '@/utils/format'
 import { formatReviewCount } from '@/services/googleMaps'
@@ -39,6 +42,7 @@ import type { PlanType } from '@/types'
 import { StreetViewThumbnail } from '@/components/map/StreetViewThumbnail'
 import { NearbyPlacesPanel } from '@/components/map/NearbyPlacesPanel'
 import { getPlacePhotos, type PlacePhoto } from '@/services/placePhotosService'
+import { useGoogleMapsLoader } from '@/hooks/useGoogleMapsLoader'
 
 const iconMap: Record<string, LucideIcon> = {
     Camera,
@@ -57,14 +61,18 @@ export function PlanDetail() {
 
     const loadTrip = useTripStore((state) => state.loadTrip)
     const addPlan = useTripStore((state) => state.addPlan)
+    const updatePlan = useTripStore((state) => state.updatePlan)
     const currentTrip = useTripStore((state) => state.currentTrip)
     const plans = useCurrentPlans()
     const isLoading = useTripLoading()
+    const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
 
     // Find the current plan from the store
     const plan = plans.find((p) => p.id === parseInt(planId || '0'))
 
     const [googlePhotos, setGooglePhotos] = useState<PlacePhoto[]>([])
+    const [isGuideDialogOpen, setIsGuideDialogOpen] = useState(false)
+    const [isMemoDialogOpen, setIsMemoDialogOpen] = useState(false)
 
     // Fetch Google Place photos
     useEffect(() => {
@@ -72,6 +80,24 @@ export function PlanDetail() {
             getPlacePhotos(plan.googlePlaceId, 6).then(setGooglePhotos)
         }
     }, [plan?.googlePlaceId])
+
+    // Check Street View availability
+    const [isStreetViewAvailable, setIsStreetViewAvailable] = useState<boolean>(false)
+    const { isLoaded: isGoogleMapsLoaded } = useGoogleMapsLoader()
+
+    useEffect(() => {
+        if (!plan?.latitude || !plan?.longitude || !isGoogleMapsLoaded) {
+            return
+        }
+
+        const svService = new google.maps.StreetViewService()
+        svService.getPanorama(
+            { location: { lat: plan.latitude, lng: plan.longitude }, radius: 50 },
+            (data, status) => {
+                setIsStreetViewAvailable(status === google.maps.StreetViewStatus.OK)
+            }
+        )
+    }, [plan?.latitude, plan?.longitude, isGoogleMapsLoaded])
 
     useEffect(() => {
         if (tripId) {
@@ -253,11 +279,29 @@ export function PlanDetail() {
                 </Card>
 
                 {/* Memo */}
-                {plan.memo && (
+                {(plan.memo || claudeEnabled) && (
                     <Card padding="lg">
-                        <CardHeader title="메모" icon={<FileText className="size-5 text-blue-500" />} />
+                        <CardHeader
+                            title="메모"
+                            icon={<FileText className="size-5 text-blue-500" />}
+                            action={claudeEnabled ? (
+                                <Button
+                                    size="xs"
+                                    outline
+                                    color="primary"
+                                    leftIcon={<Sparkles className="size-3" />}
+                                    onClick={() => setIsMemoDialogOpen(true)}
+                                >
+                                    AI 메모
+                                </Button>
+                            ) : undefined}
+                        />
                         <CardContent>
-                            <MemoRenderer content={plan.memo} />
+                            {plan.memo ? (
+                                <MemoRenderer content={plan.memo} />
+                            ) : (
+                                <p className="text-sm text-zinc-400 text-center py-4">메모가 없습니다. AI로 생성해보세요.</p>
+                            )}
                         </CardContent>
                     </Card>
                 )}
@@ -308,7 +352,7 @@ export function PlanDetail() {
                 )}
 
                 {/* Street View */}
-                {plan.latitude && plan.longitude && (
+                {plan.latitude && plan.longitude && isStreetViewAvailable && (
                     <Card padding="lg">
                         <CardHeader title="Street View" icon={<MapPin className="size-5 text-green-500" />} />
                         <CardContent>
@@ -355,14 +399,29 @@ export function PlanDetail() {
                 )}
 
                 {/* Moonyou Guide Audio */}
-                {plan.audioScript && (
+                {(plan.audioScript || claudeEnabled) && (
                     <Card padding="lg">
                         <CardHeader
                             title="Moonyou Guide"
                             icon={<Volume2 className="size-5 text-emerald-600" />}
+                            action={claudeEnabled ? (
+                                <Button
+                                    size="xs"
+                                    outline
+                                    color="primary"
+                                    leftIcon={<Sparkles className="size-3" />}
+                                    onClick={() => setIsGuideDialogOpen(true)}
+                                >
+                                    AI 생성
+                                </Button>
+                            ) : undefined}
                         />
                         <CardContent>
-                            <AudioPlayer text={plan.audioScript} />
+                            {plan.audioScript ? (
+                                <AudioPlayer text={plan.audioScript} />
+                            ) : (
+                                <p className="text-sm text-zinc-400 text-center py-4">음성 가이드가 없습니다. AI로 생성해보세요.</p>
+                            )}
                         </CardContent>
                     </Card>
                 )}
@@ -396,6 +455,33 @@ export function PlanDetail() {
                     />
                 )}
             </div>
+
+            {/* AI Dialogs */}
+            {claudeEnabled && plan && currentTrip && (
+                <>
+                    <AIGuideGenerator
+                        open={isGuideDialogOpen}
+                        onClose={() => setIsGuideDialogOpen(false)}
+                        plan={plan}
+                        trip={currentTrip}
+                        onApply={async (script) => {
+                            await updatePlan(plan.id!, { audioScript: script })
+                            toast.success('AI 가이드가 적용되었습니다')
+                        }}
+                    />
+                    <AIMemoGenerator
+                        open={isMemoDialogOpen}
+                        onClose={() => setIsMemoDialogOpen(false)}
+                        plan={plan}
+                        country={currentTrip.country}
+                        mode={plan.memo ? 'append' : 'replace'}
+                        onApply={async (memo) => {
+                            await updatePlan(plan.id!, { memo })
+                            toast.success('AI 메모가 적용되었습니다')
+                        }}
+                    />
+                </>
+            )}
         </PageContainer>
     )
 }
