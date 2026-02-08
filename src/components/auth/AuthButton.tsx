@@ -28,11 +28,21 @@ export function AuthButton() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [isOpen])
 
+  // Show toast when user state changes (login success after redirect)
+  const prevUserRef = useRef(user)
+  useEffect(() => {
+    if (user && !prevUserRef.current) {
+      toast.success('로그인 성공! 데이터 동기화를 시작합니다.')
+    }
+    prevUserRef.current = user
+  }, [user])
+
   const handleLogin = async () => {
     try {
       await signInWithGoogle()
-      toast.success('로그인 성공! 데이터 동기화를 시작합니다.')
-    } catch {
+      // Toast is handled by useEffect above (covers both popup and redirect)
+    } catch (error) {
+      console.error('[Auth] Login error:', error)
       toast.error('로그인에 실패했습니다')
     }
   }
