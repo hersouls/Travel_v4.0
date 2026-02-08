@@ -39,6 +39,8 @@ export default defineConfig({
           'db': ['dexie'],
           'state': ['zustand'],
           'map': ['leaflet', 'react-leaflet'],
+          'google-maps': ['@googlemaps/js-api-loader'],
+          'firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
         },
       },
     },

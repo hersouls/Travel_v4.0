@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson, Music } from 'lucide-react'
+import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson, Music, Map, Navigation } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
@@ -9,11 +9,11 @@ import { useSettingsStore, useTheme, useColorPalette, useMusicPlayerEnabled } fr
 import { toast } from '@/stores/uiStore'
 import { exportAllData, importAllData, clearAllData, validateBackupData, type BackupData } from '@/services/database'
 import { importFromFirebase, validateBackupFile, type MigrationProgress } from '@/services/migration'
-import { APP_VERSION, COLOR_PALETTES, SCHEMA_VERSION } from '@/utils/constants'
+import { APP_VERSION, COLOR_PALETTES, SCHEMA_VERSION, TRAVEL_MODE_LABELS } from '@/utils/constants'
 import { DEFAULT_SETTINGS } from '@/types'
 import { getStorageInfo, formatBytes, requestPersistentStorage, type StorageInfo } from '@/services/storageQuota'
 import { googleDrive, DriveError, DriveErrorCode, type DriveFile, type UploadProgress } from '@/services/googleDrive'
-import type { ThemeMode, ColorPalette } from '@/types'
+import type { ThemeMode, ColorPalette, MapProvider, TravelMode } from '@/types'
 
 const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
   { value: 'light', label: '라이트', icon: Sun },
@@ -30,6 +30,10 @@ export function Settings() {
   const setMusicPlayerEnabled = useSettingsStore((state) => state.setMusicPlayerEnabled)
   const updateLastBackupDate = useSettingsStore((state) => state.updateLastBackupDate)
   const lastBackupDate = useSettingsStore((state) => state.lastBackupDate)
+  const mapProvider = useSettingsStore((state) => state.mapProvider) as MapProvider || 'google'
+  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
+  const setMapProvider = useSettingsStore((state) => state.setMapProvider)
+  const setDefaultTravelMode = useSettingsStore((state) => state.setDefaultTravelMode)
 
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -559,6 +563,72 @@ export function Settings() {
           <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
             활성화하면 앱 하단에 음악 플레이어가 표시됩니다.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Map Settings */}
+      <Card padding="lg">
+        <CardHeader
+          title="지도 설정"
+          description="지도 제공자와 기본 이동수단을 설정합니다"
+          icon={<Map className="size-5" />}
+        />
+        <CardContent className="space-y-4">
+          {/* Map Provider */}
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)] mb-2">지도 제공자</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { value: 'google' as MapProvider, label: 'Google Maps', desc: '실시간 경로, Street View' },
+                { value: 'leaflet' as MapProvider, label: 'Leaflet/OSM', desc: '오프라인 지원, 가벼움' },
+              ].map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setMapProvider(option.value)}
+                  className={`p-3 rounded-lg border-2 text-left transition-colors ${
+                    mapProvider === option.value
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                      : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                  }`}
+                >
+                  <span className={`text-sm font-medium ${
+                    mapProvider === option.value
+                      ? 'text-primary-600 dark:text-primary-400'
+                      : 'text-zinc-600 dark:text-zinc-400'
+                  }`}>
+                    {option.label}
+                  </span>
+                  <p className="text-xs text-zinc-500 mt-0.5">{option.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Default Travel Mode */}
+          <div>
+            <p className="text-sm font-medium text-[var(--foreground)] mb-2">기본 이동수단</p>
+            <div className="grid grid-cols-4 gap-2">
+              {(Object.entries(TRAVEL_MODE_LABELS) as [TravelMode, string][]).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  onClick={() => setDefaultTravelMode(mode)}
+                  className={`p-2 rounded-lg border-2 text-center transition-colors ${
+                    defaultTravelMode === mode
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                      : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                  }`}
+                >
+                  <span className={`text-xs font-medium ${
+                    defaultTravelMode === mode
+                      ? 'text-primary-600 dark:text-primary-400'
+                      : 'text-zinc-600 dark:text-zinc-400'
+                  }`}>
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
 

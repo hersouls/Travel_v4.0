@@ -92,6 +92,79 @@ export interface Place {
   updatedAt: Date
 }
 
+// ============================================
+// Google Maps API Types
+// ============================================
+
+// 이동 수단
+export type TravelMode = 'DRIVE' | 'WALK' | 'TRANSIT' | 'BICYCLE'
+
+// 지도 제공자
+export type MapProvider = 'google' | 'leaflet'
+
+// 경로 단계 (턴바이턴 안내)
+export interface RouteStep {
+  instruction: string
+  distanceMeters: number
+  duration: string // e.g., "300s"
+  startLocation: { lat: number; lng: number }
+  endLocation: { lat: number; lng: number }
+  travelMode: string
+  polyline: string // encoded polyline
+}
+
+// 경로 구간 (두 장소 사이)
+export interface RouteSegment {
+  id?: number
+  firebaseId?: string
+  tripId: number
+  tripFirebaseId?: string
+  fromPlanId: number
+  toPlanId: number
+  fromCoords: { lat: number; lng: number }
+  toCoords: { lat: number; lng: number }
+  travelMode: TravelMode
+  distanceMeters: number
+  duration: string // e.g., "1200s"
+  durationText: string // e.g., "20분"
+  distanceText: string // e.g., "5.2 km"
+  encodedPolyline: string
+  steps?: RouteStep[]
+  cachedAt: Date
+  updatedAt: Date
+}
+
+// 주변 장소
+export interface NearbyPlace {
+  placeId: string
+  name: string
+  address: string
+  latitude: number
+  longitude: number
+  rating?: number
+  reviewCount?: number
+  category?: string
+  distanceMeters?: number
+  photoUrl?: string
+}
+
+// Place 사진 참조
+export interface PlacePhotoRef {
+  name: string // photo resource name
+  widthPx: number
+  heightPx: number
+  photoUrl?: string // resolved URL
+}
+
+// 여행 통계
+export interface TripStatistics {
+  totalDistanceMeters: number
+  totalDurationSeconds: number
+  segmentCount: number
+  modeBreakdown: Record<TravelMode, { distance: number; duration: number; count: number }>
+  typeBreakdown: Record<string, number>
+}
+
 // Theme Mode
 export type ThemeMode = 'light' | 'dark' | 'system'
 
@@ -120,6 +193,9 @@ export interface Settings {
   // 시간대 설정
   detectedTimezone?: string // 마지막 감지된 시간대
   timezoneAutoDetect: boolean // 자동 감지 활성화 (기본: true)
+  // 지도 설정
+  mapProvider: MapProvider // 지도 제공자 (기본: 'google')
+  defaultTravelMode: TravelMode // 기본 이동수단 (기본: 'DRIVE')
 }
 
 // Default settings
@@ -130,6 +206,8 @@ export const DEFAULT_SETTINGS: Settings = {
   language: 'ko',
   isMusicPlayerEnabled: true,
   timezoneAutoDetect: true,
+  mapProvider: 'google',
+  defaultTravelMode: 'DRIVE',
 }
 
 // UI Types

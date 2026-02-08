@@ -5,7 +5,7 @@
 export const APP_NAME = 'Moonwave Travel'
 export const APP_VERSION = '4.0.0'
 export const APP_DESCRIPTION = '여행 일정 관리 및 추억 기록 도구'
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 // Storage Keys
 export const STORAGE_KEYS = {
@@ -77,6 +77,22 @@ export const COUNTRIES = [
   '두바이',
   '기타',
 ] as const
+
+// Travel Mode Labels
+export const TRAVEL_MODE_LABELS = {
+  DRIVE: '운전',
+  WALK: '도보',
+  TRANSIT: '대중교통',
+  BICYCLE: '자전거',
+} as const
+
+// Travel Mode Icons (Lucide icon names)
+export const TRAVEL_MODE_ICONS = {
+  DRIVE: 'Car',
+  WALK: 'Footprints',
+  TRANSIT: 'Bus',
+  BICYCLE: 'Bike',
+} as const
 
 // Date format options
 export const DATE_FORMAT_OPTIONS: Intl.DateTimeFormatOptions = {

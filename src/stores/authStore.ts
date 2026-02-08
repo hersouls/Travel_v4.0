@@ -8,6 +8,8 @@ import { devtools } from 'zustand/middleware'
 import {
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   onAuthStateChanged,
   type User,
@@ -43,6 +45,15 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true })
         const auth = getFirebaseAuth()
+
+        // Check for redirect result (from signInWithRedirect fallback)
+        getRedirectResult(auth).catch((error) => {
+          if (error) {
+            console.error('[Auth] Redirect result error:', error)
+            set({ error: (error as Error).message })
+          }
+        })
+
         const unsubscribe = onAuthStateChanged(auth, (user) => {
           console.log('[Auth] State changed:', user?.email || 'signed out')
           set({ user, isLoading: false, isInitialized: true })
@@ -63,13 +74,22 @@ export const useAuthStore = create<AuthState>()(
         try {
           await signInWithPopup(auth, provider)
           console.log('[Auth] Login successful')
-        } catch (error) {
-          const message = (error as Error).message || 'Unknown error'
-          console.error('[Auth] Login failed:', message)
+        } catch (error: unknown) {
+          const firebaseError = error as { code?: string; message?: string }
+          const code = firebaseError.code || ''
+          const message = firebaseError.message || 'Unknown error'
+          console.error('[Auth] Login failed:', code, message)
 
           // popup-closed-by-user is a user action, not an error
-          if (message.includes('popup-closed-by-user')) {
+          if (code === 'auth/popup-closed-by-user' || message.includes('popup-closed-by-user')) {
             set({ isLoading: false })
+            return
+          }
+
+          // Popup blocked → redirect fallback
+          if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request') {
+            console.log('[Auth] Popup blocked, falling back to redirect')
+            await signInWithRedirect(auth, provider)
             return
           }
 
@@ -84,8 +104,10 @@ export const useAuthStore = create<AuthState>()(
         try {
           const auth = getFirebaseAuth()
           await signOut(auth)
+          // onAuthStateChanged will set isLoading: false and user: null
         } catch (error) {
           set({ error: (error as Error).message, isLoading: false })
+          throw error
         }
       },
 

@@ -62,6 +62,11 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { Plan } from '@/types'
+import { RouteInfoPanel } from '@/components/map/RouteInfoPanel'
+import { RouteOptimizeButton } from '@/components/trip/RouteOptimizeButton'
+import { useDirections } from '@/hooks/useDirections'
+import { useSettingsStore } from '@/stores/settingsStore'
+import type { TravelMode } from '@/types'
 
 // SortablePlanCard component for drag and drop
 interface SortablePlanCardProps {
@@ -324,6 +329,10 @@ export function DayDetail() {
 
   const reorderPlans = useTripStore((state) => state.reorderPlans)
 
+  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
+  const tripId = trip?.id || 0
+  const { segments: routeSegments } = useDirections(dayPlans, tripId, defaultTravelMode)
+
   // Plans with coordinates for map
   const plansWithCoords = useMemo(() => {
     return dayPlans.filter((p) => p.latitude && p.longitude)
@@ -548,9 +557,21 @@ export function DayDetail() {
             </p>
           )}
         </div>
-        <Badge color="primary" size="md">
-          {dayPlans.length}개 장소
-        </Badge>
+        <div className="flex items-center gap-2">
+          <RouteOptimizeButton
+            plans={dayPlans}
+            travelMode={defaultTravelMode}
+            onOptimized={async (optimizedPlanIds) => {
+              if (trip?.id) {
+                await reorderPlans(trip.id, dayNumber, optimizedPlanIds)
+                toast.success('최적화된 순서가 적용되었습니다')
+              }
+            }}
+          />
+          <Badge color="primary" size="md">
+            {dayPlans.length}개 장소
+          </Badge>
+        </div>
       </div>
 
       {/* Mini Map */}
@@ -636,16 +657,29 @@ export function DayDetail() {
             >
               <div className="space-y-4">
                 {dayPlans.map((plan, index) => (
-                  <SortablePlanCard
-                    key={plan.id}
-                    plan={plan}
-                    index={index}
-                    tripId={trip.id!}
-                    iconMap={iconMap}
-                    refreshingPlanId={refreshingPlanId}
-                    onRefresh={handleRefreshGoogleInfo}
-                    onDelete={(id) => setPlanToDelete(id)}
-                  />
+                  <div key={plan.id}>
+                    <SortablePlanCard
+                      plan={plan}
+                      index={index}
+                      tripId={trip.id!}
+                      iconMap={iconMap}
+                      refreshingPlanId={refreshingPlanId}
+                      onRefresh={handleRefreshGoogleInfo}
+                      onDelete={(id) => setPlanToDelete(id)}
+                    />
+                    {index < dayPlans.length - 1 && (() => {
+                      const seg = routeSegments.find(
+                        (s) => s.fromPlanId === plan.id && s.toPlanId === dayPlans[index + 1]?.id,
+                      )
+                      return seg ? (
+                        <RouteInfoPanel
+                          distanceText={seg.distanceText}
+                          durationText={seg.durationText}
+                          travelMode={seg.travelMode}
+                        />
+                      ) : null
+                    })()}
+                  </div>
                 ))}
               </div>
             </SortableContext>

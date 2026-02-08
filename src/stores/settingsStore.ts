@@ -21,6 +21,8 @@ interface SettingsState extends Settings {
   // Timezone actions
   setTimezoneAutoDetect: (enabled: boolean) => void
   updateDetectedTimezone: (timezone: string) => void
+  setMapProvider: (provider: import('@/types').MapProvider) => void
+  setDefaultTravelMode: (mode: import('@/types').TravelMode) => void
   saveToDatabase: () => Promise<void>
 }
 
@@ -126,6 +128,20 @@ export const useSettingsStore = create<SettingsState>()(
           sendBroadcast('SETTINGS_CHANGED', { field: 'detectedTimezone', value: timezone })
         },
 
+        // Set map provider
+        setMapProvider: (mapProvider) => {
+          set({ mapProvider })
+          get().saveToDatabase()
+          sendBroadcast('SETTINGS_CHANGED', { field: 'mapProvider', value: mapProvider })
+        },
+
+        // Set default travel mode
+        setDefaultTravelMode: (defaultTravelMode) => {
+          set({ defaultTravelMode })
+          get().saveToDatabase()
+          sendBroadcast('SETTINGS_CHANGED', { field: 'defaultTravelMode', value: defaultTravelMode })
+        },
+
         // Save to database
         saveToDatabase: async () => {
           const state = get()
@@ -138,6 +154,8 @@ export const useSettingsStore = create<SettingsState>()(
             lastBackupDate: state.lastBackupDate,
             timezoneAutoDetect: state.timezoneAutoDetect,
             detectedTimezone: state.detectedTimezone,
+            mapProvider: state.mapProvider,
+            defaultTravelMode: state.defaultTravelMode,
           }
           await db.updateSettings(settings)
 
@@ -155,6 +173,8 @@ export const useSettingsStore = create<SettingsState>()(
           language: state.language,
           isMusicPlayerEnabled: state.isMusicPlayerEnabled,
           timezoneAutoDetect: state.timezoneAutoDetect,
+          mapProvider: state.mapProvider,
+          defaultTravelMode: state.defaultTravelMode,
         }),
       }
     ),
@@ -168,3 +188,5 @@ export const useColorPalette = () => useSettingsStore((state) => state.colorPale
 export const useLanguage = () => useSettingsStore((state) => state.language)
 export const useMusicPlayerEnabled = () => useSettingsStore((state) => state.isMusicPlayerEnabled)
 export const useTimezoneAutoDetect = () => useSettingsStore((state) => state.timezoneAutoDetect)
+export const useMapProvider = () => useSettingsStore((state) => state.mapProvider)
+export const useDefaultTravelMode = () => useSettingsStore((state) => state.defaultTravelMode)

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, List } from 'lucide-react'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
@@ -7,8 +7,15 @@ import { IconButton, Button } from '@/components/ui/Button'
 import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
+import { GoogleMapView } from '@/components/map/GoogleMapView'
+import { MapProviderSwitch } from '@/components/map/MapProviderSwitch'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+import { useDirections } from '@/hooks/useDirections'
 import { formatTime } from '@/utils/format'
+import { getTripDurationSafe } from '@/utils/timezone'
+import type { MapProvider, TravelMode } from '@/types'
+
 // Fix Leaflet default marker icon issue
 Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -24,20 +31,38 @@ export function TripMap() {
   const isLoading = useTripLoading()
   const loadTrip = useTripStore((state) => state.loadTrip)
 
+  const savedMapProvider = useSettingsStore((state) => state.mapProvider) as MapProvider || 'google'
+  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
+
+  const [mapProvider, setMapProvider] = useState<MapProvider>(savedMapProvider)
+  const [selectedDay, setSelectedDay] = useState<number | null>(null)
+
+  const tripId = trip?.id || 0
+  const { segments: routeSegments } = useDirections(plans, tripId, defaultTravelMode)
+
   useEffect(() => {
     if (id) {
       loadTrip(parseInt(id))
     }
   }, [id, loadTrip])
 
+  const totalDays = useMemo(() => {
+    if (!trip) return 0
+    return getTripDurationSafe(trip.startDate, trip.endDate)
+  }, [trip])
+
   // Filter plans with coordinates
   const plansWithCoords = useMemo(() => {
-    return plans.filter((p) => p.latitude && p.longitude)
-  }, [plans])
+    return plans.filter((p) => {
+      if (!p.latitude || !p.longitude) return false
+      if (selectedDay != null && p.day !== selectedDay) return false
+      return true
+    })
+  }, [plans, selectedDay])
 
   // Calculate center and bounds
   const mapCenter = useMemo(() => {
-    if (plansWithCoords.length === 0) return { lat: 37.5665, lng: 126.978 } // Seoul default
+    if (plansWithCoords.length === 0) return { lat: 37.5665, lng: 126.978 }
     const lats = plansWithCoords.map((p) => p.latitude!)
     const lngs = plansWithCoords.map((p) => p.longitude!)
     return {
@@ -46,7 +71,7 @@ export function TripMap() {
     }
   }, [plansWithCoords])
 
-  // Create polyline for routes
+  // Create polyline for Leaflet
   const routePositions = useMemo(() => {
     return plansWithCoords
       .sort((a, b) => a.day - b.day || a.startTime.localeCompare(b.startTime))
@@ -136,10 +161,44 @@ export function TripMap() {
             <p className="text-sm text-zinc-500">{plansWithCoords.length}개 장소</p>
           </div>
         </div>
-        <Button to={`/trips/${trip.id}`} outline color="secondary" size="sm" leftIcon={<List className="size-4" />}>
-          목록 보기
-        </Button>
+        <div className="flex items-center gap-2">
+          <MapProviderSwitch value={mapProvider} onChange={setMapProvider} />
+          <Button to={`/trips/${trip.id}`} outline color="secondary" size="sm" leftIcon={<List className="size-4" />}>
+            목록
+          </Button>
+        </div>
       </div>
+
+      {/* Day Filter Tabs */}
+      {totalDays > 0 && (
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+          <button
+            type="button"
+            onClick={() => setSelectedDay(null)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
+              selectedDay === null
+                ? 'bg-primary/10 text-primary'
+                : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+            }`}
+          >
+            전체
+          </button>
+          {Array.from({ length: totalDays }, (_, i) => i + 1).map((day) => (
+            <button
+              key={day}
+              type="button"
+              onClick={() => setSelectedDay(day)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
+                selectedDay === day
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+              }`}
+            >
+              Day {day}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Map */}
       <div className="flex-1 rounded-xl overflow-hidden ring-1 ring-zinc-950/5 dark:ring-white/10 mb-16 lg:mb-0">
@@ -152,6 +211,14 @@ export function TripMap() {
               </Button>
             </div>
           </div>
+        ) : mapProvider === 'google' ? (
+          <GoogleMapView
+            plans={plans}
+            routeSegments={routeSegments}
+            center={mapCenter}
+            className="h-full w-full"
+            selectedDay={selectedDay}
+          />
         ) : (
           <MapContainer
             center={[mapCenter.lat, mapCenter.lng]}

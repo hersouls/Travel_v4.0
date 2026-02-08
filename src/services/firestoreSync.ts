@@ -17,7 +17,7 @@ import {
 import { getFirebaseDb } from '@/services/firebase'
 import { db as dexieDb } from '@/services/database'
 import * as database from '@/services/database'
-import type { Trip, Plan, Place, Settings } from '@/types'
+import type { Trip, Plan, Place, Settings, RouteSegment } from '@/types'
 
 // ============================================
 // Helpers
@@ -118,6 +118,42 @@ function settingsToFirestore(settings: Settings): DocumentData {
   }
 }
 
+function routeSegmentToFirestore(segment: RouteSegment): DocumentData {
+  return {
+    tripFirebaseId: segment.tripFirebaseId || '',
+    fromPlanId: segment.fromPlanId,
+    toPlanId: segment.toPlanId,
+    fromCoords: segment.fromCoords,
+    toCoords: segment.toCoords,
+    travelMode: segment.travelMode,
+    distanceMeters: segment.distanceMeters,
+    duration: segment.duration,
+    durationText: segment.durationText,
+    distanceText: segment.distanceText,
+    encodedPolyline: segment.encodedPolyline,
+    cachedAt: toTimestamp(segment.cachedAt),
+    updatedAt: toTimestamp(segment.updatedAt),
+  }
+}
+
+function firestoreToRouteSegmentData(data: DocumentData): Omit<RouteSegment, 'id' | 'tripId'> {
+  return {
+    tripFirebaseId: data.tripFirebaseId || '',
+    fromPlanId: data.fromPlanId,
+    toPlanId: data.toPlanId,
+    fromCoords: data.fromCoords,
+    toCoords: data.toCoords,
+    travelMode: data.travelMode,
+    distanceMeters: data.distanceMeters,
+    duration: data.duration,
+    durationText: data.durationText,
+    distanceText: data.distanceText,
+    encodedPolyline: data.encodedPolyline,
+    cachedAt: fromTimestamp(data.cachedAt),
+    updatedAt: fromTimestamp(data.updatedAt),
+  }
+}
+
 // ============================================
 // Converters: Firestore → Local (partial)
 // ============================================
@@ -193,7 +229,9 @@ class SyncManager {
   private userId: string | null = null
   private unsubscribers: Unsubscribe[] = []
   private syncCallbacks: SyncCallback[] = []
+  private activeCallbacks: SyncCallback[] = []
   private isSyncing = false
+  private _isActive = false
   private suppressEcho = new Set<string>()
 
   // ---- Lifecycle ----
@@ -205,9 +243,12 @@ class SyncManager {
     try {
       await this.performInitialSync()
       this.startRealtimeListeners()
+      this._isActive = true
+      this.notifyActiveChange()
       console.log('[Sync] Ready')
     } catch (error) {
       console.error('[Sync] Start failed:', error)
+      this.userId = null
     }
   }
 
@@ -216,6 +257,10 @@ class SyncManager {
     this.unsubscribers = []
     this.userId = null
     this.suppressEcho.clear()
+    if (this._isActive) {
+      this._isActive = false
+      this.notifyActiveChange()
+    }
     console.log('[Sync] Stopped')
   }
 
@@ -233,7 +278,20 @@ class SyncManager {
   }
 
   isActive(): boolean {
-    return this.userId !== null
+    return this._isActive
+  }
+
+  onActiveChange(callback: SyncCallback): () => void {
+    this.activeCallbacks.push(callback)
+    return () => {
+      this.activeCallbacks = this.activeCallbacks.filter((cb) => cb !== callback)
+    }
+  }
+
+  private notifyActiveChange(): void {
+    for (const cb of this.activeCallbacks) {
+      try { cb() } catch (e) { console.error('[Sync] Active change callback error:', e) }
+    }
   }
 
   // ============================================
@@ -725,6 +783,30 @@ class SyncManager {
     const firestore = getFirebaseDb()
     this.suppressEcho.add(`place:${firebaseId}`)
     await deleteDoc(doc(firestore, 'users', this.userId, 'places', firebaseId))
+  }
+
+  async uploadRouteSegment(segment: RouteSegment): Promise<string> {
+    if (!this.userId) return segment.firebaseId || ''
+    const firestore = getFirebaseDb()
+    const segmentsRef = collection(firestore, 'users', this.userId, 'routeSegments')
+
+    if (segment.firebaseId) {
+      this.suppressEcho.add(`routeSegment:${segment.firebaseId}`)
+      await setDoc(doc(segmentsRef, segment.firebaseId), routeSegmentToFirestore(segment))
+      return segment.firebaseId
+    }
+
+    const newDocRef = doc(segmentsRef)
+    await setDoc(newDocRef, routeSegmentToFirestore(segment))
+    this.suppressEcho.add(`routeSegment:${newDocRef.id}`)
+    return newDocRef.id
+  }
+
+  async deleteRemoteRouteSegment(firebaseId: string): Promise<void> {
+    if (!this.userId || !firebaseId) return
+    const firestore = getFirebaseDb()
+    this.suppressEcho.add(`routeSegment:${firebaseId}`)
+    await deleteDoc(doc(firestore, 'users', this.userId, 'routeSegments', firebaseId))
   }
 
   // ============================================

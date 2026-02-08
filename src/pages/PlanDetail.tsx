@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
     ArrowLeft,
@@ -35,6 +35,9 @@ import { formatTime } from '@/utils/format'
 import { formatReviewCount } from '@/services/googleMaps'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
 import type { PlanType } from '@/types'
+import { StreetViewThumbnail } from '@/components/map/StreetViewThumbnail'
+import { NearbyPlacesPanel } from '@/components/map/NearbyPlacesPanel'
+import { getPlacePhotos, type PlacePhoto } from '@/services/placePhotosService'
 
 const iconMap: Record<string, LucideIcon> = {
     Camera,
@@ -58,6 +61,15 @@ export function PlanDetail() {
 
     // Find the current plan from the store
     const plan = plans.find((p) => p.id === parseInt(planId || '0'))
+
+    const [googlePhotos, setGooglePhotos] = useState<PlacePhoto[]>([])
+
+    // Fetch Google Place photos
+    useEffect(() => {
+        if (plan?.googlePlaceId) {
+            getPlacePhotos(plan.googlePlaceId, 6).then(setGooglePhotos)
+        }
+    }, [plan?.googlePlaceId])
 
     useEffect(() => {
         if (tripId) {
@@ -269,6 +281,44 @@ export function PlanDetail() {
                     </Card>
                 )}
 
+                {/* Google Place Photos */}
+                {googlePhotos.length > 0 && (
+                    <Card padding="lg">
+                        <CardHeader title={`Google 사진 (${googlePhotos.length})`} icon={<Camera className="size-5 text-blue-500" />} />
+                        <CardContent>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {googlePhotos.map((photo, index) => (
+                                    <div key={index} className="aspect-square rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800">
+                                        <img
+                                            src={photo.url}
+                                            alt={`Google photo ${index + 1}`}
+                                            className="w-full h-full object-cover hover:scale-105 transition-transform duration-300 cursor-pointer"
+                                            onClick={() => window.open(photo.url, '_blank')}
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                            {googlePhotos[0]?.attribution && (
+                                <p className="text-xs text-zinc-400 mt-2">{googlePhotos[0].attribution}</p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {/* Street View */}
+                {plan.latitude && plan.longitude && (
+                    <Card padding="lg">
+                        <CardHeader title="Street View" icon={<MapPin className="size-5 text-green-500" />} />
+                        <CardContent>
+                            <StreetViewThumbnail
+                                latitude={plan.latitude}
+                                longitude={plan.longitude}
+                                size="lg"
+                            />
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* YouTube Video */}
                 {plan.youtubeLink && (
                     <Card padding="lg">
@@ -313,6 +363,14 @@ export function PlanDetail() {
                             <AudioPlayer text={plan.audioScript} />
                         </CardContent>
                     </Card>
+                )}
+                {/* Nearby Recommendations */}
+                {plan.latitude && plan.longitude && (
+                    <NearbyPlacesPanel
+                        latitude={plan.latitude}
+                        longitude={plan.longitude}
+                        className="px-0"
+                    />
                 )}
             </div>
         </PageContainer>

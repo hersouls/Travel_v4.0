@@ -3,17 +3,25 @@
 // Google 로그인/로그아웃 + 동기화 상태
 // ============================================
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
 import { LogIn, LogOut, Cloud, CloudOff, User } from 'lucide-react'
 import { useAuthStore, useUser, useAuthLoading } from '@/stores/authStore'
 import { syncManager } from '@/services/firestoreSync'
 import { toast } from '@/stores/uiStore'
+
+function useSyncActive() {
+  return useSyncExternalStore(
+    (cb) => syncManager.onActiveChange(cb),
+    () => syncManager.isActive(),
+  )
+}
 
 export function AuthButton() {
   const user = useUser()
   const isLoading = useAuthLoading()
   const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle)
   const logout = useAuthStore((s) => s.logout)
+  const isSyncing = useSyncActive()
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -49,8 +57,12 @@ export function AuthButton() {
 
   const handleLogout = async () => {
     setIsOpen(false)
-    await logout()
-    toast.info('로그아웃 되었습니다')
+    try {
+      await logout()
+      toast.info('로그아웃 되었습니다')
+    } catch {
+      toast.error('로그아웃에 실패했습니다')
+    }
   }
 
   // Not logged in
@@ -76,8 +88,6 @@ export function AuthButton() {
   }
 
   // Logged in
-  const isSyncing = syncManager.isActive()
-
   return (
     <div className="relative" ref={dropdownRef}>
       <button

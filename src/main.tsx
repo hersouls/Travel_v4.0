@@ -20,6 +20,7 @@ const DayDetail = lazy(() => import('@/pages/DayDetail').then(m => ({ default: m
 const PlaceLibrary = lazy(() => import('@/pages/PlaceLibrary').then(m => ({ default: m.PlaceLibrary })))
 const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
 const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About })))
+const NavigationView = lazy(() => import('@/pages/NavigationView').then(m => ({ default: m.NavigationView })))
 
 // Loading fallback component
 function PageLoading() {
@@ -106,6 +107,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <TripMap />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'trips/:id/navigate',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <NavigationView />
           </Suspense>
         ),
       },

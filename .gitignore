@@ -31,6 +31,9 @@ npm-debug.log*
 # Claude
 .claude/
 
+# Firebase
+.firebase/
+
 # Build artifacts
 tsconfig.tsbuildinfo
 nul

@@ -8,6 +8,10 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { LocalTimeComparison } from '@/components/timezone'
+import { TripStatistics } from '@/components/trip/TripStatistics'
+import { useDirections } from '@/hooks/useDirections'
+import { useSettingsStore } from '@/stores/settingsStore'
+import type { TravelMode } from '@/types'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatDateRange, getTripDuration, formatTime } from '@/utils/format'
@@ -40,6 +44,10 @@ export function TripDetail() {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [planToDelete, setPlanToDelete] = useState<number | null>(null)
+
+  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
+  const tripId = trip?.id || 0
+  const { segments: routeSegments } = useDirections(plans, tripId, defaultTravelMode)
 
   useEffect(() => {
     if (id) {
@@ -191,6 +199,12 @@ export function TripDetail() {
           </div>
         </div>
       </Card>
+
+      {/* Trip Statistics */}
+      <TripStatistics
+        plans={plans}
+        routeSegments={routeSegments}
+      />
 
       {/* Plans Timeline */}
       <div className="space-y-6">
