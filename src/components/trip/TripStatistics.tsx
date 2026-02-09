@@ -67,15 +67,24 @@ export function TripStatistics({
     }
   }, [plans, routeSegments])
 
-  const formatDuration = (seconds: number) => {
+  const formatDuration = (seconds: number, compact = false) => {
     const hours = Math.floor(seconds / 3600)
     const mins = Math.round((seconds % 3600) / 60)
+    if (compact) {
+      if (hours > 0 && mins > 0) return `${hours}h ${mins}m`
+      if (hours > 0) return `${hours}h`
+      return `${mins}m`
+    }
     if (hours > 0) return `${hours}시간 ${mins}분`
     return `${mins}분`
   }
 
-  const formatDistance = (meters: number) => {
-    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`
+  const formatDistance = (meters: number, compact = false) => {
+    if (meters >= 1000) {
+      const km = meters / 1000
+      if (compact && km >= 1000) return `${Math.round(km)} km`
+      return `${km.toFixed(1)} km`
+    }
     return `${meters} m`
   }
 
@@ -88,24 +97,26 @@ export function TripStatistics({
       </h3>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-center">
-          <RouteIcon className="size-4 text-blue-500 mx-auto mb-1" />
-          <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
-            {formatDistance(stats.totalDistance)}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
+        <div className="p-2 sm:p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-center">
+          <RouteIcon className="size-3.5 sm:size-4 text-blue-500 mx-auto mb-1" />
+          <p className="text-base sm:text-lg font-bold text-blue-700 dark:text-blue-300">
+            <span className="sm:hidden">{formatDistance(stats.totalDistance, true)}</span>
+            <span className="hidden sm:inline">{formatDistance(stats.totalDistance)}</span>
           </p>
           <p className="text-xs text-blue-500">총 이동거리</p>
         </div>
-        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-center">
-          <Clock className="size-4 text-amber-500 mx-auto mb-1" />
-          <p className="text-lg font-bold text-amber-700 dark:text-amber-300">
-            {formatDuration(stats.totalDuration)}
+        <div className="p-2 sm:p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 text-center">
+          <Clock className="size-3.5 sm:size-4 text-amber-500 mx-auto mb-1" />
+          <p className="text-base sm:text-lg font-bold text-amber-700 dark:text-amber-300">
+            <span className="sm:hidden">{formatDuration(stats.totalDuration, true)}</span>
+            <span className="hidden sm:inline">{formatDuration(stats.totalDuration)}</span>
           </p>
           <p className="text-xs text-amber-500">총 이동시간</p>
         </div>
-        <div className="p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 text-center">
-          <MapPin className="size-4 text-violet-500 mx-auto mb-1" />
-          <p className="text-lg font-bold text-violet-700 dark:text-violet-300">
+        <div className="p-2 sm:p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 text-center">
+          <MapPin className="size-3.5 sm:size-4 text-violet-500 mx-auto mb-1" />
+          <p className="text-base sm:text-lg font-bold text-violet-700 dark:text-violet-300">
             {stats.planCount}
           </p>
           <p className="text-xs text-violet-500">전체 일정</p>

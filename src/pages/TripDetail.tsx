@@ -126,15 +126,17 @@ export function TripDetail() {
     <PageContainer>
       <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
-          <ArrowLeft className="size-5" />
-        </IconButton>
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold text-[var(--foreground)]">{trip.title}</h1>
-          <p className="text-sm text-zinc-500">{formatDateRange(trip.startDate, trip.endDate)}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기" className="mt-0.5 flex-shrink-0">
+            <ArrowLeft className="size-5" />
+          </IconButton>
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold text-[var(--foreground)] break-words">{trip.title}</h1>
+            <p className="text-xs sm:text-sm text-zinc-500">{formatDateRange(trip.startDate, trip.endDate)}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <IconButton
             plain
             color={trip.isFavorite ? 'warning' : 'secondary'}
@@ -155,7 +157,7 @@ export function TripDetail() {
       {/* Trip Info Card */}
       <Card padding="none" className="overflow-hidden">
         {trip.coverImage && (
-          <div className="h-48 sm:h-64">
+          <div className="h-36 sm:h-48 md:h-64">
             <img src={trip.coverImage} alt={trip.title} className="w-full h-full object-cover" />
           </div>
         )}
@@ -184,7 +186,52 @@ export function TripDetail() {
             />
           </div>
 
-          <div className="flex gap-2 mt-4">
+          {/* Action Buttons - Mobile: icon grid / Desktop: inline flex */}
+          <div className="grid grid-cols-5 gap-1.5 mt-4 sm:hidden">
+            <Link
+              to={`/trips/${trip.id}/plans/new`}
+              className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 active:scale-95 transition-transform"
+            >
+              <Plus className="size-5 mb-0.5" />
+              <span className="text-[10px] font-medium leading-tight">추가</span>
+            </Link>
+            <Link
+              to={`/trips/${trip.id}/map`}
+              className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+            >
+              <Map className="size-5 mb-0.5" />
+              <span className="text-[10px] font-medium leading-tight">지도</span>
+            </Link>
+            <Link
+              to={`/trips/${trip.id}/navigate`}
+              className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+            >
+              <Navigation className="size-5 mb-0.5" />
+              <span className="text-[10px] font-medium leading-tight">내비</span>
+            </Link>
+            <AutoDistributeButton
+              plans={plans}
+              totalDays={getTripDuration(trip.startDate, trip.endDate)}
+              onApply={async (assignments) => {
+                for (const { planId, day } of assignments) {
+                  await updatePlan(planId, { day })
+                }
+                toast.success('일정이 자동 배분되었습니다')
+              }}
+              variant="mobile"
+            />
+            {claudeEnabled && (
+              <button
+                type="button"
+                onClick={() => setIsAIItineraryOpen(true)}
+                className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+              >
+                <Sparkles className="size-5 mb-0.5" />
+                <span className="text-[10px] font-medium leading-tight">AI</span>
+              </button>
+            )}
+          </div>
+          <div className="hidden sm:flex sm:flex-wrap gap-2 mt-4">
             <Button
               to={`/trips/${trip.id}/plans/new`}
               color="primary"

@@ -14,6 +14,7 @@ interface AutoDistributeButtonProps {
   totalDays: number
   onApply: (assignments: Array<{ planId: number; day: number }>) => void
   className?: string
+  variant?: 'default' | 'mobile'
 }
 
 export function AutoDistributeButton({
@@ -21,6 +22,7 @@ export function AutoDistributeButton({
   totalDays,
   onApply,
   className = '',
+  variant = 'default',
 }: AutoDistributeButtonProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<DayDistribution[] | null>(null)
@@ -59,20 +61,35 @@ export function AutoDistributeButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleDistribute}
-        disabled={isLoading}
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-600 hover:text-violet-500 bg-violet-50 hover:bg-violet-100 dark:bg-violet-900/20 dark:hover:bg-violet-900/30 dark:text-violet-400 rounded-lg transition-all disabled:opacity-50 ${className}`}
-        title="일정 자동 배분"
-      >
-        {isLoading ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : (
-          <Wand2 className="size-3.5" />
-        )}
-        자동 배분
-      </button>
+      {variant === 'mobile' ? (
+        <button
+          type="button"
+          onClick={handleDistribute}
+          disabled={isLoading}
+          className={`flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform disabled:opacity-50 ${className}`}
+          title="일정 자동 배분"
+        >
+          {isLoading ? (
+            <Loader2 className="size-5 mb-0.5 animate-spin" />
+          ) : (
+            <Wand2 className="size-5 mb-0.5" />
+          )}
+          <span className="text-[10px] font-medium leading-tight">배분</span>
+        </button>
+      ) : (
+        <Button
+          outline
+          color="secondary"
+          size="sm"
+          onClick={handleDistribute}
+          disabled={isLoading}
+          isLoading={isLoading}
+          leftIcon={!isLoading ? <Wand2 className="size-4" /> : undefined}
+          className={className}
+        >
+          자동 배분
+        </Button>
+      )}
 
       {/* Result Dialog */}
       <Dialog open={showDialog} onClose={() => setShowDialog(false)} size="md">
