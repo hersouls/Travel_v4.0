@@ -16,6 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   GripVertical,
+  Sparkles,
+  Lightbulb,
 } from 'lucide-react'
 import {
   DndContext,
@@ -64,9 +66,11 @@ import {
 import type { Plan } from '@/types'
 import { RouteInfoPanel } from '@/components/map/RouteInfoPanel'
 import { RouteOptimizeButton } from '@/components/trip/RouteOptimizeButton'
+import { AIDayRecommendDialog } from '@/components/ai/AIDayRecommendDialog'
+import { AIDaySuggestDialog } from '@/components/ai/AIDaySuggestDialog'
 import { useDirections } from '@/hooks/useDirections'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { TravelMode } from '@/types'
+import type { TravelMode, GeneratedItinerary, DaySuggestion } from '@/types'
 
 // SortablePlanCard component for drag and drop
 interface SortablePlanCardProps {
@@ -302,8 +306,15 @@ export function DayDetail() {
   const deletePlan = useTripStore((state) => state.deletePlan)
   const updatePlan = useTripStore((state) => state.updatePlan)
 
+  const addPlan = useTripStore((state) => state.addPlan)
+  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
+  const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
+  const isAIAvailable = claudeEnabled || !!claudeApiKey
+
   const [planToDelete, setPlanToDelete] = useState<number | null>(null)
   const [refreshingPlanId, setRefreshingPlanId] = useState<number | null>(null)
+  const [isRecommendOpen, setIsRecommendOpen] = useState(false)
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false)
 
   const dayNumber = day ? Number.parseInt(day) : 1
 
@@ -486,6 +497,64 @@ export function DayDetail() {
     }
   }
 
+  // AI Day Recommend: add generated plans to this day
+  const handleApplyRecommend = async (itinerary: GeneratedItinerary) => {
+    let addedCount = 0
+    const existingMaxOrder =
+      dayPlans.length > 0 ? Math.max(...dayPlans.map((p) => p.order ?? 0)) : -1
+
+    for (const day of itinerary.days) {
+      for (const plan of day.plans) {
+        await addPlan({
+          tripId: trip!.id!,
+          day: dayNumber,
+          placeName: plan.placeName,
+          startTime: plan.startTime,
+          endTime: plan.endTime || '',
+          type: plan.type || 'attraction',
+          address: plan.address || '',
+          memo: plan.memo || '',
+          latitude: plan.latitude,
+          longitude: plan.longitude,
+          photos: [],
+          order: existingMaxOrder + 1 + addedCount,
+        })
+        addedCount++
+      }
+    }
+    toast.success(`AI가 ${addedCount}개 일정을 추천했습니다`)
+  }
+
+  // AI Day Suggest: replace existing plans with revised plans
+  const handleApplySuggest = async (suggestion: DaySuggestion) => {
+    // Delete existing plans for this day
+    for (const plan of dayPlans) {
+      if (plan.id) {
+        await deletePlan(plan.id)
+      }
+    }
+    // Add revised plans
+    let addedCount = 0
+    for (const plan of suggestion.revisedPlans) {
+      await addPlan({
+        tripId: trip!.id!,
+        day: dayNumber,
+        placeName: plan.placeName,
+        startTime: plan.startTime,
+        endTime: plan.endTime || '',
+        type: plan.type || 'attraction',
+        address: plan.address || '',
+        memo: plan.memo || '',
+        latitude: plan.latitude,
+        longitude: plan.longitude,
+        photos: [],
+        order: addedCount,
+      })
+      addedCount++
+    }
+    toast.success(`AI가 일정을 ${addedCount}개로 개선했습니다`)
+  }
+
   if (isLoading) {
     return (
       <PageContainer>
@@ -557,7 +626,29 @@ export function DayDetail() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isAIAvailable && (
+            <Button
+              size="xs"
+              color="primary"
+              plain
+              onClick={() => setIsRecommendOpen(true)}
+              leftIcon={<Sparkles className="size-3.5" />}
+            >
+              AI 추천
+            </Button>
+          )}
+          {isAIAvailable && dayPlans.length >= 2 && (
+            <Button
+              size="xs"
+              color="warning"
+              plain
+              onClick={() => setIsSuggestOpen(true)}
+              leftIcon={<Lightbulb className="size-3.5" />}
+            >
+              AI 제안
+            </Button>
+          )}
           <RouteOptimizeButton
             plans={dayPlans}
             travelMode={defaultTravelMode}
@@ -702,6 +793,33 @@ export function DayDetail() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* AI Day Recommend Dialog */}
+      {isAIAvailable && trip && (
+        <AIDayRecommendDialog
+          open={isRecommendOpen}
+          onClose={() => setIsRecommendOpen(false)}
+          trip={trip}
+          dayNumber={dayNumber}
+          totalDays={totalDays}
+          dayDate={dayDate}
+          existingPlansCount={dayPlans.length}
+          onApply={handleApplyRecommend}
+        />
+      )}
+
+      {/* AI Day Suggest Dialog */}
+      {isAIAvailable && trip && dayPlans.length >= 2 && (
+        <AIDaySuggestDialog
+          open={isSuggestOpen}
+          onClose={() => setIsSuggestOpen(false)}
+          trip={trip}
+          dayNumber={dayNumber}
+          dayPlans={dayPlans}
+          dayDate={dayDate}
+          onApply={handleApplySuggest}
+        />
+      )}
       </div>
     </PageContainer>
   )

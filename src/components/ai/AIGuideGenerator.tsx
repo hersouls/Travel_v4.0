@@ -68,7 +68,7 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
     <Dialog open={open} onClose={onClose} size="lg">
       <DialogTitle onClose={onClose}>
         <span className="flex items-center gap-2">
-          <Sparkles className="size-5 text-purple-500" />
+          <Sparkles className="size-5 text-primary-500" />
           AI 가이드 생성
         </span>
       </DialogTitle>
@@ -87,12 +87,12 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
           <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 max-h-[400px] overflow-y-auto">
             <div className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
               {generatedText}
-              {isGenerating && <span className="inline-block w-2 h-4 bg-purple-500 animate-pulse ml-0.5" />}
+              {isGenerating && <span className="inline-block w-2 h-4 bg-primary-500 animate-pulse ml-0.5" />}
             </div>
           </div>
         ) : !isGenerating ? (
           <div className="p-8 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 text-center">
-            <Sparkles className="size-8 text-purple-400 mx-auto mb-3" />
+            <Sparkles className="size-8 text-primary-400 mx-auto mb-3" />
             <p className="text-sm text-zinc-500">
               "생성" 버튼을 클릭하면 AI가 여행 가이드 스크립트를 작성합니다.
             </p>
@@ -102,7 +102,7 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
           </div>
         ) : (
           <div className="p-8 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 text-center">
-            <Loader2 className="size-8 text-purple-500 mx-auto mb-3 animate-spin" />
+            <Loader2 className="size-8 text-primary-500 mx-auto mb-3 animate-spin" />
             <p className="text-sm text-zinc-500">가이드를 생성하는 중...</p>
           </div>
         )}

@@ -1,15 +1,19 @@
 // ============================================
-// AI Itinerary Generator Dialog
-// Auto-generates full trip itinerary using Claude AI
+// AI Day Schedule Recommend Dialog
+// Generates a single day itinerary from keywords using Claude AI
 // ============================================
 
 import { useState } from 'react'
-import { Sparkles, Loader2, Check, Calendar } from 'lucide-react'
+import { Sparkles, Check } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { generateStructured, buildItineraryContext, parseItineraryResponse } from '@/services/claudeService'
-import type { Trip, GeneratedItinerary, PlanType } from '@/types'
+import {
+  generateStructured,
+  buildDayRecommendContext,
+  parseItineraryResponse,
+} from '@/services/claudeService'
+import type { Trip, GeneratedItinerary } from '@/types'
 
 const INTEREST_OPTIONS = [
   { value: '관광', label: '관광' },
@@ -18,6 +22,7 @@ const INTEREST_OPTIONS = [
   { value: '자연', label: '자연' },
   { value: '문화', label: '문화' },
   { value: '야경', label: '야경' },
+  { value: '카페', label: '카페' },
 ]
 
 const STYLE_OPTIONS = [
@@ -26,35 +31,33 @@ const STYLE_OPTIONS = [
   { value: '균형', label: '균형' },
 ]
 
-const BUDGET_OPTIONS = [
-  { value: '절약', label: '절약' },
-  { value: '보통', label: '보통' },
-  { value: '럭셔리', label: '럭셔리' },
-]
-
-interface AIItineraryDialogProps {
+interface AIDayRecommendDialogProps {
   trip: Trip
+  dayNumber: number
   totalDays: number
+  dayDate: Date | null
   existingPlansCount: number
   onApply: (itinerary: GeneratedItinerary) => void
   onClose: () => void
   open: boolean
 }
 
-export function AIItineraryDialog({
+export function AIDayRecommendDialog({
   trip,
+  dayNumber,
   totalDays,
+  dayDate,
   existingPlansCount,
   onApply,
   onClose,
   open,
-}: AIItineraryDialogProps) {
+}: AIDayRecommendDialogProps) {
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
 
+  const [keywords, setKeywords] = useState('')
   const [interests, setInterests] = useState<string[]>(['관광', '맛집'])
   const [style, setStyle] = useState('균형')
-  const [budget, setBudget] = useState('보통')
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GeneratedItinerary | null>(null)
@@ -70,9 +73,8 @@ export function AIItineraryDialog({
       setError('API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력하세요.')
       return
     }
-
-    if (interests.length === 0) {
-      setError('관심사를 하나 이상 선택하세요.')
+    if (!keywords.trim() && interests.length === 0) {
+      setError('키워드를 입력하거나 관심사를 하나 이상 선택하세요.')
       return
     }
 
@@ -81,16 +83,21 @@ export function AIItineraryDialog({
     setResult(null)
 
     try {
-      const context = buildItineraryContext(trip, totalDays, { interests, style, budget })
+      const context = buildDayRecommendContext(trip, dayNumber, totalDays, dayDate, {
+        keywords: keywords.trim(),
+        interests,
+        style,
+      })
       const response = await generateStructured<string>(
-        { type: 'itinerary', context },
+        { type: 'day-recommend', context },
         claudeApiKey,
         claudeModel,
       )
 
-      const parsed = typeof response === 'string'
-        ? parseItineraryResponse(response)
-        : response as unknown as GeneratedItinerary
+      const parsed =
+        typeof response === 'string'
+          ? parseItineraryResponse(response)
+          : (response as unknown as GeneratedItinerary)
 
       if (!parsed || !parsed.days) {
         setError('AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.')
@@ -99,7 +106,7 @@ export function AIItineraryDialog({
 
       setResult(parsed)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'AI 일정 생성에 실패했습니다.')
+      setError(err instanceof Error ? err.message : 'AI 일정 추천에 실패했습니다.')
     } finally {
       setIsGenerating(false)
     }
@@ -124,20 +131,21 @@ export function AIItineraryDialog({
     <Dialog open={open} onClose={onClose} size="xl">
       <DialogTitle onClose={onClose}>
         <span className="flex items-center gap-2">
-          <Calendar className="size-5 text-primary-500" />
-          AI 일정 생성
+          <Sparkles className="size-5 text-primary-500" />
+          AI 일정 추천 - Day {dayNumber}
         </span>
       </DialogTitle>
       <DialogBody>
         {!result ? (
           <div className="space-y-5">
             <p className="text-sm text-zinc-500">
-              {trip.country} 여행 ({totalDays}일)에 맞는 일정을 AI가 자동 생성합니다.
+              {trip.country} 여행 Day {dayNumber}에 맞는 일정을 AI가 추천합니다.
             </p>
 
             {existingPlansCount > 0 && (
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-300">
-                기존 {existingPlansCount}개 일정이 있습니다. AI 일정은 새로 추가됩니다.
+                기존 {existingPlansCount}개 일정이 있습니다. AI 추천 일정은 기존 일정 뒤에
+                추가됩니다.
               </div>
             )}
 
@@ -146,6 +154,23 @@ export function AIItineraryDialog({
                 {error}
               </div>
             )}
+
+            {/* Keywords input */}
+            <div>
+              <p className="text-sm font-medium text-[var(--foreground)] mb-2">
+                관심 키워드 / 가고 싶은 장소
+              </p>
+              <input
+                type="text"
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                placeholder="예: 에펠탑, 세느강, 마레지구, 크루아상"
+                className="w-full px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-[var(--foreground)] placeholder-zinc-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent outline-none"
+              />
+              <p className="text-xs text-zinc-400 mt-1">
+                쉼표로 구분하여 장소명, 지역명, 키워드 등을 입력하세요
+              </p>
+            </div>
 
             {/* Interests */}
             <div>
@@ -188,61 +213,33 @@ export function AIItineraryDialog({
                 ))}
               </div>
             </div>
-
-            {/* Budget */}
-            <div>
-              <p className="text-sm font-medium text-[var(--foreground)] mb-2">예산</p>
-              <div className="flex gap-2">
-                {BUDGET_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setBudget(option.value)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex-1 ${
-                      budget === option.value
-                        ? 'bg-primary-500 text-white'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         ) : (
           <div className="space-y-4">
             <p className="text-sm text-zinc-500">
-              AI가 생성한 일정을 검토하세요. "적용"을 클릭하면 일정에 추가됩니다.
+              AI가 추천한 일정을 검토하세요. "적용"을 클릭하면 일정에 추가됩니다.
             </p>
 
-            <div className="max-h-[400px] overflow-y-auto space-y-4">
-              {result.days.map((day) => (
-                <div key={day.day} className="space-y-2">
-                  <h3 className="text-sm font-bold text-[var(--foreground)] sticky top-0 bg-white dark:bg-zinc-900 py-1">
-                    Day {day.day}
-                  </h3>
-                  {day.plans.map((plan, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-3 p-2.5 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg"
-                    >
-                      <span className="text-xs font-mono text-zinc-400 w-12 flex-shrink-0">
-                        {plan.startTime}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-[var(--foreground)] truncate">
-                          {plan.placeName}
-                        </p>
-                        {plan.address && (
-                          <p className="text-xs text-zinc-400 truncate">{plan.address}</p>
-                        )}
-                      </div>
-                      <span className="text-xs px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-300">
-                        {planTypeLabels[plan.type] || plan.type}
-                      </span>
-                    </div>
-                  ))}
+            <div className="max-h-[400px] overflow-y-auto space-y-2">
+              {result.days[0]?.plans.map((plan, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center gap-3 p-2.5 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg"
+                >
+                  <span className="text-xs font-mono text-zinc-400 w-12 flex-shrink-0">
+                    {plan.startTime}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--foreground)] truncate">
+                      {plan.placeName}
+                    </p>
+                    {plan.address && (
+                      <p className="text-xs text-zinc-400 truncate">{plan.address}</p>
+                    )}
+                  </div>
+                  <span className="text-xs px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-300">
+                    {planTypeLabels[plan.type] || plan.type}
+                  </span>
                 </div>
               ))}
             </div>
@@ -260,23 +257,15 @@ export function AIItineraryDialog({
             isLoading={isGenerating}
             leftIcon={!isGenerating ? <Sparkles className="size-4" /> : undefined}
           >
-            {isGenerating ? '생성 중...' : '일정 생성'}
+            {isGenerating ? '생성 중...' : '일정 추천'}
           </Button>
         )}
         {result && (
           <>
-            <Button
-              color="secondary"
-              outline
-              onClick={() => setResult(null)}
-            >
+            <Button color="secondary" outline onClick={() => setResult(null)}>
               다시 생성
             </Button>
-            <Button
-              color="primary"
-              onClick={handleApply}
-              leftIcon={<Check className="size-4" />}
-            >
+            <Button color="primary" onClick={handleApply} leftIcon={<Check className="size-4" />}>
               일정에 적용
             </Button>
           </>

@@ -365,6 +365,18 @@ input, button { touch-action: manipulation; }
 }
 
 /* ============================================
+   Z-Index Scale
+   z-10: Sticky headers
+   z-30: Sidebar, Music Player
+   z-40: Header, Mobile nav bar
+   z-50: Dropdowns, Tooltips, Autocomplete
+   z-60: Dialogs, Modals
+   z-70: Toasts, Notifications
+   z-80: PWA prompts, System alerts
+   z-[9999]: Drag overlays
+   ============================================ */
+
+/* ============================================
    View Transitions API
    ============================================ */
 
@@ -427,6 +439,16 @@ input, button { touch-action: manipulation; }
 .plan-type-plane { --type-color: #06b6d4; }
 .plan-type-airport { --type-color: #0ea5e9; }
 .plan-type-other { --type-color: #a1a1aa; }
+
+/* Plan Type Colors - Dark Mode (lighter for visibility) */
+.dark .plan-type-attraction { --type-color: #a78bfa; }
+.dark .plan-type-restaurant { --type-color: #fb923c; }
+.dark .plan-type-hotel { --type-color: #60a5fa; }
+.dark .plan-type-transport { --type-color: #9ca3af; }
+.dark .plan-type-car { --type-color: #a3e635; }
+.dark .plan-type-plane { --type-color: #22d3ee; }
+.dark .plan-type-airport { --type-color: #38bdf8; }
+.dark .plan-type-other { --type-color: #d4d4d8; }
 
 /* Leaflet Map Customization */
 .leaflet-container {

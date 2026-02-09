@@ -52,15 +52,25 @@ function applyColorPalette(palette: ColorPalette) {
   }
 }
 
-// Listen for system theme changes
-if (typeof window !== 'undefined') {
-  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+// Listen for system theme changes (with cleanup reference for HMR)
+let _systemThemeCleanup: (() => void) | null = null
+
+function setupSystemThemeListener() {
+  if (typeof window === 'undefined') return
+  _systemThemeCleanup?.()
+
+  const mql = window.matchMedia('(prefers-color-scheme: dark)')
+  const handler = (e: MediaQueryListEvent) => {
     const currentTheme = useSettingsStore.getState().theme
     if (currentTheme === 'system') {
       document.documentElement.classList.toggle('dark', e.matches)
     }
-  })
+  }
+  mql.addEventListener('change', handler)
+  _systemThemeCleanup = () => mql.removeEventListener('change', handler)
 }
+
+setupSystemThemeListener()
 
 export const useSettingsStore = create<SettingsState>()(
   devtools(

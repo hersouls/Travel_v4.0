@@ -28,7 +28,7 @@ const sizeStyles = {
 export function Dialog({ open, onClose, size = 'md', children, className }: DialogProps) {
   return (
     <Transition show={open} as={Fragment}>
-      <HeadlessDialog onClose={onClose} className="relative z-50">
+      <HeadlessDialog onClose={onClose} className="relative z-60">
         <TransitionChild
           as={Fragment}
           enter="ease-out duration-300"

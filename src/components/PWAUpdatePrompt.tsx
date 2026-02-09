@@ -14,7 +14,7 @@ export function PWAUpdatePrompt() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 animate-slide-up">
+    <div className="fixed bottom-0 left-0 right-0 z-80 p-4 animate-slide-up">
       <div className="mx-auto max-w-lg">
         <div className="flex items-center justify-between gap-4 rounded-xl bg-zinc-900 dark:bg-zinc-800 px-4 py-3 shadow-lg border border-zinc-700">
           {/* Icon & Message */}

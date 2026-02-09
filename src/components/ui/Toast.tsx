@@ -98,7 +98,7 @@ interface ToastContainerProps {
 
 export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
   return (
-    <div className="pointer-events-none fixed inset-0 flex flex-col items-end justify-start p-4 gap-3 z-50">
+    <div className="pointer-events-none fixed inset-0 flex flex-col items-end justify-start p-4 gap-3 z-70">
       {toasts.map((toast) => (
         <Toast key={toast.id} {...toast} onDismiss={onDismiss} />
       ))}

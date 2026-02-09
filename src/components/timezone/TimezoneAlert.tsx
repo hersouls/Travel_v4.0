@@ -35,7 +35,7 @@ export function TimezoneAlert({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 100, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="fixed bottom-24 lg:bottom-20 left-4 right-4 z-40 mx-auto max-w-md"
+          className="fixed bottom-24 lg:bottom-20 left-4 right-4 z-80 mx-auto max-w-md"
         >
           <div className="bg-white dark:bg-zinc-900 rounded-xl shadow-lg ring-1 ring-zinc-950/5 dark:ring-white/10 p-4">
             <div className="flex items-start gap-3">

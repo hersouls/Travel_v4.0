@@ -156,7 +156,7 @@ if ('serviceWorker' in navigator) {
         console.log('SW registered:', registration.scope)
 
         // Check for updates every 60 minutes
-        setInterval(() => {
+        const _swUpdateInterval = setInterval(() => {
           registration.update()
         }, 60 * 60 * 1000)
 

@@ -88,7 +88,7 @@ export function TripStatistics({
       </h3>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-center">
           <RouteIcon className="size-4 text-blue-500 mx-auto mb-1" />
           <p className="text-lg font-bold text-blue-700 dark:text-blue-300">

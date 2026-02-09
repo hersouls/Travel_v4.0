@@ -105,7 +105,7 @@ export function useTTS(): UseTTSReturn {
 
       const newFallbackMode = ttsService.isFallbackMode()
       if (isFallbackMode !== newFallbackMode) setIsFallbackMode(newFallbackMode)
-    }, 100)
+    }, 250)
 
     return () => clearInterval(interval)
   }, [isSupported, isPlaying, isPaused, isFallbackMode])
