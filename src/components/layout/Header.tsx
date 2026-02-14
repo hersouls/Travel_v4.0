@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Menu, Search, Plus, Settings, X, WifiOff, Wifi } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Menu, Search, Plus, Settings, WifiOff, Wifi } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button, IconButton } from '@/components/ui/Button'
 import { useUIStore, toast } from '@/stores/uiStore'
@@ -57,9 +57,6 @@ function ConnectionIndicator({ isOnline }: { isOnline: boolean }) {
 }
 
 export function Header() {
-  const navigate = useNavigate()
-  const [isSearchOpen, setIsSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const setMobileMenuOpen = useUIStore((state) => state.setMobileMenuOpen)
   const { isOnline } = useOnlineStatus()
   const prevOnlineRef = useRef(isOnline)
@@ -76,16 +73,6 @@ export function Header() {
   useEffect(() => {
     prevOnlineRef.current = isOnline
   }, [])
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      // Navigate to dashboard with search query
-      navigate(`/dashboard?q=${encodeURIComponent(searchQuery.trim())}`)
-      setIsSearchOpen(false)
-      setSearchQuery('')
-    }
-  }
 
   return (
     <header className="sticky top-0 z-40 h-16 border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-md">
@@ -117,18 +104,19 @@ export function Header() {
           <ConnectionIndicator isOnline={isOnline} />
         </div>
 
-        {/* Center: Search (Desktop) */}
+        {/* Center: Search Trigger (Desktop) */}
         <div className="hidden md:flex flex-1 max-w-[40%] lg:max-w-md mx-4">
-          <form onSubmit={handleSearch} className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
-            <input
-              type="search"
-              placeholder="여행 검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-10 pl-10 pr-4 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-          </form>
+          <button
+            type="button"
+            onClick={() => useUIStore.getState().setSearchOpen(true)}
+            className="w-full h-10 pl-10 pr-4 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm text-zinc-400 text-left relative hover:border-primary-500/50 transition-colors"
+          >
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4" />
+            여행 검색...
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden lg:inline-flex h-5 items-center gap-1 rounded border border-zinc-200 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-700 px-1.5 text-[10px] font-medium">
+              Ctrl+K
+            </kbd>
+          </button>
         </div>
 
         {/* Right: Actions */}
@@ -138,10 +126,10 @@ export function Header() {
             plain
             color="secondary"
             className="md:hidden"
-            onClick={() => setIsSearchOpen(!isSearchOpen)}
-            aria-label={isSearchOpen ? '검색 닫기' : '검색 열기'}
+            onClick={() => useUIStore.getState().setSearchOpen(true)}
+            aria-label="검색 열기"
           >
-            {isSearchOpen ? <X className="size-5" /> : <Search className="size-5" />}
+            <Search className="size-5" />
           </IconButton>
 
           {/* New Trip Button */}
@@ -164,22 +152,6 @@ export function Header() {
         </div>
       </div>
 
-      {/* Mobile Search Overlay */}
-      {isSearchOpen && (
-        <div className="absolute left-0 right-0 top-16 border-b border-[var(--border)] bg-[var(--background)] p-4 md:hidden animate-fade-in">
-          <form onSubmit={handleSearch} className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-400" />
-            <input
-              type="search"
-              placeholder="여행 검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              autoFocus
-              className="w-full h-10 pl-10 pr-4 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-          </form>
-        </div>
-      )}
     </header>
   )
 }

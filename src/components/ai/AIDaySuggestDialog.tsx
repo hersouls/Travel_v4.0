@@ -3,8 +3,8 @@
 // Analyzes existing day plans and suggests improvements
 // ============================================
 
-import { useState } from 'react'
-import { Lightbulb, Check, AlertTriangle } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Lightbulb, Check, AlertTriangle, X } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -41,6 +41,7 @@ export function AIDaySuggestDialog({
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<DaySuggestion | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   const handleAnalyze = async () => {
     if (!claudeApiKey) {
@@ -48,6 +49,8 @@ export function AIDaySuggestDialog({
       return
     }
 
+    const controller = new AbortController()
+    abortRef.current = controller
     setIsGenerating(true)
     setError(null)
     setResult(null)
@@ -59,6 +62,7 @@ export function AIDaySuggestDialog({
         { type: 'day-suggest', context },
         claudeApiKey,
         claudeModel,
+        controller.signal,
       )
 
       const parsed =
@@ -73,10 +77,22 @@ export function AIDaySuggestDialog({
 
       setResult(parsed)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'AI 분석에 실패했습니다.')
     } finally {
       setIsGenerating(false)
+      abortRef.current = null
     }
+  }
+
+  const handleCancel = () => {
+    abortRef.current?.abort()
+    setIsGenerating(false)
+  }
+
+  const handleClose = () => {
+    abortRef.current?.abort()
+    onClose()
   }
 
   const handleApply = () => {
@@ -95,15 +111,21 @@ export function AIDaySuggestDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} size="xl">
-      <DialogTitle onClose={onClose}>
+    <Dialog open={open} onClose={handleClose} size="xl">
+      <DialogTitle onClose={handleClose}>
         <span className="flex items-center gap-2">
           <Lightbulb className="size-5 text-amber-500" />
           AI 일정 제안 - Day {dayNumber}
         </span>
       </DialogTitle>
       <DialogBody>
-        {!result ? (
+        {isGenerating ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <div className="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-zinc-500 animate-pulse">AI가 일정을 분석하고 있습니다...</p>
+            <p className="text-xs text-zinc-400">보통 10~30초 소요됩니다</p>
+          </div>
+        ) : !result ? (
           <div className="space-y-4">
             <p className="text-sm text-zinc-500">
               현재 Day {dayNumber}의 {dayPlans.length}개 일정을 AI가 분석하고 개선안을 제안합니다.
@@ -206,17 +228,21 @@ export function AIDaySuggestDialog({
         )}
       </DialogBody>
       <DialogActions>
-        <Button color="secondary" onClick={onClose}>
-          취소
+        <Button color="secondary" onClick={handleClose}>
+          {isGenerating ? '닫기' : '취소'}
         </Button>
-        {!result && (
+        {isGenerating && (
+          <Button color="danger" outline onClick={handleCancel} leftIcon={<X className="size-4" />}>
+            분석 취소
+          </Button>
+        )}
+        {!isGenerating && !result && (
           <Button
             color="primary"
             onClick={handleAnalyze}
-            isLoading={isGenerating}
-            leftIcon={!isGenerating ? <Lightbulb className="size-4" /> : undefined}
+            leftIcon={<Lightbulb className="size-4" />}
           >
-            {isGenerating ? '분석 중...' : '일정 분석'}
+            일정 분석
           </Button>
         )}
         {result && !showConfirm && (

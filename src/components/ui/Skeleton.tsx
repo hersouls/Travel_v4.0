@@ -12,7 +12,7 @@ interface SkeletonProps {
 }
 
 export function Skeleton({ className, variant = 'text', width, height }: SkeletonProps) {
-  const baseStyles = 'animate-pulse bg-zinc-200 dark:bg-zinc-700'
+  const baseStyles = 'animate-shimmer'
 
   const variantStyles = {
     text: 'rounded h-4',
@@ -40,7 +40,7 @@ export function SkeletonText({ lines = 3, className }: { lines?: number; classNa
 
 export function SkeletonCard({ className }: { className?: string }) {
   return (
-    <div className={clsx('rounded-xl bg-white dark:bg-zinc-900 p-4 ring-1 ring-zinc-950/5 dark:ring-white/10', className)}>
+    <div className={clsx('rounded-xl bg-[var(--card)] p-4 ring-1 ring-zinc-950/5 dark:ring-white/10', className)}>
       <Skeleton variant="rectangular" height={120} className="w-full mb-4" />
       <Skeleton className="w-3/4 mb-2" />
       <Skeleton className="w-1/2" />

@@ -2,13 +2,14 @@
 // MemoRenderer - 메모 렌더링 컴포넌트
 // ============================================
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
 import {
   parseLabelLine,
   parseChecklistItem,
   parseSectionHeader,
   cleanSectionTitle,
+  preprocessMemoContent,
   COLOR_CLASSES,
   type MemoIconRule,
   type SectionHeaderRule,
@@ -22,8 +23,10 @@ interface MemoRendererProps {
 }
 
 export function MemoRenderer({ content, className = '' }: MemoRendererProps) {
+  // 전처리: 마크다운 헤더 제거
+  const preprocessed = preprocessMemoContent(content)
   // 섹션 헤더로 콘텐츠를 분할
-  const sections = splitIntoSections(content)
+  const sections = splitIntoSections(preprocessed)
 
   return (
     <div className={`space-y-4 ${className}`}>
@@ -31,6 +34,117 @@ export function MemoRenderer({ content, className = '' }: MemoRendererProps) {
         <MemoBlock key={idx} content={section} />
       ))}
     </div>
+  )
+}
+
+// 인라인 마크다운 렌더링: **bold** → <strong>, *italic* → <em>
+function renderInlineMarkdown(text: string): ReactNode {
+  // **bold** 와 *italic* 패턴이 없으면 그대로 반환
+  if (!text.includes('*')) return text
+
+  const parts: ReactNode[] = []
+  let remaining = text
+  let key = 0
+
+  while (remaining.length > 0) {
+    // **bold** 패턴 (먼저 체크 — ** 가 * 보다 우선)
+    const boldMatch = remaining.match(/^(.*?)\*\*(.+?)\*\*(.*)$/)
+    if (boldMatch) {
+      if (boldMatch[1]) parts.push(boldMatch[1])
+      parts.push(<strong key={key++} className="font-semibold">{boldMatch[2]}</strong>)
+      remaining = boldMatch[3]
+      continue
+    }
+
+    // *italic* 패턴
+    const italicMatch = remaining.match(/^(.*?)\*(.+?)\*(.*)$/)
+    if (italicMatch) {
+      if (italicMatch[1]) parts.push(italicMatch[1])
+      parts.push(<em key={key++}>{italicMatch[2]}</em>)
+      remaining = italicMatch[3]
+      continue
+    }
+
+    // 더 이상 패턴 없음
+    parts.push(remaining)
+    break
+  }
+
+  return parts.length === 1 ? parts[0] : <>{parts}</>
+}
+
+// 테이블 블록: | col | col | 패턴 감지
+function TableBlock({ lines }: { lines: string[] }) {
+  // 구분선(---|---) 제거하고 데이터만 파싱
+  const dataLines = lines.filter((l) => !l.trim().match(/^[\s|:-]+$/))
+
+  if (dataLines.length === 0) return null
+
+  const parseRow = (line: string): string[] =>
+    line
+      .split('|')
+      .map((cell) => cell.trim())
+      .filter((cell) => cell.length > 0)
+
+  const headerCells = parseRow(dataLines[0])
+  const bodyRows = dataLines.slice(1).map(parseRow)
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-700">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-zinc-100 dark:bg-zinc-800">
+            {headerCells.map((cell, i) => (
+              <th
+                key={i}
+                className="px-3 py-2 text-left font-medium text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700"
+              >
+                {renderInlineMarkdown(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {bodyRows.map((row, ri) => (
+            <tr
+              key={ri}
+              className={cn(
+                ri % 2 === 0
+                  ? 'bg-white dark:bg-zinc-900'
+                  : 'bg-zinc-50 dark:bg-zinc-800/50'
+              )}
+            >
+              {row.map((cell, ci) => (
+                <td
+                  key={ci}
+                  className="px-3 py-2 text-zinc-700 dark:text-zinc-300 border-b border-zinc-100 dark:border-zinc-800"
+                >
+                  {renderInlineMarkdown(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// 구분선 블록: ---
+function SeparatorBlock() {
+  return <hr className="border-t border-zinc-200 dark:border-zinc-700 my-2" />
+}
+
+// 인용 블록: > text
+function BlockquoteBlock({ lines }: { lines: string[] }) {
+  return (
+    <blockquote className="border-l-4 border-primary-300 dark:border-primary-600 pl-4 py-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-r-lg">
+      {lines.map((line, i) => (
+        <p key={i} className="text-sm text-zinc-600 dark:text-zinc-400 italic leading-relaxed">
+          {renderInlineMarkdown(line.replace(/^>\s*/, ''))}
+        </p>
+      ))}
+    </blockquote>
   )
 }
 
@@ -48,6 +162,16 @@ function splitIntoSections(content: string): string[] {
       if (currentSection.length > 0) {
         currentSection.push('')
       }
+      continue
+    }
+
+    // --- 구분선은 별도 섹션으로 분리
+    if (trimmed.match(/^-{3,}$/)) {
+      if (currentSection.length > 0) {
+        sections.push(currentSection.join('\n').trim())
+        currentSection = []
+      }
+      sections.push('---')
       continue
     }
 
@@ -74,6 +198,23 @@ function splitIntoSections(content: string): string[] {
 function MemoBlock({ content }: { content: string }) {
   const lines = content.split('\n').filter((l) => l.trim())
   if (lines.length === 0) return null
+
+  // 구분선 감지
+  if (lines.length === 1 && lines[0].trim().match(/^-{3,}$/)) {
+    return <SeparatorBlock />
+  }
+
+  // 테이블 블록 감지 (| col | col | 패턴)
+  const isTable = lines.length >= 2 && lines.every((l) => l.trim().startsWith('|') && l.trim().endsWith('|'))
+  if (isTable) {
+    return <TableBlock lines={lines} />
+  }
+
+  // 인용 블록 감지 (> text)
+  const isBlockquote = lines.every((l) => l.trim().startsWith('>'))
+  if (isBlockquote) {
+    return <BlockquoteBlock lines={lines} />
+  }
 
   // 1. 섹션 헤더 감지
   const sectionHeader = parseSectionHeader(lines[0])
@@ -183,7 +324,7 @@ function LabelBlock({
       <Icon className={`size-5 flex-shrink-0 mt-0.5 ${colors.icon}`} />
       <div className="flex-1 min-w-0">
         <span className={`font-medium ${colors.label}`}>{label}:</span>{' '}
-        <span className="text-zinc-700 dark:text-zinc-300">{value}</span>
+        <span className="text-zinc-700 dark:text-zinc-300">{renderInlineMarkdown(value)}</span>
       </div>
     </div>
   )
@@ -210,13 +351,13 @@ function LabelGroupBlock({
         <Icon className={`size-5 flex-shrink-0 mt-0.5 ${colors.icon}`} />
         <div className="flex-1 min-w-0">
           <span className={`font-medium ${colors.label}`}>{label}:</span>{' '}
-          <span className="text-zinc-700 dark:text-zinc-300">{value}</span>
+          <span className="text-zinc-700 dark:text-zinc-300">{renderInlineMarkdown(value)}</span>
         </div>
       </div>
       {additionalLines.length > 0 && (
         <div className="mt-2 ml-8 space-y-1 text-sm text-zinc-600 dark:text-zinc-400">
           {additionalLines.map((line, i) => (
-            <div key={i}>{line}</div>
+            <div key={i}>{renderInlineMarkdown(line)}</div>
           ))}
         </div>
       )}
@@ -236,13 +377,13 @@ function SimpleLabelBlock({ lines }: { lines: string[] }) {
               <span className="font-medium text-zinc-600 dark:text-zinc-400 min-w-fit">
                 {parsed.label}:
               </span>
-              <span className="text-zinc-800 dark:text-zinc-200">{parsed.value}</span>
+              <span className="text-zinc-800 dark:text-zinc-200">{renderInlineMarkdown(parsed.value)}</span>
             </div>
           )
         }
         return (
           <div key={i} className="text-sm text-zinc-700 dark:text-zinc-300">
-            {line}
+            {renderInlineMarkdown(line)}
           </div>
         )
       })}
@@ -258,7 +399,7 @@ function ListBlock({ lines }: { lines: string[] }) {
         <li key={i} className="flex gap-2 text-sm">
           <span className="text-primary-500 mt-1 select-none">•</span>
           <span className="text-zinc-700 dark:text-zinc-300 leading-relaxed">
-            {item.trim().replace(/^[-*]\s*/, '').replace(/^\d+\.\s*/, '')}
+            {renderInlineMarkdown(item.trim().replace(/^[-*]\s*/, '').replace(/^\d+\.\s*/, ''))}
           </span>
         </li>
       ))}
@@ -270,7 +411,7 @@ function ListBlock({ lines }: { lines: string[] }) {
 function ParagraphBlock({ content }: { content: string }) {
   return (
     <p className="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed whitespace-pre-wrap">
-      {content}
+      {renderInlineMarkdown(content)}
     </p>
   )
 }
@@ -368,7 +509,7 @@ function ChecklistBlock({
                 : 'text-zinc-700 dark:text-zinc-300'
             )}
           >
-            {item.text}
+            {renderInlineMarkdown(item.text)}
           </span>
           {item.checked && (
             <Check className="size-4 text-success-500 flex-shrink-0" />
@@ -391,7 +532,7 @@ function MemoLine({ line }: { line: string }) {
         <div className="flex items-start gap-2 text-sm">
           <Icon className={cn('size-4 flex-shrink-0 mt-0.5', colors.icon)} />
           <span className={cn('font-medium', colors.label)}>{parsed.label}:</span>
-          <span className="text-zinc-700 dark:text-zinc-300">{parsed.value}</span>
+          <span className="text-zinc-700 dark:text-zinc-300">{renderInlineMarkdown(parsed.value)}</span>
         </div>
       )
     }
@@ -400,7 +541,7 @@ function MemoLine({ line }: { line: string }) {
         <span className="font-medium text-zinc-600 dark:text-zinc-400">
           {parsed.label}:
         </span>
-        <span className="text-zinc-700 dark:text-zinc-300">{parsed.value}</span>
+        <span className="text-zinc-700 dark:text-zinc-300">{renderInlineMarkdown(parsed.value)}</span>
       </div>
     )
   }
@@ -411,13 +552,13 @@ function MemoLine({ line }: { line: string }) {
     return (
       <div className="flex gap-2 text-sm">
         <span className="text-primary-500 select-none">•</span>
-        <span className="text-zinc-700 dark:text-zinc-300">{listMatch[1]}</span>
+        <span className="text-zinc-700 dark:text-zinc-300">{renderInlineMarkdown(listMatch[1])}</span>
       </div>
     )
   }
 
   // 일반 텍스트
   return (
-    <p className="text-sm text-zinc-700 dark:text-zinc-300">{line}</p>
+    <p className="text-sm text-zinc-700 dark:text-zinc-300">{renderInlineMarkdown(line)}</p>
   )
 }

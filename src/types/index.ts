@@ -25,6 +25,7 @@ export interface Trip {
   coverImage?: string // Base64 encoded
   plansCount?: number
   isFavorite: boolean
+  shareId?: string // Public sharing ID for read-only link
   createdAt: Date
   updatedAt: Date
 }
@@ -172,7 +173,7 @@ export interface TripStatistics {
 export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
 
 export interface AIGenerateRequest {
-  type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'test'
+  type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'day-recommend' | 'day-suggest' | 'test'
   context: Record<string, unknown>
   image?: string // base64 (for vision)
   model?: ClaudeModel
@@ -192,6 +193,22 @@ export interface GeneratedItinerary {
       latitude?: number
       longitude?: number
     }>
+  }>
+}
+
+// AI Day Suggestion (일정 제안 결과)
+export interface DaySuggestion {
+  analysis: string
+  suggestions: string[]
+  revisedPlans: Array<{
+    placeName: string
+    startTime: string
+    endTime: string
+    type: PlanType
+    address?: string
+    memo?: string
+    latitude?: number
+    longitude?: number
   }>
 }
 
@@ -246,6 +263,16 @@ export const DEFAULT_SETTINGS: Settings = {
   claudeModel: 'sonnet',
 }
 
+// Sync Status
+export type SyncStatus = 'idle' | 'checking' | 'syncing' | 'done' | 'error'
+
+export interface SyncProgress {
+  status: SyncStatus
+  step?: string // e.g., '여행 동기화 중...'
+  localOnlyCount?: number // local-only items to be removed
+  error?: string
+}
+
 // UI Types
 export interface Toast {
   id: string
@@ -253,6 +280,10 @@ export interface Toast {
   title: string
   message?: string
   duration?: number
+  action?: {
+    label: string
+    onClick: () => void
+  }
 }
 
 // Firebase Migration Types

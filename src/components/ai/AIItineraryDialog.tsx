@@ -3,8 +3,8 @@
 // Auto-generates full trip itinerary using Claude AI
 // ============================================
 
-import { useState } from 'react'
-import { Sparkles, Loader2, Check, Calendar } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Sparkles, Check, Calendar, X } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -58,6 +58,7 @@ export function AIItineraryDialog({
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GeneratedItinerary | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const toggleInterest = (value: string) => {
     setInterests((prev) =>
@@ -76,6 +77,8 @@ export function AIItineraryDialog({
       return
     }
 
+    const controller = new AbortController()
+    abortRef.current = controller
     setIsGenerating(true)
     setError(null)
     setResult(null)
@@ -86,6 +89,7 @@ export function AIItineraryDialog({
         { type: 'itinerary', context },
         claudeApiKey,
         claudeModel,
+        controller.signal,
       )
 
       const parsed = typeof response === 'string'
@@ -99,10 +103,22 @@ export function AIItineraryDialog({
 
       setResult(parsed)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'AI 일정 생성에 실패했습니다.')
     } finally {
       setIsGenerating(false)
+      abortRef.current = null
     }
+  }
+
+  const handleCancel = () => {
+    abortRef.current?.abort()
+    setIsGenerating(false)
+  }
+
+  const handleClose = () => {
+    abortRef.current?.abort()
+    onClose()
   }
 
   const handleApply = () => {
@@ -121,15 +137,21 @@ export function AIItineraryDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} size="xl">
-      <DialogTitle onClose={onClose}>
+    <Dialog open={open} onClose={handleClose} size="xl">
+      <DialogTitle onClose={handleClose}>
         <span className="flex items-center gap-2">
           <Calendar className="size-5 text-primary-500" />
           AI 일정 생성
         </span>
       </DialogTitle>
       <DialogBody>
-        {!result ? (
+        {isGenerating ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <div className="w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-zinc-500 animate-pulse">AI가 {totalDays}일 일정을 생성하고 있습니다...</p>
+            <p className="text-xs text-zinc-400">다일 일정은 30초~1분 소요될 수 있습니다</p>
+          </div>
+        ) : !result ? (
           <div className="space-y-5">
             <p className="text-sm text-zinc-500">
               {trip.country} 여행 ({totalDays}일)에 맞는 일정을 AI가 자동 생성합니다.
@@ -250,17 +272,21 @@ export function AIItineraryDialog({
         )}
       </DialogBody>
       <DialogActions>
-        <Button color="secondary" onClick={onClose}>
-          취소
+        <Button color="secondary" onClick={handleClose}>
+          {isGenerating ? '닫기' : '취소'}
         </Button>
-        {!result && (
+        {isGenerating && (
+          <Button color="danger" outline onClick={handleCancel} leftIcon={<X className="size-4" />}>
+            생성 취소
+          </Button>
+        )}
+        {!isGenerating && !result && (
           <Button
             color="primary"
             onClick={handleGenerate}
-            isLoading={isGenerating}
-            leftIcon={!isGenerating ? <Sparkles className="size-4" /> : undefined}
+            leftIcon={<Sparkles className="size-4" />}
           >
-            {isGenerating ? '생성 중...' : '일정 생성'}
+            일정 생성
           </Button>
         )}
         {result && (

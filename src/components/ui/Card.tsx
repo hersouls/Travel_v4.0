@@ -12,16 +12,16 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const variantStyles = {
-  default: clsx('bg-white dark:bg-zinc-900', 'ring-1 ring-zinc-950/5 dark:ring-white/10'),
+  default: clsx('bg-[var(--card)]', 'ring-1 ring-zinc-950/5 dark:ring-white/10'),
   elevated: clsx(
-    'bg-white dark:bg-zinc-900',
+    'bg-[var(--card)]',
     'shadow-lg shadow-zinc-950/5 dark:shadow-none',
     'ring-1 ring-zinc-950/5 dark:ring-white/10'
   ),
-  bordered: clsx('bg-transparent', 'border-2 border-zinc-200 dark:border-zinc-700'),
-  outline: clsx('bg-white/50 dark:bg-zinc-900/50', 'ring-1 ring-zinc-950/10 dark:ring-white/15'),
+  bordered: clsx('bg-transparent', 'border-2 border-[var(--border)]'),
+  outline: clsx('bg-[var(--card)]/50', 'ring-1 ring-zinc-950/10 dark:ring-white/15'),
   interactive: clsx(
-    'bg-white dark:bg-zinc-900',
+    'bg-[var(--card)]',
     'ring-1 ring-zinc-950/5 dark:ring-white/10',
     'hover:ring-zinc-950/10 dark:hover:ring-white/20',
     'hover:shadow-md hover:shadow-zinc-950/5 dark:hover:shadow-none',

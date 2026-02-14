@@ -189,12 +189,37 @@ export function detectMemoIcon(text: string): MemoIconRule | null {
 export function parseLabelLine(
   line: string
 ): { label: string; value: string; rule: MemoIconRule | null } | null {
+  // 마크다운 볼드 패턴 정규화: "- **주소:** **value**" → "주소: value"
+  let normalized = line.trim()
+  // 리스트 접두사 제거
+  normalized = normalized.replace(/^[-*]\s+/, '')
+  // **label:** value 또는 **label:** **value** 패턴 처리
+  const boldLabelMatch = normalized.match(/^\*\*([^*]+?):\*\*\s*(.+)$/)
+  if (boldLabelMatch) {
+    const label = boldLabelMatch[1].trim()
+    const value = boldLabelMatch[2].replace(/\*\*/g, '').trim()
+    const rule = detectMemoIcon(label)
+    return { label, value, rule }
+  }
+  // **label** : value 패턴 처리
+  const boldLabel2Match = normalized.match(/^\*\*([^*]+?)\*\*\s*:\s*(.+)$/)
+  if (boldLabel2Match) {
+    const label = boldLabel2Match[1].trim()
+    const value = boldLabel2Match[2].replace(/\*\*/g, '').trim()
+    const rule = detectMemoIcon(label)
+    return { label, value, rule }
+  }
+
   // 콜론으로 분리 (첫 번째 콜론만)
-  const colonIndex = line.indexOf(':')
+  const colonIndex = normalized.indexOf(':')
   if (colonIndex === -1 || colonIndex > 15) return null
 
-  const label = line.slice(0, colonIndex).trim()
-  const value = line.slice(colonIndex + 1).trim()
+  let label = normalized.slice(0, colonIndex).trim()
+  let value = normalized.slice(colonIndex + 1).trim()
+
+  // 잔여 ** 제거
+  label = label.replace(/\*\*/g, '')
+  value = value.replace(/\*\*/g, '')
 
   // 값이 없으면 라벨만 있는 경우
   if (!value) return null
@@ -305,9 +330,11 @@ export function parseSectionHeader(line: string): SectionHeaderRule | null {
  * 섹션 헤더 텍스트에서 이모지 제거 (Lucide 아이콘으로 대체됨)
  */
 export function cleanSectionTitle(title: string): string {
-  // 모든 이모지 범위 제거
+  // 마크다운 헤더(##) 및 이모지 제거
   return title
     .trim()
+    // 마크다운 해시 헤더 제거 (## 제목 → 제목)
+    .replace(/^#{1,3}\s+/, '')
     // 기본 이모지 범위
     .replace(/[\u{1F300}-\u{1F9FF}]/gu, '')
     // 기호 이모지
@@ -325,4 +352,24 @@ export function cleanSectionTitle(title: string): string {
     .replace(/[✅⚠️⏰💡📍🎫🚗🍽️📞💰📸🚶✈️🏛️⭐☑️❌❗❓✓✗☐☑]/g, '')
     // 앞뒤 공백 정리
     .trim()
+}
+
+/**
+ * 메모 콘텐츠 전처리: 마크다운 헤더 제거, 구분선 분리
+ * MemoRenderer에서 파싱 전에 호출
+ */
+export function preprocessMemoContent(content: string): string {
+  return content
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim()
+      // ## 또는 # 접두사 제거 (이모지 헤더만 남김)
+      // 예: "## 📍 기본 정보" → "📍 기본 정보"
+      const hashHeader = trimmed.match(/^#{1,3}\s+(.+)$/)
+      if (hashHeader) {
+        return hashHeader[1]
+      }
+      return line
+    })
+    .join('\n')
 }

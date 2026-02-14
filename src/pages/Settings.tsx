@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson, Music, Map, Navigation, Sparkles, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, CloudOff, Palette, HardDrive, Shield, Cloud, RefreshCw, Check, X, FileJson, Music, Map, Navigation, Sparkles, Eye, EyeOff, Loader2, Settings as SettingsIcon } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { PageContainer } from '@/components/layout'
 import { TimezoneSettings } from '@/components/timezone'
+import { useShallow } from 'zustand/react/shallow'
 import { useSettingsStore, useTheme, useColorPalette, useMusicPlayerEnabled } from '@/stores/settingsStore'
 import { toast } from '@/stores/uiStore'
 import { exportAllData, importAllData, clearAllData, validateBackupData, type BackupData } from '@/services/database'
@@ -26,23 +27,45 @@ export function Settings() {
   const theme = useTheme()
   const colorPalette = useColorPalette()
   const isMusicPlayerEnabled = useMusicPlayerEnabled()
-  const setTheme = useSettingsStore((state) => state.setTheme)
-  const setColorPalette = useSettingsStore((state) => state.setColorPalette)
-  const setMusicPlayerEnabled = useSettingsStore((state) => state.setMusicPlayerEnabled)
-  const updateLastBackupDate = useSettingsStore((state) => state.updateLastBackupDate)
-  const lastBackupDate = useSettingsStore((state) => state.lastBackupDate)
-  const mapProvider = useSettingsStore((state) => state.mapProvider) as MapProvider || 'google'
-  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
-  const setMapProvider = useSettingsStore((state) => state.setMapProvider)
-  const setDefaultTravelMode = useSettingsStore((state) => state.setDefaultTravelMode)
+  const {
+    lastBackupDate,
+    mapProvider: rawMapProvider,
+    defaultTravelMode: rawTravelMode,
+    claudeEnabled: rawClaudeEnabled,
+    claudeApiKey: rawClaudeApiKey,
+    claudeModel: rawClaudeModel,
+    setTheme,
+    setColorPalette,
+    setMusicPlayerEnabled,
+    updateLastBackupDate,
+    setMapProvider,
+    setDefaultTravelMode,
+    setClaudeEnabled,
+    setClaudeApiKey,
+    setClaudeModel,
+  } = useSettingsStore(useShallow((state) => ({
+    lastBackupDate: state.lastBackupDate,
+    mapProvider: state.mapProvider,
+    defaultTravelMode: state.defaultTravelMode,
+    claudeEnabled: state.claudeEnabled,
+    claudeApiKey: state.claudeApiKey,
+    claudeModel: state.claudeModel,
+    setTheme: state.setTheme,
+    setColorPalette: state.setColorPalette,
+    setMusicPlayerEnabled: state.setMusicPlayerEnabled,
+    updateLastBackupDate: state.updateLastBackupDate,
+    setMapProvider: state.setMapProvider,
+    setDefaultTravelMode: state.setDefaultTravelMode,
+    setClaudeEnabled: state.setClaudeEnabled,
+    setClaudeApiKey: state.setClaudeApiKey,
+    setClaudeModel: state.setClaudeModel,
+  })))
 
-  // Claude AI settings
-  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled) ?? false
-  const claudeApiKey = useSettingsStore((state) => state.claudeApiKey) ?? ''
-  const claudeModel = (useSettingsStore((state) => state.claudeModel) ?? 'sonnet') as ClaudeModel
-  const setClaudeEnabled = useSettingsStore((state) => state.setClaudeEnabled)
-  const setClaudeApiKey = useSettingsStore((state) => state.setClaudeApiKey)
-  const setClaudeModel = useSettingsStore((state) => state.setClaudeModel)
+  const mapProvider = (rawMapProvider as MapProvider) || 'google'
+  const defaultTravelMode = (rawTravelMode as TravelMode) || 'DRIVE'
+  const claudeEnabled = rawClaudeEnabled ?? false
+  const claudeApiKey = rawClaudeApiKey ?? ''
+  const claudeModel = (rawClaudeModel ?? 'sonnet') as ClaudeModel
   const [showApiKey, setShowApiKey] = useState(false)
   const [isTestingConnection, setIsTestingConnection] = useState(false)
 
@@ -474,10 +497,77 @@ export function Settings() {
     }
   }
 
+  const SETTING_SECTIONS = [
+    { id: 'general', label: '일반', icon: SettingsIcon },
+    { id: 'theme', label: '테마', icon: Palette },
+    { id: 'ai', label: 'AI', icon: Sparkles },
+    { id: 'data', label: '데이터', icon: Database },
+  ] as const
+
+  type SettingSection = typeof SETTING_SECTIONS[number]['id']
+
+  const [activeSection, setActiveSection] = useState<SettingSection>('general')
+  const sectionRefs = {
+    general: useRef<HTMLDivElement>(null),
+    theme: useRef<HTMLDivElement>(null),
+    ai: useRef<HTMLDivElement>(null),
+    data: useRef<HTMLDivElement>(null),
+  }
+
+  // IntersectionObserver to update active tab on scroll
+  useEffect(() => {
+    const observers: IntersectionObserver[] = []
+    const entries = Object.entries(sectionRefs) as [SettingSection, React.RefObject<HTMLDivElement | null>][]
+
+    entries.forEach(([id, ref]) => {
+      if (!ref.current) return
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            setActiveSection(id)
+          }
+        },
+        { rootMargin: '-20% 0px -60% 0px', threshold: 0 }
+      )
+      observer.observe(ref.current)
+      observers.push(observer)
+    })
+
+    return () => observers.forEach((o) => o.disconnect())
+  }, [])
+
   return (
     <PageContainer maxWidth="md">
       <div className="space-y-6 animate-fade-in">
         <h1 className="text-2xl font-bold text-[var(--foreground)]">설정</h1>
+
+        {/* Section Tab Bar */}
+        <div className="sticky top-0 z-10 bg-[var(--background)] py-2 -mx-1 px-1">
+          <div className="flex gap-1 p-1 bg-[var(--muted)] rounded-lg">
+            {SETTING_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                onClick={() => {
+                  setActiveSection(section.id)
+                  sectionRefs[section.id].current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeSection === section.id
+                    ? 'bg-[var(--card)] text-[var(--foreground)] shadow-sm'
+                    : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                <section.icon className="size-4" />
+                <span className="hidden sm:inline">{section.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+      {/* === GENERAL SECTION === */}
+      <div ref={sectionRefs.general} className="scroll-mt-20">
+
+      {/* Music Player */}
 
       {/* Theme */}
       <Card padding="lg">
@@ -512,6 +602,14 @@ export function Settings() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Timezone Settings */}
+      <TimezoneSettings />
+
+      </div>{/* end general section */}
+
+      {/* === THEME SECTION === */}
+      <div ref={sectionRefs.theme} className="scroll-mt-20">
 
       {/* Color Palette */}
       <Card padding="lg">
@@ -659,6 +757,11 @@ export function Settings() {
         </CardContent>
       </Card>
 
+      </div>{/* end theme section */}
+
+      {/* === AI SECTION === */}
+      <div ref={sectionRefs.ai} className="scroll-mt-20">
+
       {/* AI Settings */}
       <Card padding="lg">
         <CardHeader
@@ -774,8 +877,10 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Timezone Settings */}
-      <TimezoneSettings />
+      </div>{/* end ai section */}
+
+      {/* === DATA SECTION === */}
+      <div ref={sectionRefs.data} className="scroll-mt-20">
 
       {/* Data Management */}
       <Card padding="lg">
@@ -1127,6 +1232,8 @@ export function Settings() {
           </dl>
         </CardContent>
       </Card>
+
+      </div>{/* end data section */}
 
       {/* Clear Data Dialog */}
       <Dialog open={isClearDialogOpen} onClose={() => setIsClearDialogOpen(false)}>

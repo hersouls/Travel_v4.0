@@ -43,7 +43,7 @@ export function Sidebar() {
                 'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
                 isActive
                   ? 'bg-primary-50 text-primary-600 dark:bg-primary-950/50 dark:text-primary-400'
-                  : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                  : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)] dark:hover:bg-[var(--muted)]'
               )}
             >
               <item.icon className="size-5 flex-shrink-0" />
@@ -66,7 +66,7 @@ export function Sidebar() {
                   'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
                   location.pathname === `/trips/${trip.id}`
                     ? 'bg-primary-50 text-primary-600 dark:bg-primary-950/50 dark:text-primary-400'
-                    : 'text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800'
+                    : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)] dark:hover:bg-[var(--muted)]'
                 )}
               >
                 <Star className="size-4 flex-shrink-0 fill-warning-400 text-warning-400" />

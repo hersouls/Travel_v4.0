@@ -8,6 +8,29 @@ import Anthropic from '@anthropic-ai/sdk'
 
 export const config = { maxDuration: 60 }
 
+// Inline rate limiter (Vercel can't resolve local TS imports)
+const _rlStore = new Map<string, { count: number; resetAt: number }>()
+function checkRateLimit(key: string, max = 30, windowMs = 60_000) {
+  const now = Date.now()
+  for (const [k, e] of _rlStore) { if (e.resetAt <= now) _rlStore.delete(k) }
+  const entry = _rlStore.get(key)
+  if (!entry || entry.resetAt <= now) {
+    _rlStore.set(key, { count: 1, resetAt: now + windowMs })
+    return { allowed: true, remaining: max - 1, resetAt: now + windowMs }
+  }
+  entry.count++
+  return { allowed: entry.count <= max, remaining: Math.max(0, max - entry.count), resetAt: entry.resetAt }
+}
+
+const ALLOWED_ORIGINS = [
+  'https://travel1.moonwave.kr',
+  'https://moonwave-travel.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:4173',
+]
+
+const MAX_BODY_SIZE = 2 * 1024 * 1024 // 2MB
+
 const MODEL_MAP: Record<string, string> = {
   haiku: 'claude-haiku-4-5-20251001',
   sonnet: 'claude-sonnet-4-5-20250929',
@@ -55,6 +78,66 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 - 관심사와 여행 스타일 반영
 - 가능하면 위도/경도 포함`
 
+    case 'day-recommend':
+      return `당신은 전문 여행 플래너입니다.
+주어진 여행 정보와 키워드를 기반으로 특정 하루의 일정을 JSON으로 생성하세요.
+반드시 아래 JSON 형식만 출력하세요 (다른 텍스트 없이):
+{
+  "days": [
+    {
+      "day": ${context.dayNumber || 1},
+      "plans": [
+        {
+          "placeName": "장소명",
+          "startTime": "09:00",
+          "endTime": "10:30",
+          "type": "attraction|restaurant|hotel|transport|other",
+          "address": "주소 (알려진 경우)",
+          "memo": "간단한 한줄 메모",
+          "latitude": 위도,
+          "longitude": 경도
+        }
+      ]
+    }
+  ]
+}
+- 키워드/관심 장소를 중심으로 현실적인 하루 일정 구성
+- 아침부터 저녁까지 시간대별로 5~8개 일정
+- 식사 시간 포함 (아침/점심/저녁 중 적절한 것)
+- 장소 간 이동 시간과 거리를 고려한 현실적인 시간 배분
+- 해당 국가/도시의 실제 존재하는 장소만 추천
+- 가능하면 위도/경도 포함 (소수점 6자리)`
+
+    case 'day-suggest':
+      return `당신은 전문 여행 일정 컨설턴트입니다.
+기존 하루 일정을 분석하고 개선안을 JSON으로 제안하세요.
+반드시 아래 JSON 형식만 출력하세요 (다른 텍스트 없이):
+{
+  "analysis": "현재 일정에 대한 전체 분석 (2-3문장)",
+  "suggestions": [
+    "개선 제안 1",
+    "개선 제안 2"
+  ],
+  "revisedPlans": [
+    {
+      "placeName": "장소명",
+      "startTime": "09:00",
+      "endTime": "10:30",
+      "type": "attraction|restaurant|hotel|transport|other",
+      "address": "주소",
+      "memo": "메모",
+      "latitude": 위도,
+      "longitude": 경도
+    }
+  ]
+}
+- 기존 일정의 장단점을 솔직하게 분석
+- 동선 최적화, 누락된 식사, 시간 배분 개선을 구체적으로 제안
+- 기존 장소를 최대한 유지하면서 순서/시간 조정
+- 필요시 빠진 식사나 쉼 시간을 추가
+- revisedPlans는 개선된 전체 하루 일정 (기존 장소 + 새 제안 포함)
+- 가능하면 위도/경도 포함`
+
     case 'memo':
       return `당신은 여행 정보 전문가입니다.
 장소에 대한 실용적인 여행 메모를 작성하세요.
@@ -80,7 +163,10 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 
 - 간결하고 실용적인 정보 위주
 - 이모지 섹션 헤더 사용
-- 한국어로 작성`
+- 한국어로 작성
+- 마크다운 기호 절대 사용 금지 (#, ##, **, *, |테이블|, ---, > 등)
+- 순수 텍스트 + 이모지 섹션 헤더만 사용
+- 볼드(**) 대신 "라벨: 값" 형식, 테이블 대신 "항목: 금액" 나열`
 
     case 'analyze-image':
       return `당신은 여행 사진 분석 전문가입니다.
@@ -128,6 +214,36 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       return parts.join('\n')
     }
 
+    case 'day-recommend': {
+      const parts = [`여행지: ${context.country || '알 수 없음'}`]
+      parts.push(`Day ${context.dayNumber || 1}`)
+      if (context.dayDate) parts.push(`날짜: ${context.dayDate}`)
+      if (context.totalDays) parts.push(`전체 여행: ${context.totalDays}일 중`)
+      if (context.keywords) parts.push(`관심 키워드/장소: ${context.keywords}`)
+      if (context.interests) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
+      if (context.style) parts.push(`여행 스타일: ${context.style}`)
+      parts.push('\n위 키워드를 중심으로 이 날의 하루 일정을 JSON으로 생성해주세요.')
+      return parts.join('\n')
+    }
+
+    case 'day-suggest': {
+      const parts = [`여행지: ${context.country || '알 수 없음'}`]
+      parts.push(`Day ${context.dayNumber || 1}`)
+      if (context.dayDate) parts.push(`날짜: ${context.dayDate}`)
+      const existingPlans = context.existingPlans as Array<{
+        placeName: string; startTime: string; endTime?: string;
+        type: string; address?: string
+      }>
+      if (existingPlans && existingPlans.length > 0) {
+        parts.push('\n현재 일정:')
+        existingPlans.forEach((p, i) => {
+          parts.push(`${i + 1}. ${p.startTime}${p.endTime ? '-' + p.endTime : ''} ${p.placeName} (${p.type})${p.address ? ' - ' + p.address : ''}`)
+        })
+      }
+      parts.push('\n위 일정을 분석하고 개선안을 JSON으로 제안해주세요.')
+      return parts.join('\n')
+    }
+
     case 'memo': {
       const parts = [`장소: ${context.placeName || '알 수 없음'}`]
       if (context.type) parts.push(`유형: ${context.type}`)
@@ -150,10 +266,13 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  // CORS — origin whitelist (allow all in dev via env)
+  const origin = req.headers.origin || ''
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key')
+  res.setHeader('Vary', 'Origin')
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end()
@@ -163,10 +282,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // Body size check
+  const contentLength = Number(req.headers['content-length'] || 0)
+  if (contentLength > MAX_BODY_SIZE) {
+    return res.status(413).json({ error: 'Request body too large (max 2MB)' })
+  }
+
   // API key: user-provided header or server env fallback
   const apiKey = (req.headers['x-api-key'] as string) || process.env.CLAUDE_API_KEY
   if (!apiKey || !apiKey.startsWith('sk-ant-')) {
     return res.status(401).json({ error: 'Valid Anthropic API key required (sk-ant-...)' })
+  }
+
+  // Rate limiting (30 requests per minute per API key)
+  const rateLimitKey = apiKey.slice(-8) // use last 8 chars as key
+  const { allowed, remaining, resetAt } = checkRateLimit(rateLimitKey, 30, 60_000)
+  res.setHeader('X-RateLimit-Remaining', String(remaining))
+  res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)))
+  if (!allowed) {
+    return res.status(429).json({ error: 'Too many requests. Please try again later.' })
   }
 
   const { type, context = {}, image, model, stream = true } = req.body || {}
@@ -207,7 +341,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const response = client.messages.stream({
         model: resolvedModel,
-        max_tokens: type === 'itinerary' ? 8192 : 4096,
+        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       })
@@ -227,7 +361,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Non-streaming structured response
       const response = await client.messages.create({
         model: resolvedModel,
-        max_tokens: type === 'itinerary' ? 8192 : 4096,
+        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       })

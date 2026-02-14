@@ -9,6 +9,10 @@ import { PageContainer } from '@/components/layout'
 import { useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { compressImage } from '@/services/imageStorage'
+import { useFormValidation } from '@/hooks/useFormValidation'
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
+import { useFormDraft } from '@/hooks/useFormDraft'
+import { tripSchema } from '@/lib/validations'
 import { COUNTRIES } from '@/utils/constants'
 import { getCountryInfo } from '@/utils/countryInfo'
 import { getTimezoneFromCountry } from '@/utils/timezone'
@@ -41,6 +45,20 @@ export function TripForm() {
     endDate: '',
     coverImage: '',
   })
+  const [initialData, setInitialData] = useState(formData)
+
+  const { errors, validate, clearFieldError } = useFormValidation(tripSchema)
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(initialData)
+  useUnsavedChanges(isDirty)
+
+  // Auto-save draft (new trips only)
+  const draftKey = isEditing ? `trip-edit-${id}` : 'trip-new'
+  const { hasDraft, restoreDraft, dismissDraft, clearDraft } = useFormDraft({
+    key: draftKey,
+    formData,
+    setFormData,
+    enabled: !isEditing,
+  })
 
   useEffect(() => {
     if (isEditing && id) {
@@ -50,14 +68,16 @@ export function TripForm() {
 
   useEffect(() => {
     if (isEditing && currentTrip) {
-      setFormData({
+      const data = {
         title: currentTrip.title,
         country: currentTrip.country,
         timezone: currentTrip.timezone || getTimezoneFromCountry(currentTrip.country),
         startDate: currentTrip.startDate,
         endDate: currentTrip.endDate,
         coverImage: currentTrip.coverImage || '',
-      })
+      }
+      setFormData(data)
+      setInitialData(data)
     }
   }, [isEditing, currentTrip])
 
@@ -76,18 +96,9 @@ export function TripForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.title.trim()) {
-      toast.error('여행 이름을 입력해주세요')
-      return
-    }
-
-    if (!formData.startDate || !formData.endDate) {
-      toast.error('날짜를 선택해주세요')
-      return
-    }
-
-    if (new Date(formData.startDate) > new Date(formData.endDate)) {
-      toast.error('종료 날짜는 시작 날짜 이후여야 합니다')
+    if (!validate(formData)) {
+      const firstError = Object.values(errors)[0]
+      if (firstError) toast.error(firstError)
       return
     }
 
@@ -100,6 +111,7 @@ export function TripForm() {
       } else {
         const newId = await addTrip(formData)
         toast.success('여행이 생성되었습니다')
+        clearDraft()
         navigate(`/trips/${newId}`)
       }
     } catch {
@@ -236,6 +248,23 @@ export function TripForm() {
         </div>
       </div>
 
+      {/* Draft Recovery Banner */}
+      {hasDraft && (
+        <div className="flex items-center justify-between p-4 bg-primary-50 dark:bg-primary-950/30 rounded-lg border border-primary-200 dark:border-primary-800">
+          <p className="text-sm text-primary-700 dark:text-primary-300">
+            이전 작성 내용이 있습니다. 불러올까요?
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" color="primary" onClick={restoreDraft}>
+              불러오기
+            </Button>
+            <Button size="sm" color="secondary" outline onClick={dismissDraft}>
+              무시
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Form */}
       <Card padding="lg">
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -277,13 +306,19 @@ export function TripForm() {
           </div>
 
           {/* Title */}
-          <Input
-            label="여행 이름"
-            value={formData.title}
-            onChange={(value) => setFormData((prev) => ({ ...prev, title: value }))}
-            placeholder="예: 도쿄 여행"
-            required
-          />
+          <div>
+            <Input
+              label="여행 이름"
+              value={formData.title}
+              onChange={(value) => {
+                setFormData((prev) => ({ ...prev, title: value }))
+                clearFieldError('title')
+              }}
+              placeholder="예: 도쿄 여행"
+              required
+            />
+            {errors.title && <p className="mt-1 text-sm text-danger-500">{errors.title}</p>}
+          </div>
 
           {/* Country */}
           <div className="space-y-3">
@@ -346,10 +381,20 @@ export function TripForm() {
               <DateRangePicker
                 startDate={formData.startDate}
                 endDate={formData.endDate}
-                onStartDateChange={(date) => setFormData((prev) => ({ ...prev, startDate: date }))}
-                onEndDateChange={(date) => setFormData((prev) => ({ ...prev, endDate: date }))}
+                onStartDateChange={(date) => {
+                  setFormData((prev) => ({ ...prev, startDate: date }))
+                  clearFieldError('startDate')
+                  clearFieldError('endDate')
+                }}
+                onEndDateChange={(date) => {
+                  setFormData((prev) => ({ ...prev, endDate: date }))
+                  clearFieldError('endDate')
+                }}
               />
             </div>
+            {(errors.startDate || errors.endDate) && (
+              <p className="mt-1 text-sm text-danger-500">{errors.startDate || errors.endDate}</p>
+            )}
           </div>
 
           {/* Actions */}

@@ -10,9 +10,13 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { MusicPlayer } from '@/components/audio'
 import { TimezoneAlert } from '@/components/timezone'
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
+import { SyncProgressOverlay } from '@/components/sync/SyncProgressOverlay'
+import { CommandPalette } from '@/components/search/CommandPalette'
 import { useTimezoneDetection } from '@/hooks/useTimezoneDetection'
 import { subscribeToBroadcast, type BroadcastMessage } from '@/services/broadcast'
 import { useSync } from '@/hooks/useSync'
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
+import { useScrollRestoration } from '@/hooks/useScrollRestoration'
 
 // Lazy load layout components
 const Header = lazy(() => import('@/components/layout/Header').then(m => ({ default: m.Header })))
@@ -65,6 +69,9 @@ export default function App() {
   // Start/stop Firestore sync based on auth state
   useSync()
 
+  // Global keyboard shortcuts (Ctrl+N, Escape, etc.)
+  useKeyboardShortcuts()
+
   // Subscribe to cross-tab broadcasts
   useEffect(() => {
     const handleBroadcast = (message: BroadcastMessage) => {
@@ -91,13 +98,19 @@ export default function App() {
     return () => unsubscribe()
   }, [])
 
-  // Scroll to top on route change
-  useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [location.pathname])
+  // Scroll position restoration (saves on leave, restores on back/forward)
+  useScrollRestoration()
 
   return (
     <div className="min-h-screen flex flex-col bg-[var(--background)]">
+      {/* Skip Navigation */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary-500 focus:text-white focus:rounded-lg focus:shadow-lg focus:text-sm focus:font-semibold"
+      >
+        본문으로 건너뛰기
+      </a>
+
       {/* Header */}
       <Suspense fallback={<Skeleton height={64} className="w-full" />}>
         <Header />
@@ -112,7 +125,9 @@ export default function App() {
 
         {/* Main Content */}
         <div
-          className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${
+          id="main-content"
+          tabIndex={-1}
+          className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 outline-none ${
             isSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
           }`}
         >
@@ -150,6 +165,12 @@ export default function App() {
 
       {/* PWA Update Prompt */}
       <PWAUpdatePrompt />
+
+      {/* Sync Progress Overlay */}
+      <SyncProgressOverlay />
+
+      {/* Command Palette */}
+      <CommandPalette />
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

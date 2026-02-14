@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Wand2, Sparkles } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Wand2, Sparkles, Download, FileDown, MessageSquare, Share2, Link2, WifiOff } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
@@ -10,12 +10,18 @@ import { PageContainer } from '@/components/layout'
 import { LocalTimeComparison } from '@/components/timezone'
 import { TripStatistics } from '@/components/trip/TripStatistics'
 import { AutoDistributeButton } from '@/components/trip/AutoDistributeButton'
-import { AIItineraryDialog } from '@/components/ai'
+import { AIItineraryDialog, AIChatPanel } from '@/components/ai'
+import { AIBudgetEstimator } from '@/components/ai/AIBudgetEstimator'
 import { useDirections } from '@/hooks/useDirections'
 import { useSettingsStore } from '@/stores/settingsStore'
 import type { TravelMode, GeneratedItinerary } from '@/types'
+import { useShallow } from 'zustand/react/shallow'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
+import { downloadGPX, downloadKML } from '@/utils/routeExport'
+import { downloadItineraryPDF } from '@/utils/pdfExport'
+import { shareTrip, unshareTrip } from '@/services/sharing'
+import { OfflineMapDownloader } from '@/components/map/OfflineMapDownloader'
 import { formatDateRange, getTripDuration, formatTime } from '@/utils/format'
 import { getTripDayDate, getTimezoneFromCountry } from '@/utils/timezone'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
@@ -39,19 +45,30 @@ export function TripDetail() {
   const trip = useCurrentTrip()
   const plans = useCurrentPlans()
   const isLoading = useTripLoading()
-  const loadTrip = useTripStore((state) => state.loadTrip)
-  const deleteTrip = useTripStore((state) => state.deleteTrip)
-  const toggleFavorite = useTripStore((state) => state.toggleFavorite)
-  const addPlan = useTripStore((state) => state.addPlan)
-  const deletePlan = useTripStore((state) => state.deletePlan)
-  const updatePlan = useTripStore((state) => state.updatePlan)
+  const { loadTrip, deleteTrip, toggleFavorite, addPlan, deletePlan, updatePlan } = useTripStore(
+    useShallow((s) => ({
+      loadTrip: s.loadTrip,
+      deleteTrip: s.deleteTrip,
+      toggleFavorite: s.toggleFavorite,
+      addPlan: s.addPlan,
+      deletePlan: s.deletePlan,
+      updatePlan: s.updatePlan,
+    }))
+  )
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [planToDelete, setPlanToDelete] = useState<number | null>(null)
   const [isAIItineraryOpen, setIsAIItineraryOpen] = useState(false)
+  const [isAIChatOpen, setIsAIChatOpen] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
+  const [isSharing, setIsSharing] = useState(false)
 
-  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
-  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
+  const { claudeEnabled, defaultTravelMode } = useSettingsStore(
+    useShallow((s) => ({
+      claudeEnabled: s.claudeEnabled,
+      defaultTravelMode: (s.defaultTravelMode as TravelMode) || 'DRIVE',
+    }))
+  )
   const tripId = trip?.id || 0
   const { segments: routeSegments } = useDirections(plans, tripId, defaultTravelMode)
 
@@ -95,6 +112,28 @@ export function TripDetail() {
       toast.success('일정이 삭제되었습니다')
     }
     setPlanToDelete(null)
+  }
+
+  const handleShare = async () => {
+    if (!trip?.id) return
+    setIsSharing(true)
+    try {
+      if (trip.shareId) {
+        await unshareTrip(trip.id)
+        toast.success('공유가 해제되었습니다')
+        loadTrip(trip.id)
+      } else {
+        const shareId = await shareTrip(trip.id)
+        const shareUrl = `${window.location.origin}/shared/${shareId}`
+        await navigator.clipboard.writeText(shareUrl)
+        toast.success('공유 링크가 클립보드에 복사되었습니다')
+        loadTrip(trip.id)
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '공유 처리에 실패했습니다')
+    } finally {
+      setIsSharing(false)
+    }
   }
 
   if (isLoading) {
@@ -145,6 +184,59 @@ export function TripDetail() {
           >
             <Star className={`size-5 ${trip.isFavorite ? 'fill-current' : ''}`} />
           </IconButton>
+          <div className="relative">
+            <IconButton
+              plain
+              color="secondary"
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              aria-label="내보내기"
+            >
+              <Download className="size-5" />
+            </IconButton>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 z-20 w-40 bg-white dark:bg-zinc-800 rounded-lg shadow-lg border border-zinc-200 dark:border-zinc-700 py-1">
+                  <button
+                    className="w-full text-left px-3 py-2 text-sm text-[var(--foreground)] hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                    onClick={() => { downloadGPX(trip, plans); setShowExportMenu(false); toast.success('GPX 파일이 다운로드되었습니다') }}
+                  >
+                    GPX 내보내기
+                  </button>
+                  <button
+                    className="w-full text-left px-3 py-2 text-sm text-[var(--foreground)] hover:bg-zinc-100 dark:hover:bg-zinc-700"
+                    onClick={() => { downloadKML(trip, plans); setShowExportMenu(false); toast.success('KML 파일이 다운로드되었습니다') }}
+                  >
+                    KML 내보내기
+                  </button>
+                  <button
+                    className="w-full text-left px-3 py-2 text-sm text-[var(--foreground)] hover:bg-zinc-100 dark:hover:bg-zinc-700 flex items-center gap-2"
+                    onClick={async () => {
+                      setShowExportMenu(false)
+                      try {
+                        await downloadItineraryPDF(trip, plans)
+                        toast.success('PDF 파일이 다운로드되었습니다')
+                      } catch (e) {
+                        toast.error('PDF 생성에 실패했습니다')
+                      }
+                    }}
+                  >
+                    <FileDown className="size-4" />
+                    PDF 다운로드
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <IconButton
+            plain
+            color={trip.shareId ? 'primary' : 'secondary'}
+            onClick={handleShare}
+            aria-label={trip.shareId ? '공유 해제' : '공유'}
+            disabled={isSharing}
+          >
+            {trip.shareId ? <Link2 className="size-5" /> : <Share2 className="size-5" />}
+          </IconButton>
           <IconButton plain color="secondary" to={`/trips/${trip.id}/edit`} aria-label="편집">
             <Edit className="size-5" />
           </IconButton>
@@ -155,10 +247,10 @@ export function TripDetail() {
       </div>
 
       {/* Trip Info Card */}
-      <Card padding="none" className="overflow-hidden">
+      <Card padding="none" className="overflow-hidden" style={{ viewTransitionName: `trip-card-${trip.id}` }}>
         {trip.coverImage && (
           <div className="h-36 sm:h-48 md:h-64">
-            <img src={trip.coverImage} alt={trip.title} className="w-full h-full object-cover" />
+            <img src={trip.coverImage} alt={trip.title} className="w-full h-full object-cover" style={{ viewTransitionName: `trip-image-${trip.id}` }} />
           </div>
         )}
         <div className="p-4 sm:p-6">
@@ -269,16 +361,20 @@ export function TripDetail() {
               }}
             />
             {claudeEnabled && (
-              <Button
-                outline
-                color="secondary"
-                size="sm"
-                leftIcon={<Sparkles className="size-4" />}
-                onClick={() => setIsAIItineraryOpen(true)}
-              >
-                AI 일정
-              </Button>
+              <>
+                <Button
+                  outline
+                  color="secondary"
+                  size="sm"
+                  leftIcon={<Sparkles className="size-4" />}
+                  onClick={() => setIsAIItineraryOpen(true)}
+                >
+                  AI 일정
+                </Button>
+                <AIBudgetEstimator trip={trip} plans={plans} />
+              </>
             )}
+            <OfflineMapDownloader plans={plans} tripTitle={trip.title} />
           </div>
         </div>
       </Card>
@@ -444,6 +540,26 @@ export function TripDetail() {
           }}
         />
       )}
+
+      {/* AI Chat Floating Button */}
+      {claudeEnabled && (
+        <button
+          onClick={() => setIsAIChatOpen(true)}
+          className="fixed bottom-24 lg:bottom-8 right-4 lg:right-8 z-30 size-14 rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600 flex items-center justify-center transition-colors"
+          aria-label="AI 플래너"
+        >
+          <MessageSquare className="size-6" />
+        </button>
+      )}
+
+      {/* AI Chat Panel */}
+      <AIChatPanel
+        isOpen={isAIChatOpen}
+        onClose={() => setIsAIChatOpen(false)}
+        tripId={trip.id || 0}
+        tripTitle={trip.title}
+        tripCountry={trip.country}
+      />
       </div>
     </PageContainer>
   )

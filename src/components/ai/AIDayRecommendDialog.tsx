@@ -3,8 +3,8 @@
 // Generates a single day itinerary from keywords using Claude AI
 // ============================================
 
-import { useState } from 'react'
-import { Sparkles, Check } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Sparkles, Check, X } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -61,6 +61,7 @@ export function AIDayRecommendDialog({
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<GeneratedItinerary | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const toggleInterest = (value: string) => {
     setInterests((prev) =>
@@ -78,6 +79,8 @@ export function AIDayRecommendDialog({
       return
     }
 
+    const controller = new AbortController()
+    abortRef.current = controller
     setIsGenerating(true)
     setError(null)
     setResult(null)
@@ -92,6 +95,7 @@ export function AIDayRecommendDialog({
         { type: 'day-recommend', context },
         claudeApiKey,
         claudeModel,
+        controller.signal,
       )
 
       const parsed =
@@ -106,10 +110,22 @@ export function AIDayRecommendDialog({
 
       setResult(parsed)
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'AI 일정 추천에 실패했습니다.')
     } finally {
       setIsGenerating(false)
+      abortRef.current = null
     }
+  }
+
+  const handleCancel = () => {
+    abortRef.current?.abort()
+    setIsGenerating(false)
+  }
+
+  const handleClose = () => {
+    abortRef.current?.abort()
+    onClose()
   }
 
   const handleApply = () => {
@@ -128,15 +144,21 @@ export function AIDayRecommendDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} size="xl">
-      <DialogTitle onClose={onClose}>
+    <Dialog open={open} onClose={handleClose} size="xl">
+      <DialogTitle onClose={handleClose}>
         <span className="flex items-center gap-2">
           <Sparkles className="size-5 text-primary-500" />
           AI 일정 추천 - Day {dayNumber}
         </span>
       </DialogTitle>
       <DialogBody>
-        {!result ? (
+        {isGenerating ? (
+          <div className="flex flex-col items-center gap-3 py-12">
+            <div className="w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-zinc-500 animate-pulse">AI가 일정을 생성하고 있습니다...</p>
+            <p className="text-xs text-zinc-400">보통 10~30초 소요됩니다</p>
+          </div>
+        ) : !result ? (
           <div className="space-y-5">
             <p className="text-sm text-zinc-500">
               {trip.country} 여행 Day {dayNumber}에 맞는 일정을 AI가 추천합니다.
@@ -247,17 +269,21 @@ export function AIDayRecommendDialog({
         )}
       </DialogBody>
       <DialogActions>
-        <Button color="secondary" onClick={onClose}>
-          취소
+        <Button color="secondary" onClick={handleClose}>
+          {isGenerating ? '닫기' : '취소'}
         </Button>
-        {!result && (
+        {isGenerating && (
+          <Button color="danger" outline onClick={handleCancel} leftIcon={<X className="size-4" />}>
+            생성 취소
+          </Button>
+        )}
+        {!isGenerating && !result && (
           <Button
             color="primary"
             onClick={handleGenerate}
-            isLoading={isGenerating}
-            leftIcon={!isGenerating ? <Sparkles className="size-4" /> : undefined}
+            leftIcon={<Sparkles className="size-4" />}
           >
-            {isGenerating ? '생성 중...' : '일정 추천'}
+            일정 추천
           </Button>
         )}
         {result && (

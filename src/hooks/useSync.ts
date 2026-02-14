@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useTripStore } from '@/stores/tripStore'
 import { usePlaceStore } from '@/stores/placeStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useUIStore } from '@/stores/uiStore'
 import { syncManager } from '@/services/firestoreSync'
 
 export function useSync() {
@@ -16,19 +17,25 @@ export function useSync() {
   useEffect(() => {
     if (!user) {
       syncManager.stop()
+      useUIStore.getState().setSyncProgress({ status: 'idle' })
       return
     }
 
     syncManager.start(user.uid)
 
-    const unsub = syncManager.onSyncUpdate(() => {
+    const unsubUpdate = syncManager.onSyncUpdate(() => {
       useTripStore.getState().loadTrips()
       usePlaceStore.getState().loadPlaces()
       useSettingsStore.getState().initialize()
     })
 
+    const unsubStatus = syncManager.onSyncStatus((progress) => {
+      useUIStore.getState().setSyncProgress(progress)
+    })
+
     return () => {
-      unsub()
+      unsubUpdate()
+      unsubStatus()
       syncManager.stop()
     }
   }, [user?.uid])

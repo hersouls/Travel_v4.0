@@ -20,10 +20,9 @@ const CACHE_LIMITS = {
   tiles: 500,
 };
 
-// Install event - cache static assets and activate immediately
+// Install event - cache static assets (wait for SKIP_WAITING message to activate)
 self.addEventListener('install', (event) => {
   console.log('[SW] Installing...');
-  self.skipWaiting();
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
       console.log('[SW] Caching static assets');

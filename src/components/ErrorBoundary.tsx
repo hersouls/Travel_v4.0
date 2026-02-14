@@ -5,6 +5,7 @@
 import { Component, type ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
+import { captureError } from '@/services/sentry'
 
 interface Props {
   children: ReactNode
@@ -26,9 +27,11 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     this.setState({ errorInfo })
-    // Log error to console (could be sent to external service)
     console.error('ErrorBoundary caught an error:', error)
     console.error('Component stack:', errorInfo.componentStack)
+
+    // Report to Sentry (no-op if DSN not configured)
+    captureError(error, { componentStack: errorInfo.componentStack })
   }
 
   handleReload = () => {

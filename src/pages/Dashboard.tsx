@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Plus, MapPin, Calendar, Star, ChevronRight } from 'lucide-react'
+import { Plus, MapPin, Calendar, Star, ChevronRight, RefreshCw, Trash2, X, CheckSquare } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
@@ -8,6 +8,9 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { OnboardingModal } from '@/components/OnboardingModal'
 import { useTrips, useTripLoading, useTripStore } from '@/stores/tripStore'
+import { usePullToRefresh } from '@/hooks/usePullToRefresh'
+import { useBulkSelection } from '@/hooks/useBulkSelection'
+import { toast } from '@/stores/uiStore'
 import { formatDateRange, getTripDuration } from '@/utils/format'
 
 export function Dashboard() {
@@ -16,6 +19,17 @@ export function Dashboard() {
   const trips = useTrips()
   const isLoading = useTripLoading()
   const toggleFavorite = useTripStore((state) => state.toggleFavorite)
+  const deleteTrips = useTripStore((state) => state.deleteTrips)
+
+  // Bulk selection
+  const bulk = useBulkSelection<number>()
+
+  // Pull-to-refresh for mobile
+  const { pullDistance, isRefreshing: isPullRefreshing } = usePullToRefresh({
+    onRefresh: async () => {
+      await useTripStore.getState().loadTrips()
+    },
+  })
 
   // Filter trips based on search query
   const filteredTrips = useMemo(() => {
@@ -58,7 +72,53 @@ export function Dashboard() {
   return (
     <PageContainer>
       <OnboardingModal />
+
+      {/* Pull-to-refresh indicator */}
+      {(pullDistance > 0 || isPullRefreshing) && (
+        <div
+          className="flex items-center justify-center overflow-hidden transition-all"
+          style={{ height: pullDistance || (isPullRefreshing ? 40 : 0) }}
+        >
+          <RefreshCw className={`size-5 text-primary-500 ${isPullRefreshing ? 'animate-spin' : ''}`} />
+        </div>
+      )}
+
       <div className="space-y-6 animate-fade-in">
+      {/* Bulk Action Bar */}
+      {bulk.isSelectionMode && (
+        <div className="flex items-center gap-3 p-3 bg-primary-50 dark:bg-primary-950/30 rounded-lg border border-primary-200 dark:border-primary-800">
+          <span className="text-sm font-medium text-primary-700 dark:text-primary-300">
+            {bulk.count}개 선택됨
+          </span>
+          <div className="flex-1" />
+          <Button
+            size="sm"
+            color="secondary"
+            outline
+            onClick={() => bulk.selectAll(filteredTrips.map((t) => t.id!).filter(Boolean))}
+          >
+            전체 선택
+          </Button>
+          <Button
+            size="sm"
+            color="danger"
+            leftIcon={<Trash2 className="size-3.5" />}
+            onClick={async () => {
+              if (confirm(`${bulk.count}개 여행을 삭제하시겠습니까?`)) {
+                await deleteTrips(bulk.selectedIds)
+                toast.success(`${bulk.count}개 여행이 삭제되었습니다`)
+                bulk.clearSelection()
+              }
+            }}
+          >
+            삭제
+          </Button>
+          <button onClick={bulk.clearSelection} className="p-1 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -69,6 +129,15 @@ export function Dashboard() {
             </p>
           )}
         </div>
+        {filteredTrips.length > 0 && !bulk.isSelectionMode && (
+          <button
+            onClick={bulk.enterSelectionMode}
+            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            title="선택 모드"
+          >
+            <CheckSquare className="size-5" />
+          </button>
+        )}
       </div>
 
       {/* Stats */}
@@ -138,15 +207,36 @@ export function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTrips.map((trip) => (
-            <Card key={trip.id} variant="interactive" padding="none" className="overflow-hidden group">
-              <Link to={`/trips/${trip.id}`} className="block">
+            <Card
+              key={trip.id}
+              variant="interactive"
+              padding="none"
+              className={`overflow-hidden group relative ${bulk.isSelectionMode && trip.id && bulk.isSelected(trip.id) ? 'ring-2 ring-primary-500' : ''}`}
+              style={{ viewTransitionName: `trip-card-${trip.id}` }}
+              onClick={bulk.isSelectionMode ? (e: React.MouseEvent) => { e.preventDefault(); if (trip.id) bulk.toggle(trip.id) } : undefined}
+            >
+              {/* Selection checkbox overlay */}
+              {bulk.isSelectionMode && (
+                <div className="absolute top-2 left-2 z-10">
+                  <div className={`size-6 rounded-md border-2 flex items-center justify-center transition-colors ${
+                    trip.id && bulk.isSelected(trip.id)
+                      ? 'bg-primary-500 border-primary-500 text-white'
+                      : 'border-zinc-300 dark:border-zinc-600 bg-white/80 dark:bg-zinc-900/80'
+                  }`}>
+                    {trip.id && bulk.isSelected(trip.id) && <CheckSquare className="size-4" />}
+                  </div>
+                </div>
+              )}
+              <Link to={bulk.isSelectionMode ? '#' : `/trips/${trip.id}`} className="block" onClick={bulk.isSelectionMode ? (e: React.MouseEvent) => e.preventDefault() : undefined}>
                 {/* Cover Image */}
                 <div className="relative aspect-[16/10] bg-zinc-100 dark:bg-zinc-800">
                   {trip.coverImage ? (
                     <img
                       src={trip.coverImage}
                       alt={trip.title}
+                      loading="lazy"
                       className="w-full h-full object-cover"
+                      style={{ viewTransitionName: `trip-image-${trip.id}` }}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">

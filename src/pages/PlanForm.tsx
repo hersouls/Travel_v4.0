@@ -20,6 +20,12 @@ import { detectPlanType } from '@/utils/place'
 import type { PlanType, GooglePlaceInfo } from '@/types'
 import type { PlaceDetails, PlacePrediction } from '@/services/placesAutocomplete'
 import * as db from '@/services/database'
+import { useFormValidation } from '@/hooks/useFormValidation'
+import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
+import { useFormDraft } from '@/hooks/useFormDraft'
+import { planSchema } from '@/lib/validations'
+import { checkPlanConflict } from '@/utils/timeConflict'
+import { getTripDurationSafe } from '@/utils/timezone'
 
 const planTypes: PlanType[] = ['attraction', 'restaurant', 'hotel', 'transport', 'car', 'plane', 'airport', 'other']
 
@@ -42,6 +48,8 @@ export function PlanForm() {
   const localPlaces = usePlaces() // Get all saved places
 
   const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
+
+  const { errors, validate, clearFieldError } = useFormValidation(planSchema)
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [saveToLibrary, setSaveToLibrary] = useState(true)
@@ -73,6 +81,19 @@ export function PlanForm() {
     audioScript: '',
   })
 
+  const [initialFormData, setInitialFormData] = useState(formData)
+  const isDirty = JSON.stringify(formData) !== JSON.stringify(initialFormData)
+  useUnsavedChanges(isDirty)
+
+  // Auto-save draft (new plans only)
+  const draftKey = isEditing ? `plan-edit-${planId}` : `plan-new-${tripId}`
+  const { hasDraft, restoreDraft, dismissDraft, clearDraft } = useFormDraft({
+    key: draftKey,
+    formData,
+    setFormData,
+    enabled: !isEditing,
+  })
+
   useEffect(() => {
     if (tripId) {
       loadTrip(parseInt(tripId))
@@ -84,7 +105,7 @@ export function PlanForm() {
       if (isEditing && planId) {
         const plan = await db.getPlan(parseInt(planId))
         if (plan) {
-          setFormData({
+          const data = {
             placeName: plan.placeName,
             day: plan.day,
             startTime: plan.startTime,
@@ -102,7 +123,9 @@ export function PlanForm() {
             googlePlaceId: plan.googlePlaceId,
             googleInfo: plan.googleInfo,
             audioScript: plan.audioScript || '',
-          })
+          }
+          setFormData(data)
+          setInitialFormData(data)
         }
       }
     }
@@ -311,12 +334,26 @@ export function PlanForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.placeName.trim()) {
-      toast.error('장소 이름을 입력해주세요')
+    if (!validate(formData)) {
+      const firstError = Object.values(errors)[0]
+      if (firstError) toast.error(firstError)
       return
     }
 
     if (!tripId) return
+
+    // Time conflict check (non-blocking warning)
+    const currentPlans = useTripStore.getState().currentPlans
+    const sameDayPlans = currentPlans.filter((p) => p.day === formData.day)
+    const conflict = checkPlanConflict(
+      { ...formData, id: planId ? parseInt(planId) : undefined },
+      sameDayPlans
+    )
+    if (conflict) {
+      toast.warning(
+        `시간 충돌: "${conflict.planB.placeName}" (${conflict.planB.startTime}~${conflict.planB.endTime})과 겹칩니다`
+      )
+    }
 
     setIsSubmitting(true)
     try {
@@ -338,6 +375,7 @@ export function PlanForm() {
         await autoRegisterToPlaceLibrary()
       }
 
+      clearDraft()
       navigate(`/trips/${tripId}`)
     } catch {
       toast.error(isEditing ? '일정 수정 실패' : '일정 추가 실패')
@@ -477,6 +515,23 @@ export function PlanForm() {
             </Button>
           </div>
         </div>
+
+        {/* Draft Recovery Banner */}
+        {hasDraft && (
+          <div className="flex items-center justify-between p-4 bg-primary-50 dark:bg-primary-950/30 rounded-lg border border-primary-200 dark:border-primary-800">
+            <p className="text-sm text-primary-700 dark:text-primary-300">
+              이전 작성 내용이 있습니다. 불러올까요?
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" color="primary" onClick={restoreDraft}>
+                불러오기
+              </Button>
+              <Button size="sm" color="secondary" outline onClick={dismissDraft}>
+                무시
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Form */}
         <Card padding="lg">
@@ -654,24 +709,28 @@ export function PlanForm() {
             </div>
 
             {/* Place Name */}
-            <Input
-              label="장소 이름"
-              value={formData.placeName}
-              onChange={(value) => {
-                setFormData((prev) => ({ ...prev, placeName: value }))
-                // 자동 타입 추천 (수동 변경 안 했을 때만)
-                if (!typeManuallyChanged && value.length >= 2) {
-                  const detectedType = detectPlanType(value)
-                  if (detectedType && detectedType !== formData.type) {
-                    setFormData((prev) => ({ ...prev, type: detectedType }))
-                    toast.success(`"${PLAN_TYPE_LABELS[detectedType]}"(으)로 분류했습니다`)
+            <div>
+              <Input
+                label="장소 이름"
+                value={formData.placeName}
+                onChange={(value) => {
+                  setFormData((prev) => ({ ...prev, placeName: value }))
+                  clearFieldError('placeName')
+                  // 자동 타입 추천 (수동 변경 안 했을 때만)
+                  if (!typeManuallyChanged && value.length >= 2) {
+                    const detectedType = detectPlanType(value)
+                    if (detectedType && detectedType !== formData.type) {
+                      setFormData((prev) => ({ ...prev, type: detectedType }))
+                      toast.success(`"${PLAN_TYPE_LABELS[detectedType]}"(으)로 분류했습니다`)
+                    }
                   }
-                }
-              }}
-              placeholder="예: 도쿄 스카이트리"
-              leftIcon={<MapPin className="size-4" />}
-              required
-            />
+                }}
+                placeholder="예: 도쿄 스카이트리"
+                leftIcon={<MapPin className="size-4" />}
+                required
+              />
+              {errors.placeName && <p className="mt-1 text-sm text-danger-500">{errors.placeName}</p>}
+            </div>
 
             {/* Day & Time */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -683,11 +742,14 @@ export function PlanForm() {
                   onChange={(e) => setFormData((prev) => ({ ...prev, day: parseInt(e.target.value) }))}
                   className="mt-2 w-full h-10 px-3 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
-                  {Array.from({ length: 30 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>
-                      Day {i + 1}
-                    </option>
-                  ))}
+                  {Array.from(
+                    { length: currentTrip ? getTripDurationSafe(currentTrip.startDate, currentTrip.endDate) : 30 },
+                    (_, i) => (
+                      <option key={i + 1} value={i + 1}>
+                        Day {i + 1}
+                      </option>
+                    )
+                  )}
                 </select>
               </div>
               <TimePicker

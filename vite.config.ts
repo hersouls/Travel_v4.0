@@ -41,6 +41,8 @@ export default defineConfig({
           'map': ['leaflet', 'react-leaflet'],
           'google-maps': ['@googlemaps/js-api-loader'],
           'firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
+          'pdf': ['@react-pdf/renderer'],
+          'sentry': ['@sentry/react'],
         },
       },
     },

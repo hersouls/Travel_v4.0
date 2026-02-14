@@ -46,6 +46,7 @@ import { AudioPlayer } from '@/components/audio'
 import { MemoRenderer } from '@/components/memo'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
+import { useShallow } from 'zustand/react/shallow'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatTime } from '@/utils/format'
@@ -64,8 +65,11 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import type { Plan } from '@/types'
+import { detectTimeConflicts } from '@/utils/timeConflict'
+import { useSwipeGesture } from '@/hooks/useSwipeGesture'
 import { RouteInfoPanel } from '@/components/map/RouteInfoPanel'
 import { RouteOptimizeButton } from '@/components/trip/RouteOptimizeButton'
+import { WeatherBadge } from '@/components/trip/WeatherBadge'
 import { AIDayRecommendDialog } from '@/components/ai/AIDayRecommendDialog'
 import { AIDaySuggestDialog } from '@/components/ai/AIDaySuggestDialog'
 import { useDirections } from '@/hooks/useDirections'
@@ -79,6 +83,7 @@ interface SortablePlanCardProps {
   tripId: number
   iconMap: Record<string, LucideIcon>
   refreshingPlanId: number | null
+  hasConflict?: boolean
   onRefresh: (plan: Plan) => void
   onDelete: (id: number) => void
 }
@@ -89,6 +94,7 @@ function SortablePlanCard({
   tripId,
   iconMap,
   refreshingPlanId,
+  hasConflict,
   onRefresh,
   onDelete,
 }: SortablePlanCardProps) {
@@ -142,6 +148,9 @@ function SortablePlanCard({
                   {plan.placeName}
                 </Link>
                 <PlanTypeBadge type={plan.type} />
+                {hasConflict && (
+                  <Badge color="warning" size="sm">시간 충돌</Badge>
+                )}
               </div>
               <div className="flex items-center gap-2 mt-1 text-sm text-zinc-500">
                 <Clock className="size-3.5" />
@@ -302,13 +311,20 @@ export function DayDetail() {
   const trip = useCurrentTrip()
   const plans = useCurrentPlans()
   const isLoading = useTripLoading()
-  const loadTrip = useTripStore((state) => state.loadTrip)
-  const deletePlan = useTripStore((state) => state.deletePlan)
-  const updatePlan = useTripStore((state) => state.updatePlan)
-
-  const addPlan = useTripStore((state) => state.addPlan)
-  const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
-  const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
+  const { loadTrip, deletePlan, updatePlan, addPlan } = useTripStore(
+    useShallow((s) => ({
+      loadTrip: s.loadTrip,
+      deletePlan: s.deletePlan,
+      updatePlan: s.updatePlan,
+      addPlan: s.addPlan,
+    }))
+  )
+  const { claudeEnabled, claudeApiKey } = useSettingsStore(
+    useShallow((s) => ({
+      claudeEnabled: s.claudeEnabled,
+      claudeApiKey: s.claudeApiKey,
+    }))
+  )
   const isAIAvailable = claudeEnabled || !!claudeApiKey
 
   const [planToDelete, setPlanToDelete] = useState<number | null>(null)
@@ -338,9 +354,19 @@ export function DayDetail() {
       })
   }, [plans, dayNumber])
 
-  const reorderPlans = useTripStore((state) => state.reorderPlans)
+  // Time conflict detection
+  const timeConflicts = useMemo(() => detectTimeConflicts(dayPlans), [dayPlans])
+  const conflictPlanIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const c of timeConflicts) {
+      if (c.planA.id) ids.add(c.planA.id)
+      if (c.planB.id) ids.add(c.planB.id)
+    }
+    return ids
+  }, [timeConflicts])
 
-  const defaultTravelMode = useSettingsStore((state) => state.defaultTravelMode) as TravelMode || 'DRIVE'
+  const reorderPlans = useTripStore((s) => s.reorderPlans)
+  const defaultTravelMode = (useSettingsStore((s) => s.defaultTravelMode) as TravelMode) || 'DRIVE'
   const tripId = trip?.id || 0
   const { segments: routeSegments } = useDirections(dayPlans, tripId, defaultTravelMode)
 
@@ -384,6 +410,19 @@ export function DayDetail() {
     }
   }
 
+  const goToNextDay = () => {
+    if (dayNumber < totalDays) {
+      navigate(`/trips/${id}/day/${dayNumber + 1}`)
+    }
+  }
+
+  // Swipe gesture for day navigation (mobile)
+  const swipeHandlers = useSwipeGesture({
+    onSwipeLeft: goToNextDay,
+    onSwipeRight: goToPrevDay,
+    threshold: 60,
+  })
+
   // Drag and drop sensors
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -411,12 +450,6 @@ export function DayDetail() {
           toast.success('일정 순서가 변경되었습니다')
         }
       }
-    }
-  }
-
-  const goToNextDay = () => {
-    if (dayNumber < totalDays) {
-      navigate(`/trips/${id}/day/${dayNumber + 1}`)
     }
   }
 
@@ -583,7 +616,7 @@ export function DayDetail() {
 
   return (
     <PageContainer>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-6 animate-fade-in" {...swipeHandlers}>
       {/* Header */}
       <div className="flex items-center gap-4">
         <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
@@ -616,14 +649,22 @@ export function DayDetail() {
             </IconButton>
           </div>
           {dayDate && (
-            <p className="text-sm text-zinc-500">
-              {dayDate.toLocaleDateString('ko-KR', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                weekday: 'long',
-              })}
-            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="text-sm text-zinc-500">
+                {dayDate.toLocaleDateString('ko-KR', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  weekday: 'long',
+                })}
+              </p>
+              {trip && dayDate && (
+                <WeatherBadge
+                  country={trip.country}
+                  date={dayDate.toISOString().split('T')[0]}
+                />
+              )}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -726,15 +767,38 @@ export function DayDetail() {
 
         {dayPlans.length === 0 ? (
           <Card padding="lg" className="text-center">
-            <Clock className="size-10 mx-auto text-zinc-300 mb-3" />
-            <p className="text-zinc-500 mb-4">이 날에 등록된 일정이 없습니다</p>
-            <Button
-              to={`/trips/${trip.id}/plans/new?day=${dayNumber}`}
-              color="primary"
-              leftIcon={<Plus className="size-4" />}
-            >
-              첫 일정 추가하기
-            </Button>
+            <div className="py-8 max-w-sm mx-auto">
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div className="absolute inset-0 bg-primary-100 dark:bg-primary-950/50 rounded-full" />
+                <Clock className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-10 text-primary-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">
+                아직 일정이 없습니다
+              </h3>
+              <p className="text-zinc-500 mb-6 text-sm">
+                Day {dayNumber}에 방문할 장소를 추가해보세요.
+                {isAIAvailable && ' AI가 추천해드릴 수도 있어요!'}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  to={`/trips/${trip.id}/plans/new?day=${dayNumber}`}
+                  color="primary"
+                  leftIcon={<Plus className="size-4" />}
+                >
+                  일정 추가하기
+                </Button>
+                {isAIAvailable && (
+                  <Button
+                    color="secondary"
+                    outline
+                    onClick={() => setIsRecommendOpen(true)}
+                    leftIcon={<Sparkles className="size-4" />}
+                  >
+                    AI로 추천받기
+                  </Button>
+                )}
+              </div>
+            </div>
           </Card>
         ) : (
           <DndContext
@@ -755,6 +819,7 @@ export function DayDetail() {
                       tripId={trip.id!}
                       iconMap={iconMap}
                       refreshingPlanId={refreshingPlanId}
+                      hasConflict={plan.id ? conflictPlanIds.has(plan.id) : false}
                       onRefresh={handleRefreshGoogleInfo}
                       onDelete={(id) => setPlanToDelete(id)}
                     />

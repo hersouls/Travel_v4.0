@@ -10,14 +10,16 @@ import {
   deleteDoc,
   onSnapshot,
   getDocs,
+  writeBatch,
   Timestamp,
   type DocumentData,
+  type DocumentReference,
   type Unsubscribe,
 } from 'firebase/firestore'
 import { getFirebaseDb } from '@/services/firebase'
 import { db as dexieDb } from '@/services/database'
 import * as database from '@/services/database'
-import type { Trip, Plan, Place, Settings, RouteSegment } from '@/types'
+import type { Trip, Plan, Place, Settings, RouteSegment, SyncProgress } from '@/types'
 
 // ============================================
 // Helpers
@@ -53,6 +55,7 @@ function tripToFirestore(trip: Trip): DocumentData {
     endDate: trip.endDate,
     plansCount: trip.plansCount || 0,
     isFavorite: trip.isFavorite,
+    shareId: trip.shareId || null,
     createdAt: toTimestamp(trip.createdAt),
     updatedAt: toTimestamp(trip.updatedAt),
   }
@@ -167,6 +170,7 @@ function firestoreToTripData(data: DocumentData): Omit<Trip, 'id' | 'coverImage'
     endDate: data.endDate,
     plansCount: data.plansCount || 0,
     isFavorite: data.isFavorite ?? false,
+    shareId: data.shareId || undefined,
     createdAt: fromTimestamp(data.createdAt),
     updatedAt: fromTimestamp(data.updatedAt),
   }
@@ -224,12 +228,14 @@ function firestoreToPlaceData(data: DocumentData): Omit<Place, 'id' | 'photos'> 
 // ============================================
 
 type SyncCallback = () => void
+type SyncStatusCallback = (progress: SyncProgress) => void
 
 class SyncManager {
   private userId: string | null = null
   private unsubscribers: Unsubscribe[] = []
   private syncCallbacks: SyncCallback[] = []
   private activeCallbacks: SyncCallback[] = []
+  private statusCallbacks: SyncStatusCallback[] = []
   private isSyncing = false
   private _isActive = false
   private suppressEcho = new Set<string>()
@@ -253,6 +259,9 @@ class SyncManager {
   }
 
   stop(): void {
+    // Flush any pending batch writes before stopping
+    this.flushBatch().catch((e) => console.error('[Sync] Flush on stop failed:', e))
+
     for (const unsub of this.unsubscribers) unsub()
     this.unsubscribers = []
     this.userId = null
@@ -294,6 +303,19 @@ class SyncManager {
     }
   }
 
+  onSyncStatus(callback: SyncStatusCallback): () => void {
+    this.statusCallbacks.push(callback)
+    return () => {
+      this.statusCallbacks = this.statusCallbacks.filter((cb) => cb !== callback)
+    }
+  }
+
+  private notifySyncStatus(progress: SyncProgress): void {
+    for (const cb of this.statusCallbacks) {
+      try { cb(progress) } catch (e) { console.error('[Sync] Status callback error:', e) }
+    }
+  }
+
   // ============================================
   // Initial Sync
   // ============================================
@@ -303,14 +325,69 @@ class SyncManager {
     this.isSyncing = true
 
     try {
-      await this.syncTripsInitial()
-      await this.syncPlansInitial()
-      await this.syncPlacesInitial()
-      await this.syncSettingsInitial()
-      await this.syncRouteSegmentsInitial()
+      // Count local-only items before sync
+      this.notifySyncStatus({ status: 'checking', step: '로컬 데이터 확인 중...' })
+      const localTrips = await dexieDb.trips.toArray()
+      const localPlans = await dexieDb.plans.toArray()
+      const localPlaces = await dexieDb.places.toArray()
+      const localOnlyCount =
+        localTrips.filter((t) => !t.firebaseId).length +
+        localPlans.filter((p) => !p.firebaseId).length +
+        localPlaces.filter((p) => !p.firebaseId).length
+
+      if (localOnlyCount > 0) {
+        this.notifySyncStatus({
+          status: 'syncing',
+          step: `Firebase 데이터로 동기화 중... (로컬 전용 ${localOnlyCount}건 삭제 예정)`,
+          localOnlyCount,
+        })
+      } else {
+        this.notifySyncStatus({ status: 'syncing', step: '여행 동기화 중...' })
+      }
+
+      try {
+        await this.syncTripsInitial()
+      } catch (e) {
+        console.error('[Sync] Trips sync failed:', e)
+      }
+
+      this.notifySyncStatus({ status: 'syncing', step: '일정 동기화 중...' })
+      try {
+        await this.syncPlansInitial()
+      } catch (e) {
+        console.error('[Sync] Plans sync failed:', e)
+      }
+
+      this.notifySyncStatus({ status: 'syncing', step: '장소 동기화 중...' })
+      try {
+        await this.syncPlacesInitial()
+      } catch (e) {
+        console.error('[Sync] Places sync failed:', e)
+      }
+
+      this.notifySyncStatus({ status: 'syncing', step: '설정 동기화 중...' })
+      try {
+        await this.syncSettingsInitial()
+      } catch (e) {
+        console.error('[Sync] Settings sync failed:', e)
+      }
+
+      this.notifySyncStatus({ status: 'syncing', step: '경로 동기화 중...' })
+      try {
+        await this.syncRouteSegmentsInitial()
+      } catch (e) {
+        console.error('[Sync] RouteSegments sync failed:', e)
+      }
+
+      this.notifySyncStatus({ status: 'done', step: '동기화 완료' })
       this.notifyUpdate()
     } catch (error) {
       console.error('[Sync] Initial sync error:', error)
+      this.notifySyncStatus({
+        status: 'error',
+        step: '동기화 중 오류 발생',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })
     } finally {
       this.isSyncing = false
     }
@@ -348,28 +425,24 @@ class SyncManager {
           coverImage: '',
         } as Trip)
       } else {
-        // Both exist → last-write-wins
+        // Both exist → Firebase always wins during initial sync
         const local = localByFbId.get(fbId)!
-        const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
-        const localMs = dateToMs(local.updatedAt)
-        if (remoteMs > localMs) {
-          const tripData = firestoreToTripData(data)
-          await dexieDb.trips.update(local.id!, {
-            ...tripData,
-            firebaseId: fbId,
-          })
-        } else if (localMs > remoteMs) {
-          await setDoc(doc(tripsRef, fbId), tripToFirestore(local))
-        }
+        const tripData = firestoreToTripData(data)
+        await dexieDb.trips.update(local.id!, {
+          ...tripData,
+          firebaseId: fbId,
+        })
       }
     }
 
-    // Local-only (no firebaseId) → upload
+    // Local-only (no firebaseId) → discard (Firebase is source of truth)
     for (const trip of localTrips) {
-      if (!trip.firebaseId) {
-        const newDocRef = doc(tripsRef)
-        await setDoc(newDocRef, tripToFirestore(trip))
-        await dexieDb.trips.update(trip.id!, { firebaseId: newDocRef.id })
+      if (!trip.firebaseId && trip.id) {
+        // Cascade delete associated plans and routeSegments
+        await dexieDb.plans.where('tripId').equals(trip.id).delete()
+        await dexieDb.routeSegments.where('tripId').equals(trip.id).delete()
+        await dexieDb.trips.delete(trip.id)
+        console.log('[Sync] Discarded local-only trip:', trip.id, trip.title)
       }
     }
   }
@@ -410,33 +483,21 @@ class SyncManager {
           photos: [],
         } as Plan)
       } else {
+        // Both exist → Firebase always wins during initial sync
         const local = localByFbId.get(fbId)!
-        const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
-        const localMs = dateToMs(local.updatedAt)
-        if (remoteMs > localMs) {
-          const planData = firestoreToPlanData(data)
-          await dexieDb.plans.update(local.id!, {
-            ...planData,
-            firebaseId: fbId,
-          })
-        } else if (localMs > remoteMs) {
-          await setDoc(doc(plansRef, fbId), planToFirestore(local))
-        }
+        const planData = firestoreToPlanData(data)
+        await dexieDb.plans.update(local.id!, {
+          ...planData,
+          firebaseId: fbId,
+        })
       }
     }
 
-    // Local-only → upload
+    // Local-only (no firebaseId) → discard (Firebase is source of truth)
     for (const plan of localPlans) {
-      if (!plan.firebaseId) {
-        const tripFirebaseId = await this.resolveTripFirebaseId(plan.tripId)
-        if (!tripFirebaseId) continue
-        const newDocRef = doc(plansRef)
-        const planWithFbTripId = { ...plan, tripFirebaseId }
-        await setDoc(newDocRef, planToFirestore(planWithFbTripId))
-        await dexieDb.plans.update(plan.id!, {
-          firebaseId: newDocRef.id,
-          tripFirebaseId,
-        })
+      if (!plan.firebaseId && plan.id) {
+        await dexieDb.plans.delete(plan.id)
+        console.log('[Sync] Discarded local-only plan:', plan.id, plan.placeName)
       }
     }
   }
@@ -470,26 +531,21 @@ class SyncManager {
           photos: [],
         } as Place)
       } else {
+        // Both exist → Firebase always wins during initial sync
         const local = localByFbId.get(fbId)!
-        const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
-        const localMs = dateToMs(local.updatedAt)
-        if (remoteMs > localMs) {
-          const placeData = firestoreToPlaceData(data)
-          await dexieDb.places.update(local.id!, {
-            ...placeData,
-            firebaseId: fbId,
-          })
-        } else if (localMs > remoteMs) {
-          await setDoc(doc(placesRef, fbId), placeToFirestore(local))
-        }
+        const placeData = firestoreToPlaceData(data)
+        await dexieDb.places.update(local.id!, {
+          ...placeData,
+          firebaseId: fbId,
+        })
       }
     }
 
+    // Local-only (no firebaseId) → discard (Firebase is source of truth)
     for (const place of localPlaces) {
-      if (!place.firebaseId) {
-        const newDocRef = doc(placesRef)
-        await setDoc(newDocRef, placeToFirestore(place))
-        await dexieDb.places.update(place.id!, { firebaseId: newDocRef.id })
+      if (!place.firebaseId && place.id) {
+        await dexieDb.places.delete(place.id)
+        console.log('[Sync] Discarded local-only place:', place.id, place.name)
       }
     }
   }
@@ -505,24 +561,21 @@ class SyncManager {
       const localSettings = await database.getSettings()
 
       if (docSnap.exists()) {
+        // Firebase always wins during initial sync
         const remoteData = docSnap.data()
-        const remoteMs = dateToMs(fromTimestamp(remoteData.updatedAt))
-        const localMs = dateToMs(localSettings.lastBackupDate)
-
-        if (remoteMs > localMs) {
-          await database.updateSettings({
-            theme: remoteData.theme,
-            colorPalette: remoteData.colorPalette,
-            language: remoteData.language,
-            isMusicPlayerEnabled: remoteData.isMusicPlayerEnabled,
-            timezoneAutoDetect: remoteData.timezoneAutoDetect ?? true,
-            detectedTimezone: remoteData.detectedTimezone || undefined,
-          })
-        } else {
-          await setDoc(settingsDocRef, settingsToFirestore(localSettings))
-        }
+        await database.updateSettings({
+          theme: remoteData.theme,
+          colorPalette: remoteData.colorPalette,
+          language: remoteData.language,
+          isMusicPlayerEnabled: remoteData.isMusicPlayerEnabled,
+          timezoneAutoDetect: remoteData.timezoneAutoDetect ?? true,
+          detectedTimezone: remoteData.detectedTimezone || undefined,
+        })
+        console.log('[Sync] Applied remote settings (Firebase wins)')
       } else {
+        // No remote settings → seed Firebase with local defaults
         await setDoc(settingsDocRef, settingsToFirestore(localSettings))
+        console.log('[Sync] Seeded Firebase with local settings (no remote)')
       }
     } catch (error) {
       console.error('[Sync] Settings sync error:', error)
@@ -561,30 +614,18 @@ class SyncManager {
           tripId: localTripId,
         } as RouteSegment)
       } else {
+        // Both exist → Firebase always wins during initial sync
         const local = localByFbId.get(fbId)!
-        const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
-        const localMs = dateToMs(local.updatedAt)
-        if (remoteMs > localMs) {
-          const segData = firestoreToRouteSegmentData(data)
-          await dexieDb.routeSegments.update(local.id!, { ...segData, firebaseId: fbId })
-        } else if (localMs > remoteMs) {
-          await setDoc(doc(segmentsRef, fbId), routeSegmentToFirestore(local))
-        }
+        const segData = firestoreToRouteSegmentData(data)
+        await dexieDb.routeSegments.update(local.id!, { ...segData, firebaseId: fbId })
       }
     }
 
-    // Local-only → upload
+    // Local-only (no firebaseId) → discard (Firebase is source of truth)
     for (const seg of localSegments) {
-      if (!seg.firebaseId) {
-        const tripFirebaseId = await this.resolveTripFirebaseId(seg.tripId)
-        if (!tripFirebaseId) continue
-        const newDocRef = doc(segmentsRef)
-        const segWithFbTripId = { ...seg, tripFirebaseId }
-        await setDoc(newDocRef, routeSegmentToFirestore(segWithFbTripId))
-        await dexieDb.routeSegments.update(seg.id!, {
-          firebaseId: newDocRef.id,
-          tripFirebaseId,
-        })
+      if (!seg.firebaseId && seg.id) {
+        await dexieDb.routeSegments.delete(seg.id)
+        console.log('[Sync] Discarded local-only routeSegment:', seg.id)
       }
     }
   }
@@ -791,6 +832,96 @@ class SyncManager {
   }
 
   // ============================================
+  // Batch Write Queue (debounced 500ms)
+  // ============================================
+
+  private batchQueue: Array<{
+    type: 'set' | 'delete'
+    ref: DocumentReference
+    data?: DocumentData
+    echoKey?: string
+  }> = []
+  private batchTimer: ReturnType<typeof setTimeout> | null = null
+  private static readonly BATCH_DEBOUNCE_MS = 500
+  private static readonly MAX_BATCH_SIZE = 450 // Firestore limit is 500
+
+  /**
+   * Queue a write operation for batched execution.
+   * Flushes automatically after 500ms or when queue reaches 450 items.
+   */
+  queueWrite(ref: DocumentReference, data: DocumentData, echoKey?: string): void {
+    if (echoKey) this.suppressEcho.add(echoKey)
+    this.batchQueue.push({ type: 'set', ref, data, echoKey })
+    this.scheduleBatchFlush()
+  }
+
+  /**
+   * Queue a delete operation for batched execution.
+   */
+  queueDelete(ref: DocumentReference, echoKey?: string): void {
+    if (echoKey) this.suppressEcho.add(echoKey)
+    this.batchQueue.push({ type: 'delete', ref, echoKey })
+    this.scheduleBatchFlush()
+  }
+
+  private scheduleBatchFlush(): void {
+    if (this.batchQueue.length >= SyncManager.MAX_BATCH_SIZE) {
+      this.flushBatch()
+      return
+    }
+    if (this.batchTimer) clearTimeout(this.batchTimer)
+    this.batchTimer = setTimeout(() => this.flushBatch(), SyncManager.BATCH_DEBOUNCE_MS)
+  }
+
+  /**
+   * Immediately flush all queued writes as Firestore batch(es).
+   */
+  async flushBatch(): Promise<void> {
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer)
+      this.batchTimer = null
+    }
+    if (this.batchQueue.length === 0) return
+
+    const queue = [...this.batchQueue]
+    this.batchQueue = []
+
+    const firestore = getFirebaseDb()
+
+    // Split into chunks of 450 (Firestore max 500 per batch)
+    for (let i = 0; i < queue.length; i += SyncManager.MAX_BATCH_SIZE) {
+      const chunk = queue.slice(i, i + SyncManager.MAX_BATCH_SIZE)
+      const batch = writeBatch(firestore)
+
+      for (const op of chunk) {
+        if (op.type === 'set' && op.data) {
+          batch.set(op.ref, op.data)
+        } else if (op.type === 'delete') {
+          batch.delete(op.ref)
+        }
+      }
+
+      try {
+        await batch.commit()
+      } catch (error) {
+        console.error('[Sync] Batch commit failed, falling back to individual writes:', error)
+        // Fallback: try individual writes
+        for (const op of chunk) {
+          try {
+            if (op.type === 'set' && op.data) {
+              await setDoc(op.ref, op.data)
+            } else if (op.type === 'delete') {
+              await deleteDoc(op.ref)
+            }
+          } catch (e) {
+            console.error('[Sync] Individual write fallback also failed:', e)
+          }
+        }
+      }
+    }
+  }
+
+  // ============================================
   // Upload Methods (called by stores)
   // ============================================
 
@@ -865,17 +996,57 @@ class SyncManager {
     const firestore = getFirebaseDb()
     this.suppressEcho.add(`trip:${firebaseId}`)
 
-    // Delete associated plans in Firestore
+    // Batch-delete associated plans + the trip itself
     const plansRef = collection(firestore, 'users', this.userId, 'plans')
     const plansSnapshot = await getDocs(plansRef)
+
+    // Also delete associated route segments
+    const segmentsRef = collection(firestore, 'users', this.userId, 'routeSegments')
+    const segmentsSnapshot = await getDocs(segmentsRef)
+
+    const batch = writeBatch(firestore)
+    let opCount = 0
+
     for (const planDoc of plansSnapshot.docs) {
       if (planDoc.data().tripFirebaseId === firebaseId) {
         this.suppressEcho.add(`plan:${planDoc.id}`)
-        await deleteDoc(planDoc.ref)
+        batch.delete(planDoc.ref)
+        opCount++
       }
     }
 
-    await deleteDoc(doc(firestore, 'users', this.userId, 'trips', firebaseId))
+    for (const segDoc of segmentsSnapshot.docs) {
+      if (segDoc.data().tripFirebaseId === firebaseId) {
+        this.suppressEcho.add(`routeSegment:${segDoc.id}`)
+        batch.delete(segDoc.ref)
+        opCount++
+      }
+    }
+
+    batch.delete(doc(firestore, 'users', this.userId, 'trips', firebaseId))
+    opCount++
+
+    // Firestore batch limit is 500
+    if (opCount <= 500) {
+      await batch.commit()
+    } else {
+      // Fallback to chunked deletion for very large trips
+      const allRefs: DocumentReference[] = []
+      for (const planDoc of plansSnapshot.docs) {
+        if (planDoc.data().tripFirebaseId === firebaseId) allRefs.push(planDoc.ref)
+      }
+      for (const segDoc of segmentsSnapshot.docs) {
+        if (segDoc.data().tripFirebaseId === firebaseId) allRefs.push(segDoc.ref)
+      }
+      allRefs.push(doc(firestore, 'users', this.userId, 'trips', firebaseId))
+
+      for (let i = 0; i < allRefs.length; i += 450) {
+        const chunk = allRefs.slice(i, i + 450)
+        const b = writeBatch(firestore)
+        for (const ref of chunk) b.delete(ref)
+        await b.commit()
+      }
+    }
   }
 
   async deleteRemotePlan(firebaseId: string): Promise<void> {

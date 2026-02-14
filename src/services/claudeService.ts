@@ -3,7 +3,7 @@
 // SSE streaming + structured response support
 // ============================================
 
-import type { AIGenerateRequest, ClaudeModel, Plan, Trip, GeneratedItinerary } from '@/types'
+import type { AIGenerateRequest, ClaudeModel, Plan, Trip, GeneratedItinerary, DaySuggestion } from '@/types'
 
 const API_URL = '/api/claude/generate'
 
@@ -78,6 +78,7 @@ export async function generateStructured<T = string>(
   request: AIGenerateRequest,
   apiKey: string,
   model: ClaudeModel,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch(API_URL, {
     method: 'POST',
@@ -86,6 +87,7 @@ export async function generateStructured<T = string>(
       'x-api-key': apiKey,
     },
     body: JSON.stringify({ ...request, model, stream: false }),
+    signal,
   })
 
   if (!response.ok) {
@@ -175,6 +177,57 @@ export function buildImageAnalysisContext(base64Image: string): AIGenerateReques
 }
 
 // ============================================
+// Day-Level Context Builders
+// ============================================
+
+export interface DayRecommendPreferences {
+  keywords: string
+  interests: string[]
+  style: string
+}
+
+export function buildDayRecommendContext(
+  trip: Trip,
+  dayNumber: number,
+  totalDays: number,
+  dayDate: Date | null,
+  prefs: DayRecommendPreferences,
+): Record<string, unknown> {
+  return {
+    country: trip.country,
+    dayNumber,
+    totalDays,
+    dayDate: dayDate ? dayDate.toISOString().split('T')[0] : undefined,
+    keywords: prefs.keywords,
+    interests: prefs.interests,
+    style: prefs.style,
+  }
+}
+
+export function buildDaySuggestContext(
+  trip: Trip,
+  dayNumber: number,
+  dayPlans: Plan[],
+  dayDate: Date | null,
+): Record<string, unknown> {
+  return {
+    country: trip.country,
+    dayNumber,
+    dayDate: dayDate ? dayDate.toISOString().split('T')[0] : undefined,
+    existingPlans: dayPlans.map((p) => ({
+      placeName: p.placeName,
+      startTime: p.startTime,
+      endTime: p.endTime,
+      type: p.type,
+      address: p.address,
+      memo: p.memo,
+      latitude: p.latitude,
+      longitude: p.longitude,
+    })),
+  }
+}
+
+// ============================================
 // Itinerary Parsing Helper
 // ============================================
 
@@ -191,6 +244,25 @@ export function parseItineraryResponse(content: string): GeneratedItinerary | nu
       try {
         const parsed = JSON.parse(match[0])
         if (parsed.days && Array.isArray(parsed.days)) return parsed
+      } catch { /* ignore */ }
+    }
+    return null
+  }
+}
+
+export function parseDaySuggestionResponse(content: string): DaySuggestion | null {
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed.analysis && parsed.revisedPlans && Array.isArray(parsed.revisedPlans)) {
+      return parsed
+    }
+    return null
+  } catch {
+    const match = content.match(/\{[\s\S]*"revisedPlans"[\s\S]*\}/)
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[0])
+        if (parsed.analysis && parsed.revisedPlans) return parsed
       } catch { /* ignore */ }
     }
     return null

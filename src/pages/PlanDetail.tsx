@@ -25,6 +25,7 @@ import {
     type LucideIcon
 } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
+import { Lightbox } from '@/components/ui/Lightbox'
 import { AudioPlayer } from '@/components/audio'
 import { MemoRenderer } from '@/components/memo'
 import { Button, IconButton } from '@/components/ui/Button'
@@ -32,6 +33,7 @@ import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { AIGuideGenerator, AIMemoGenerator } from '@/components/ai'
+import { useShallow } from 'zustand/react/shallow'
 import { useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/uiStore'
@@ -59,10 +61,14 @@ export function PlanDetail() {
     const { tripId, planId } = useParams<{ tripId: string; planId: string }>()
     const navigate = useNavigate()
 
-    const loadTrip = useTripStore((state) => state.loadTrip)
-    const addPlan = useTripStore((state) => state.addPlan)
-    const updatePlan = useTripStore((state) => state.updatePlan)
-    const currentTrip = useTripStore((state) => state.currentTrip)
+    const { loadTrip, addPlan, updatePlan, currentTrip } = useTripStore(
+      useShallow((s) => ({
+        loadTrip: s.loadTrip,
+        addPlan: s.addPlan,
+        updatePlan: s.updatePlan,
+        currentTrip: s.currentTrip,
+      }))
+    )
     const plans = useCurrentPlans()
     const isLoading = useTripLoading()
     const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
@@ -73,6 +79,9 @@ export function PlanDetail() {
     const [googlePhotos, setGooglePhotos] = useState<PlacePhoto[]>([])
     const [isGuideDialogOpen, setIsGuideDialogOpen] = useState(false)
     const [isMemoDialogOpen, setIsMemoDialogOpen] = useState(false)
+    const [lightboxOpen, setLightboxOpen] = useState(false)
+    const [lightboxIndex, setLightboxIndex] = useState(0)
+    const [lightboxImages, setLightboxImages] = useState<string[]>([])
 
     // Fetch Google Place photos
     useEffect(() => {
@@ -317,8 +326,13 @@ export function PlanDetail() {
                                         <img
                                             src={photo}
                                             alt={`${plan.placeName} photo ${index + 1}`}
+                                            loading="lazy"
                                             className="w-full h-full object-cover hover:scale-105 transition-transform duration-300 cursor-pointer"
-                                            onClick={() => window.open(photo, '_blank')}
+                                            onClick={() => {
+                                                setLightboxImages(plan.photos!)
+                                                setLightboxIndex(index)
+                                                setLightboxOpen(true)
+                                            }}
                                         />
                                     </div>
                                 ))}
@@ -338,8 +352,13 @@ export function PlanDetail() {
                                         <img
                                             src={photo.url}
                                             alt={`Google photo ${index + 1}`}
+                                            loading="lazy"
                                             className="w-full h-full object-cover hover:scale-105 transition-transform duration-300 cursor-pointer"
-                                            onClick={() => window.open(photo.url, '_blank')}
+                                            onClick={() => {
+                                                setLightboxImages(googlePhotos.map((p) => p.url))
+                                                setLightboxIndex(index)
+                                                setLightboxOpen(true)
+                                            }}
                                         />
                                     </div>
                                 ))}
@@ -455,6 +474,14 @@ export function PlanDetail() {
                     />
                 )}
             </div>
+
+            {/* Photo Lightbox */}
+            <Lightbox
+                images={lightboxImages}
+                initialIndex={lightboxIndex}
+                onClose={() => setLightboxOpen(false)}
+                open={lightboxOpen}
+            />
 
             {/* AI Dialogs */}
             {claudeEnabled && plan && currentTrip && (

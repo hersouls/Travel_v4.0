@@ -58,9 +58,6 @@ export function useServiceWorker() {
     console.log('[useServiceWorker] Applying update...')
     setState(prev => ({ ...prev, isUpdating: true }))
 
-    // Send SKIP_WAITING to the waiting worker
-    waitingWorker.postMessage({ type: 'SKIP_WAITING' })
-
     // Listen for controller change to reload
     let reloading = false
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -69,6 +66,17 @@ export function useServiceWorker() {
       console.log('[useServiceWorker] Controller changed, reloading...')
       window.location.reload()
     })
+
+    // Send SKIP_WAITING to the waiting worker
+    waitingWorker.postMessage({ type: 'SKIP_WAITING' })
+
+    // Fallback: if controllerchange doesn't fire within 3 seconds, force reload
+    setTimeout(() => {
+      if (!reloading) {
+        console.warn('[useServiceWorker] controllerchange timeout, forcing reload')
+        window.location.reload()
+      }
+    }, 3000)
   }, [state])
 
   const dismissUpdate = useCallback(() => {

@@ -15,6 +15,10 @@ export interface ToastData {
   title: string
   message?: string
   duration?: number
+  action?: {
+    label: string
+    onClick: () => void
+  }
 }
 
 interface ToastProps extends ToastData {
@@ -42,7 +46,7 @@ const iconColorStyles = {
   info: 'text-primary-500 dark:text-primary-400',
 }
 
-export function Toast({ id, type, title, message, duration = 5000, onDismiss }: ToastProps) {
+export function Toast({ id, type, title, message, duration = 5000, action, onDismiss }: ToastProps) {
   const [isVisible, setIsVisible] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
   const Icon = iconMap[type]
@@ -82,6 +86,18 @@ export function Toast({ id, type, title, message, duration = 5000, onDismiss }: 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold">{title}</p>
           {message && <p className="mt-1 text-sm opacity-90">{message}</p>}
+          {action && (
+            <button
+              type="button"
+              onClick={() => {
+                action.onClick()
+                handleDismiss()
+              }}
+              className="mt-2 text-sm font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity"
+            >
+              {action.label}
+            </button>
+          )}
         </div>
         <IconButton onClick={handleDismiss} plain color="secondary" className="-m-1" aria-label="닫기">
           <X className="size-4" />
@@ -98,7 +114,12 @@ interface ToastContainerProps {
 
 export function ToastContainer({ toasts, onDismiss }: ToastContainerProps) {
   return (
-    <div className="pointer-events-none fixed inset-0 flex flex-col items-end justify-start p-4 gap-3 z-70">
+    <div
+      className="pointer-events-none fixed inset-0 flex flex-col items-end justify-start p-4 gap-3 z-70"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+    >
       {toasts.map((toast) => (
         <Toast key={toast.id} {...toast} onDismiss={onDismiss} />
       ))}

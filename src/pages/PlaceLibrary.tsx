@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Plus, Star, MapPin, Trash2, Loader2, Sparkles, Globe, Edit, ExternalLink, ChevronDown, ChevronUp, Copy, Volume2, Download, Upload, FileJson, X } from 'lucide-react'
+import { Search, Plus, Star, MapPin, Trash2, Loader2, Sparkles, Globe, Edit, ExternalLink, ChevronDown, ChevronUp, Copy, Volume2, Download, Upload, FileJson, X, ArrowUpDown } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
@@ -8,6 +8,7 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { usePlaceStore, usePlaces, usePlaceLoading } from '@/stores/placeStore'
+import type { PlaceSortBy } from '@/stores/placeStore'
 import { toast } from '@/stores/uiStore'
 import { PlacesAutocomplete } from '@/components/ui/PlacesAutocomplete'
 import { extractPlaceInfo, isGoogleMapsUrl } from '@/services/googleMaps'
@@ -27,7 +28,7 @@ const planTypes: Array<PlanType | 'all'> = ['all', 'attraction', 'restaurant', '
 export function PlaceLibrary() {
   const _places = usePlaces()
   const isLoading = usePlaceLoading()
-  const { searchQuery, filterType, setSearchQuery, setFilterType, getFilteredPlaces, toggleFavorite, deletePlace, addPlace, updatePlace } = usePlaceStore()
+  const { searchQuery, filterType, sortBy, sortOrder, setSearchQuery, setFilterType, setSortBy, setSortOrder, getFilteredPlaces, toggleFavorite, deletePlace, addPlace, updatePlace } = usePlaceStore()
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingPlaceId, setEditingPlaceId] = useState<number | null>(null)
@@ -336,34 +337,57 @@ export function PlaceLibrary() {
               leftIcon={<Search className="size-4" />}
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-            {planTypes.map((type) => (
-              <button
-                key={type}
-                onClick={() => setFilterType(type)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${filterType === type
-                  ? 'bg-primary-500 text-white'
-                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                  }`}
-              >
-                {type === 'all' ? '전체' : PLAN_TYPE_LABELS[type]}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as PlaceSortBy)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-0 outline-none cursor-pointer transition-colors hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            >
+              <option value="name">이름순</option>
+              <option value="date">최신순</option>
+              <option value="usage">사용순</option>
+              <option value="rating">평점순</option>
+            </select>
+            <button
+              onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+              className="p-1.5 rounded-lg text-sm font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+              aria-label={sortOrder === 'asc' ? '내림차순으로 변경' : '오름차순으로 변경'}
+              title={sortOrder === 'asc' ? '오름차순' : '내림차순'}
+            >
+              <ArrowUpDown className={`size-4 transition-transform ${sortOrder === 'asc' ? 'rotate-180' : ''}`} />
+            </button>
           </div>
+        </div>
+        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
+          {planTypes.map((type) => (
+            <button
+              key={type}
+              onClick={() => setFilterType(type)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${filterType === type
+                ? 'bg-primary-500 text-white'
+                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                }`}
+            >
+              {type === 'all' ? '전체' : PLAN_TYPE_LABELS[type]}
+            </button>
+          ))}
         </div>
 
         {/* Places Grid */}
         {filteredPlaces.length === 0 ? (
           <Card padding="lg" className="text-center">
-            <div className="py-8">
-              <MapPin className="size-12 mx-auto text-zinc-300 dark:text-zinc-600 mb-4" />
+            <div className="py-8 max-w-sm mx-auto">
+              <div className="relative w-24 h-24 mx-auto mb-6">
+                <div className="absolute inset-0 bg-primary-100 dark:bg-primary-950/50 rounded-full" />
+                <MapPin className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 size-10 text-primary-500" />
+              </div>
               <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">
                 {searchQuery || filterType !== 'all' ? '검색 결과가 없습니다' : '저장된 장소가 없습니다'}
               </h3>
-              <p className="text-zinc-500 mb-6">
+              <p className="text-zinc-500 mb-6 text-sm">
                 {searchQuery || filterType !== 'all'
-                  ? '다른 조건으로 검색해보세요'
-                  : '자주 가는 장소를 추가해보세요!'}
+                  ? '다른 키워드로 검색해보세요'
+                  : '자주 가는 장소를 추가하고 일정에 빠르게 활용하세요'}
               </p>
               {!searchQuery && filterType === 'all' && (
                 <Button color="primary" leftIcon={<Plus className="size-4" />} onClick={handleOpenAddDialog}>

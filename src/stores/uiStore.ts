@@ -4,7 +4,7 @@
 
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import type { Toast } from '@/types'
+import type { Toast, SyncProgress } from '@/types'
 
 type ViewType = 'dashboard' | 'tripDetail' | 'tripForm' | 'planForm' | 'map' | 'places' | 'settings'
 
@@ -24,6 +24,9 @@ interface UIState {
   isGlobalLoading: boolean
   loadingMessage: string
 
+  // Sync State
+  syncProgress: SyncProgress
+
   // Toast Notifications
   toasts: Toast[]
 
@@ -34,6 +37,7 @@ interface UIState {
   setMobileMenuOpen: (open: boolean) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setGlobalLoading: (loading: boolean, message?: string) => void
+  setSyncProgress: (progress: SyncProgress) => void
 
   // Toast Actions
   showToast: (toast: Omit<Toast, 'id'>) => void
@@ -52,6 +56,7 @@ export const useUIStore = create<UIState>()(
       isSidebarCollapsed: false,
       isGlobalLoading: false,
       loadingMessage: '',
+      syncProgress: { status: 'idle' },
       toasts: [],
 
       // Navigation
@@ -67,6 +72,9 @@ export const useUIStore = create<UIState>()(
 
       // Loading
       setGlobalLoading: (loading, message = '') => set({ isGlobalLoading: loading, loadingMessage: message }),
+
+      // Sync
+      setSyncProgress: (progress) => set({ syncProgress: progress }),
 
       // Toast
       showToast: (toast) => {
@@ -96,11 +104,13 @@ export const useUIStore = create<UIState>()(
 export const useCurrentView = () => useUIStore((state) => state.currentView)
 export const useToasts = () => useUIStore((state) => state.toasts)
 export const useIsLoading = () => useUIStore((state) => state.isGlobalLoading)
+export const useSyncProgress = () => useUIStore((state) => state.syncProgress)
 
 // Toast helper functions
 export const toast = {
   success: (title: string, message?: string) => useUIStore.getState().showToast({ type: 'success', title, message }),
-  error: (title: string, message?: string) => useUIStore.getState().showToast({ type: 'error', title, message }),
+  error: (title: string, message?: string, action?: { label: string; onClick: () => void }) =>
+    useUIStore.getState().showToast({ type: 'error', title, message, action, duration: action ? 10000 : 5000 }),
   warning: (title: string, message?: string) => useUIStore.getState().showToast({ type: 'warning', title, message }),
   info: (title: string, message?: string) => useUIStore.getState().showToast({ type: 'info', title, message }),
 }

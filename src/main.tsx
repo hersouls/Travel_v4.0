@@ -8,6 +8,10 @@ import App from './App'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { requestPersistentStorage } from '@/services/storageQuota'
 import { initCacheWarming } from '@/services/cacheWarming'
+import { initSentry } from '@/services/sentry'
+
+// Initialize Sentry (no-op if VITE_SENTRY_DSN not set)
+initSentry()
 
 // Lazy load pages
 const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })))
@@ -21,6 +25,7 @@ const PlaceLibrary = lazy(() => import('@/pages/PlaceLibrary').then(m => ({ defa
 const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
 const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About })))
 const NavigationView = lazy(() => import('@/pages/NavigationView').then(m => ({ default: m.NavigationView })))
+const SharedTrip = lazy(() => import('@/pages/SharedTrip').then(m => ({ default: m.SharedTrip })))
 
 // Loading fallback component
 function PageLoading() {
@@ -33,6 +38,14 @@ function PageLoading() {
 
 // Router configuration
 const router = createBrowserRouter([
+  {
+    path: '/shared/:shareId',
+    element: (
+      <Suspense fallback={<PageLoading />}>
+        <SharedTrip />
+      </Suspense>
+    ),
+  },
   {
     path: '/',
     element: <App />,

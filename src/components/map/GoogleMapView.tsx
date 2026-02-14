@@ -86,6 +86,9 @@ export function GoogleMapView({
 
       const pinEl = document.createElement('div')
       pinEl.className = 'google-map-marker'
+      pinEl.setAttribute('role', 'button')
+      pinEl.setAttribute('aria-label', `${index + 1}번 장소: ${plan.placeName}`)
+      pinEl.setAttribute('tabindex', '0')
       pinEl.style.cssText = `
         width: 32px; height: 32px; border-radius: 50%;
         background: ${color}; color: white;
@@ -96,6 +99,14 @@ export function GoogleMapView({
         cursor: pointer;
       `
       pinEl.textContent = `${index + 1}`
+
+      // Keyboard support for markers
+      pinEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onMarkerClick?.(plan)
+        }
+      })
 
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: mapInstanceRef.current!,
