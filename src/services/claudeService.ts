@@ -177,6 +177,28 @@ export function buildImageAnalysisContext(base64Image: string): AIGenerateReques
 }
 
 // ============================================
+// Receipt OCR Context Builders
+// ============================================
+
+export function buildReceiptFoodContext(base64Image: string): AIGenerateRequest {
+  return {
+    type: 'receipt-food',
+    context: {},
+    image: base64Image,
+    stream: false,
+  }
+}
+
+export function buildReceiptGeneralContext(base64Image: string): AIGenerateRequest {
+  return {
+    type: 'receipt-general',
+    context: {},
+    image: base64Image,
+    stream: false,
+  }
+}
+
+// ============================================
 // Day-Level Context Builders
 // ============================================
 

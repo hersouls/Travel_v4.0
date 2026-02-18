@@ -4,8 +4,6 @@ interface ImportMetaEnv {
   readonly VITE_APP_TITLE: string
   readonly PROD: boolean
   readonly DEV: boolean
-  // Google OAuth
-  readonly VITE_GOOGLE_CLIENT_ID: string
   readonly VITE_GOOGLE_API_KEY: string
   // Firebase
   readonly VITE_FIREBASE_API_KEY: string

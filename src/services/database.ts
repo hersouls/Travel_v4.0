@@ -3,7 +3,7 @@
 // ============================================
 
 import Dexie, { type Table } from 'dexie'
-import type { Trip, Plan, Place, Settings, RouteSegment } from '@/types'
+import type { Trip, Plan, Place, Settings, RouteSegment, TravelLog } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 
 class TravelDatabase extends Dexie {
@@ -12,6 +12,7 @@ class TravelDatabase extends Dexie {
   places!: Table<Place, number>
   settings!: Table<Settings, string>
   routeSegments!: Table<RouteSegment, number>
+  travelLogs!: Table<TravelLog, number>
 
   constructor() {
     super('MoonwaveTravel')
@@ -38,6 +39,25 @@ class TravelDatabase extends Dexie {
       places: '++id, name, type, isFavorite, usageCount, firebaseId',
       settings: 'id',
       routeSegments: '++id, tripId, [fromPlanId+toPlanId], firebaseId, tripFirebaseId',
+    })
+
+    // v4: Add image storage path fields (coverImagePath, photoPaths) — no index changes
+    this.version(4).stores({
+      trips: '++id, title, country, startDate, isFavorite, updatedAt, firebaseId',
+      plans: '++id, tripId, day, type, [tripId+day], firebaseId, tripFirebaseId',
+      places: '++id, name, type, isFavorite, usageCount, firebaseId',
+      settings: 'id',
+      routeSegments: '++id, tripId, [fromPlanId+toPlanId], firebaseId, tripFirebaseId',
+    })
+
+    // v5: Add travelLogs table for Travel Log feature (photo timeline, receipt OCR, expense tracking)
+    this.version(5).stores({
+      trips: '++id, title, country, startDate, isFavorite, updatedAt, firebaseId',
+      plans: '++id, tripId, day, type, [tripId+day], firebaseId, tripFirebaseId',
+      places: '++id, name, type, isFavorite, usageCount, firebaseId',
+      settings: 'id',
+      routeSegments: '++id, tripId, [fromPlanId+toPlanId], firebaseId, tripFirebaseId',
+      travelLogs: '++id, tripId, day, type, timestamp, [tripId+day], firebaseId, tripFirebaseId',
     })
   }
 }
@@ -69,9 +89,10 @@ export async function updateTrip(id: number, updates: Partial<Trip>): Promise<vo
 }
 
 export async function deleteTrip(id: number): Promise<void> {
-  await db.transaction('rw', [db.trips, db.plans, db.routeSegments], async () => {
+  await db.transaction('rw', [db.trips, db.plans, db.routeSegments, db.travelLogs], async () => {
     await db.plans.where('tripId').equals(id).delete()
     await db.routeSegments.where('tripId').equals(id).delete()
+    await db.travelLogs.where('tripId').equals(id).delete()
     await db.trips.delete(id)
   })
 }
@@ -187,6 +208,46 @@ export async function getRouteSegmentByFirebaseId(
 }
 
 // ============================================
+// TravelLog CRUD Operations
+// ============================================
+
+export async function getTravelLogsForTrip(tripId: number): Promise<TravelLog[]> {
+  return db.travelLogs.where('tripId').equals(tripId).sortBy('timestamp')
+}
+
+export async function getTravelLogsForTripDay(tripId: number, day: number): Promise<TravelLog[]> {
+  return db.travelLogs.where({ tripId, day }).sortBy('timestamp')
+}
+
+export async function getTravelLog(id: number): Promise<TravelLog | undefined> {
+  return db.travelLogs.get(id)
+}
+
+export async function addTravelLog(log: Omit<TravelLog, 'id'>): Promise<number> {
+  return db.travelLogs.add(log as TravelLog)
+}
+
+export async function updateTravelLog(id: number, updates: Partial<TravelLog>): Promise<void> {
+  await db.travelLogs.update(id, { ...updates, updatedAt: new Date() })
+}
+
+export async function deleteTravelLog(id: number): Promise<void> {
+  await db.travelLogs.delete(id)
+}
+
+export async function deleteTravelLogsForTrip(tripId: number): Promise<void> {
+  await db.travelLogs.where('tripId').equals(tripId).delete()
+}
+
+export async function getTravelLogByFirebaseId(firebaseId: string): Promise<TravelLog | undefined> {
+  return db.travelLogs.where('firebaseId').equals(firebaseId).first()
+}
+
+export async function getTravelLogCountForTrip(tripId: number): Promise<number> {
+  return db.travelLogs.where('tripId').equals(tripId).count()
+}
+
+// ============================================
 // Place CRUD Operations
 // ============================================
 
@@ -273,6 +334,7 @@ export interface BackupData {
   places: Place[]
   settings: Settings
   routeSegments?: RouteSegment[]
+  travelLogs?: TravelLog[]
 }
 
 // Serialize Date objects to ISO strings
@@ -322,12 +384,13 @@ const DATE_FIELDS = [
 ]
 
 export async function exportAllData(): Promise<BackupData> {
-  const [trips, plans, places, settings, routeSegments] = await Promise.all([
+  const [trips, plans, places, settings, routeSegments, travelLogs] = await Promise.all([
     db.trips.toArray(),
     db.plans.toArray(),
     db.places.toArray(),
     getSettings(),
     db.routeSegments.toArray(),
+    db.travelLogs.toArray(),
   ])
 
   return {
@@ -340,6 +403,7 @@ export async function exportAllData(): Promise<BackupData> {
     places: serializeDates(places),
     settings: serializeDates(settings),
     routeSegments: serializeDates(routeSegments),
+    travelLogs: serializeDates(travelLogs),
   }
 }
 
@@ -364,18 +428,25 @@ export async function importAllData(data: BackupData): Promise<void> {
     ? deserializeDates(data.routeSegments, ROUTE_DATE_FIELDS)
     : []
 
-  await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments], async () => {
+  const LOG_DATE_FIELDS = ['createdAt', 'updatedAt']
+  const travelLogs = data.travelLogs
+    ? deserializeDates(data.travelLogs, LOG_DATE_FIELDS)
+    : []
+
+  await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments, db.travelLogs], async () => {
     // Clear existing data
     await db.trips.clear()
     await db.plans.clear()
     await db.places.clear()
     await db.routeSegments.clear()
+    await db.travelLogs.clear()
 
     // Import new data
     if (trips.length > 0) await db.trips.bulkAdd(trips)
     if (plans.length > 0) await db.plans.bulkAdd(plans)
     if (places.length > 0) await db.places.bulkAdd(places)
     if (routeSegments.length > 0) await db.routeSegments.bulkAdd(routeSegments)
+    if (travelLogs.length > 0) await db.travelLogs.bulkAdd(travelLogs)
     if (settings) await db.settings.put(settings)
   })
 
@@ -383,11 +454,12 @@ export async function importAllData(data: BackupData): Promise<void> {
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction('rw', [db.trips, db.plans, db.places, db.routeSegments], async () => {
+  await db.transaction('rw', [db.trips, db.plans, db.places, db.routeSegments, db.travelLogs], async () => {
     await db.trips.clear()
     await db.plans.clear()
     await db.places.clear()
     await db.routeSegments.clear()
+    await db.travelLogs.clear()
   })
 
   sendBroadcast('DATA_CLEARED')

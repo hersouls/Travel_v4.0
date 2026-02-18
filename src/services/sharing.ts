@@ -88,12 +88,12 @@ export async function shareTrip(tripId: number): Promise<string> {
   // Get current user uid
   const uid = useAuthStore.getState().user?.uid || 'anonymous'
 
-  // Build the shared trip document
+  // Build the shared trip document (Firestore rejects undefined values)
   const sharedData: SharedTripData = {
     trip: {
       title: trip.title,
       country: trip.country,
-      timezone: trip.timezone,
+      ...(trip.timezone != null && { timezone: trip.timezone }),
       startDate: trip.startDate,
       endDate: trip.endDate,
       plansCount: plans.length,
@@ -102,13 +102,13 @@ export async function shareTrip(tripId: number): Promise<string> {
       day: plan.day,
       placeName: plan.placeName,
       startTime: plan.startTime,
-      endTime: plan.endTime || undefined,
+      ...(plan.endTime ? { endTime: plan.endTime } : {}),
       type: plan.type,
-      address: plan.address || undefined,
-      memo: plan.memo || undefined,
-      latitude: plan.latitude,
-      longitude: plan.longitude,
-      order: plan.order,
+      ...(plan.address ? { address: plan.address } : {}),
+      ...(plan.memo ? { memo: plan.memo } : {}),
+      ...(plan.latitude != null && { latitude: plan.latitude }),
+      ...(plan.longitude != null && { longitude: plan.longitude }),
+      ...(plan.order != null && { order: plan.order }),
     })),
     sharedAt: Timestamp.now(),
     sharedBy: uid,

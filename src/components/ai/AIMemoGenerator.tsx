@@ -11,6 +11,7 @@ import { MemoRenderer } from '@/components/memo'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateWithStreaming, buildMemoContext } from '@/services/claudeService'
 import type { Plan } from '@/types'
+import { AI_MESSAGES } from '@/utils/constants'
 
 interface AIMemoGeneratorProps {
   plan: Plan
@@ -33,7 +34,7 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
 
   const handleGenerate = () => {
     if (!claudeApiKey) {
-      setError('API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력하세요.')
+      setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
 
@@ -87,7 +88,7 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
         </p>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+          <div className="mb-4 p-3 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg text-sm text-danger-600 dark:text-danger-400">
             {error}
           </div>
         )}
@@ -115,14 +116,14 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
           </div>
         ) : (
           <div className="p-8 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 text-center">
-            <Loader2 className="size-8 text-blue-500 mx-auto mb-3 animate-spin" />
+            <Loader2 className="size-8 text-primary-500 mx-auto mb-3 animate-spin" />
             <p className="text-sm text-zinc-500">메모를 생성하는 중...</p>
           </div>
         )}
       </DialogBody>
       <DialogActions>
         <Button color="secondary" onClick={onClose}>
-          취소
+          닫기
         </Button>
         {!generatedMemo && !isGenerating && (
           <Button

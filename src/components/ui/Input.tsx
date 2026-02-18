@@ -53,7 +53,7 @@ function ErrorMessage({ className, ...props }: React.ComponentPropsWithoutRef<'p
 }
 
 const inputBaseStyles = clsx(
-  'relative block w-full appearance-none rounded-lg px-[calc(--spacing(3.5)-1px)] py-[calc(--spacing(2.5)-1px)] sm:px-[calc(--spacing(3)-1px)] sm:py-[calc(--spacing(1.5)-1px)]',
+  'relative block w-full appearance-none rounded-lg px-[calc(var(--spacing)*3.5-1px)] py-[calc(var(--spacing)*2.5-1px)] sm:px-[calc(var(--spacing)*3-1px)] sm:py-[calc(var(--spacing)*1.5-1px)]',
   'text-base/6 text-zinc-950 placeholder:text-zinc-500 sm:text-sm/6 dark:text-white',
   'border border-zinc-950/10 data-[hover]:border-zinc-950/20 dark:border-white/10 dark:data-[hover]:border-white/20',
   'bg-transparent dark:bg-white/5',
@@ -165,7 +165,10 @@ interface TextareaProps extends Omit<React.TextareaHTMLAttributes<HTMLTextAreaEl
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ label, error, hint, className, onChange, resizable = true, ...props }, ref) => {
+  ({ label, error, hint, className, onChange, resizable = true, id: providedId, ...props }, ref) => {
+    const generatedId = useId()
+    const textareaId = providedId || generatedId
+
     const handleChange = useCallback(
       (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onChange?.(e.target.value, e)
@@ -175,10 +178,11 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
 
     return (
       <Field className={className}>
-        {label && <Label>{label}</Label>}
+        {label && <Label htmlFor={textareaId}>{label}</Label>}
         <span data-slot="control" className="relative block w-full">
           <textarea
             ref={ref}
+            id={textareaId}
             data-slot="textarea"
             data-invalid={error || undefined}
             className={clsx(inputBaseStyles, 'min-h-[80px]', resizable ? 'resize-y' : 'resize-none')}

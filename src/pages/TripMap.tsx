@@ -14,6 +14,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useDirections } from '@/hooks/useDirections'
 import { formatTime } from '@/utils/format'
 import { getTripDurationSafe } from '@/utils/timezone'
+import { getMarkerColor } from '@/utils/mapStyles'
 import type { MapProvider, TravelMode } from '@/types'
 
 // Fix Leaflet default marker icon issue
@@ -78,20 +79,6 @@ export function TripMap() {
       .map((p) => [p.latitude!, p.longitude!] as [number, number])
   }, [plansWithCoords])
 
-  // Custom marker colors by type
-  const getMarkerColor = (type: string) => {
-    const colors: Record<string, string> = {
-      attraction: '#8b5cf6',
-      restaurant: '#f97316',
-      hotel: '#3b82f6',
-      transport: '#6b7280',
-      car: '#84cc16',
-      plane: '#06b6d4',
-      airport: '#0ea5e9',
-      other: '#a1a1aa',
-    }
-    return colors[type] || '#a1a1aa'
-  }
 
   const createCustomMarker = (type: string, day: number) => {
     const color = getMarkerColor(type)

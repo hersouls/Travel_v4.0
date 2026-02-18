@@ -27,6 +27,10 @@ interface SettingsState extends Settings {
   setClaudeApiKey: (key: string) => void
   setClaudeModel: (model: ClaudeModel) => void
   setClaudeEnabled: (enabled: boolean) => void
+  // OpenAI TTS actions
+  setOpenaiApiKey: (key: string) => void
+  setOpenaiTtsModel: (model: 'tts-1' | 'tts-1-hd') => void
+  setOpenaiTtsVoice: (voice: string) => void
   saveToDatabase: () => Promise<void>
 }
 
@@ -174,6 +178,24 @@ export const useSettingsStore = create<SettingsState>()(
           get().saveToDatabase()
         },
 
+        // OpenAI TTS: set API key (localStorage only, NOT synced to DB/Firestore)
+        setOpenaiApiKey: (openaiApiKey) => {
+          set({ openaiApiKey })
+          // Intentionally NOT calling saveToDatabase — key stays in localStorage only
+        },
+
+        // OpenAI TTS: set model
+        setOpenaiTtsModel: (openaiTtsModel) => {
+          set({ openaiTtsModel })
+          get().saveToDatabase()
+        },
+
+        // OpenAI TTS: set voice
+        setOpenaiTtsVoice: (openaiTtsVoice) => {
+          set({ openaiTtsVoice })
+          get().saveToDatabase()
+        },
+
         // Save to database
         saveToDatabase: async () => {
           const state = get()
@@ -184,13 +206,16 @@ export const useSettingsStore = create<SettingsState>()(
             language: state.language,
             isMusicPlayerEnabled: state.isMusicPlayerEnabled,
             lastBackupDate: state.lastBackupDate,
+            settingsUpdatedAt: new Date(),
             timezoneAutoDetect: state.timezoneAutoDetect,
             detectedTimezone: state.detectedTimezone,
             mapProvider: state.mapProvider,
             defaultTravelMode: state.defaultTravelMode,
             claudeModel: state.claudeModel,
             claudeEnabled: state.claudeEnabled,
-            // NOTE: claudeApiKey is intentionally excluded — stored in localStorage only
+            openaiTtsModel: state.openaiTtsModel,
+            openaiTtsVoice: state.openaiTtsVoice,
+            // NOTE: claudeApiKey & openaiApiKey intentionally excluded — stored in localStorage only
           }
           await db.updateSettings(settings)
 
@@ -213,6 +238,9 @@ export const useSettingsStore = create<SettingsState>()(
           claudeApiKey: state.claudeApiKey,
           claudeModel: state.claudeModel,
           claudeEnabled: state.claudeEnabled,
+          openaiApiKey: state.openaiApiKey,
+          openaiTtsModel: state.openaiTtsModel,
+          openaiTtsVoice: state.openaiTtsVoice,
         }),
       }
     ),

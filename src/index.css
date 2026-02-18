@@ -1,4 +1,5 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+@source "../src";
 
 /* Tailwind v4 - Enable class-based dark mode */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -94,6 +95,11 @@
   --spacing-golden-md: 1rem;
   --spacing-golden-lg: 1.618rem;
   --spacing-golden-xl: 2.618rem;
+
+  /* Z-Index Scale */
+  --z-index-60: 60;
+  --z-index-70: 70;
+  --z-index-80: 80;
 }
 
 /* CSS Variables for Light/Dark Mode */

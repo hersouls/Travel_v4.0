@@ -181,6 +181,42 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 - 확실하지 않은 정보는 빈 값으로
 - 한국어로 작성`
 
+    case 'receipt-food':
+      return `당신은 영수증 OCR 전문가입니다.
+음식점/카페 영수증 사진을 분석하여 아래 JSON을 정확히 추출하세요:
+{
+  "storeName": "가게 이름",
+  "category": "food",
+  "items": [
+    { "name": "메뉴명", "quantity": 1, "unitPrice": 10000, "amount": 10000 }
+  ],
+  "totalAmount": 합계금액,
+  "currency": "KRW",
+  "receiptDate": "YYYY-MM-DD"
+}
+- 금액은 순수 숫자만 (쉼표/통화기호 제거)
+- currency는 ISO 4217 코드 (KRW, JPY, USD, EUR, THB, VND 등)
+- 읽을 수 없는 항목은 빈 문자열이나 0
+- 반드시 JSON만 출력 (다른 텍스트 없이)`
+
+    case 'receipt-general':
+      return `당신은 영수증 OCR 전문가입니다.
+일반 영수증/결제 내역 사진을 분석하여 아래 JSON을 정확히 추출하세요:
+{
+  "storeName": "가게/서비스 이름",
+  "category": "food|transport|accommodation|shopping|attraction|other",
+  "items": [
+    { "name": "항목명", "quantity": 1, "unitPrice": 10000, "amount": 10000 }
+  ],
+  "totalAmount": 합계금액,
+  "currency": "KRW",
+  "receiptDate": "YYYY-MM-DD"
+}
+- category는 가게 유형에 따라 자동 분류
+- 금액은 순수 숫자만
+- currency는 ISO 4217 코드
+- 반드시 JSON만 출력 (다른 텍스트 없이)`
+
     case 'test':
       return '연결 테스트입니다. "Claude AI 연결 성공! 🎉" 라고만 답하세요.'
 
@@ -257,6 +293,12 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
     case 'analyze-image':
       return '이 사진을 분석하여 장소 정보를 추출해주세요.'
 
+    case 'receipt-food':
+      return '이 음식점 영수증에서 가게 이름, 메뉴, 금액을 추출해주세요.'
+
+    case 'receipt-general':
+      return '이 영수증/결제 내역에서 정보를 추출해주세요.'
+
     case 'test':
       return '연결 테스트'
 
@@ -317,7 +359,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Build messages — support Vision (image) for analyze-image
     const userContent: Anthropic.MessageCreateParams['messages'][0]['content'] = []
 
-    if (image && type === 'analyze-image') {
+    if (image && ['analyze-image', 'receipt-food', 'receipt-general'].includes(type)) {
       userContent.push({
         type: 'image',
         source: {
@@ -341,7 +383,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const response = client.messages.stream({
         model: resolvedModel,
-        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : 4096,
+        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 2048 : 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       })
@@ -361,7 +403,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Non-streaming structured response
       const response = await client.messages.create({
         model: resolvedModel,
-        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : 4096,
+        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 2048 : 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       })

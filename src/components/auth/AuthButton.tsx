@@ -25,15 +25,24 @@ export function AuthButton() {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdown on outside click
+  // Close dropdown on outside click or Escape key
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsOpen(false)
       }
     }
-    if (isOpen) document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setIsOpen(false)
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClick)
+      document.addEventListener('keydown', handleKeyDown)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
   }, [isOpen])
 
   // Show toast when user state changes (login success after redirect)
@@ -95,6 +104,8 @@ export function AuthButton() {
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
         title={`${user.displayName || user.email} - 동기화 ${isSyncing ? '활성' : '비활성'}`}
+        aria-label="사용자 메뉴"
+        aria-expanded={isOpen}
       >
         {user.photoURL ? (
           <img
@@ -146,7 +157,7 @@ export function AuthButton() {
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm text-danger-600 dark:text-danger-400 hover:bg-danger-50 dark:hover:bg-danger-900/20 transition-colors"
             >
               <LogOut className="size-4" />
               로그아웃

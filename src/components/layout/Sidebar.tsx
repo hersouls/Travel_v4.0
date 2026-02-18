@@ -39,6 +39,7 @@ export function Sidebar() {
             <Link
               key={item.path}
               to={item.path}
+              aria-current={isActive ? 'page' : undefined}
               className={clsx(
                 'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
                 isActive

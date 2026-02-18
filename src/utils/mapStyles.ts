@@ -113,5 +113,10 @@ export const MARKER_COLORS = {
   car: '#84cc16',
   plane: '#06b6d4',
   airport: '#0ea5e9',
-  other: '#6b7280',
+  other: '#a1a1aa',
 } as const
+
+/** Get marker color for a plan type, with fallback */
+export function getMarkerColor(type: string): string {
+  return MARKER_COLORS[type as keyof typeof MARKER_COLORS] || MARKER_COLORS.other
+}

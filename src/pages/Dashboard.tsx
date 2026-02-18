@@ -182,9 +182,9 @@ export function Dashboard() {
         <Card padding="lg" className="text-center">
           <div className="py-8">
             <MapPin className="size-12 mx-auto text-zinc-300 dark:text-zinc-600 mb-4" />
-            <h3 className="text-lg font-semibold text-[var(--foreground)] mb-2">
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-2">
               {searchQuery ? '검색 결과가 없습니다' : '아직 여행이 없습니다'}
-            </h3>
+            </h2>
             <p className="text-zinc-500 mb-6">
               {searchQuery
                 ? '다른 검색어로 시도해보세요'

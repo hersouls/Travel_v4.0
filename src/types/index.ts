@@ -23,6 +23,7 @@ export interface Trip {
   startDate: string // YYYY-MM-DD
   endDate: string // YYYY-MM-DD
   coverImage?: string // Base64 encoded
+  coverImagePath?: string // Firebase Storage path (for cloud sync)
   plansCount?: number
   isFavorite: boolean
   shareId?: string // Public sharing ID for read-only link
@@ -60,6 +61,7 @@ export interface Plan {
   openingHours?: string
   memo?: string
   photos?: string[] // Base64 encoded
+  photoPaths?: string[] // Firebase Storage paths (for cloud sync)
   youtubeLink?: string
   mapUrl?: string
   latitude?: number
@@ -81,6 +83,7 @@ export interface Place {
   memo?: string
   audioScript?: string // Moonyou Guide 음성 대본
   photos?: string[] // Base64 encoded
+  photoPaths?: string[] // Firebase Storage paths (for cloud sync)
   rating?: number // 0.0 ~ 5.0
   mapUrl?: string
   website?: string
@@ -89,6 +92,73 @@ export interface Place {
   longitude?: number
   isFavorite: boolean
   usageCount: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+// ============================================
+// Travel Log Types (여행 기록)
+// ============================================
+
+// 기록 유형
+export type TravelLogType = 'photo' | 'receipt' | 'memo'
+
+// 경비 카테고리
+export type ExpenseCategory =
+  | 'food'
+  | 'transport'
+  | 'accommodation'
+  | 'shopping'
+  | 'attraction'
+  | 'other'
+
+// EXIF 메타데이터
+export interface ExifMetadata {
+  dateTime?: string // ISO string from DateTimeOriginal
+  latitude?: number
+  longitude?: number
+  cameraMake?: string
+  cameraModel?: string
+}
+
+// 경비 항목
+export interface ExpenseItem {
+  name: string
+  quantity?: number
+  unitPrice?: number
+  amount: number
+}
+
+// 경비 데이터 (영수증 OCR 결과)
+export interface ExpenseData {
+  storeName: string
+  category: ExpenseCategory
+  items: ExpenseItem[]
+  totalAmount: number
+  currency: string // ISO 4217 (KRW, JPY, USD...)
+  receiptDate?: string // YYYY-MM-DD
+}
+
+// 여행 기록 항목
+export interface TravelLog {
+  id?: number
+  firebaseId?: string
+  tripId: number
+  tripFirebaseId?: string
+  day: number
+  timestamp: string // ISO datetime
+  type: TravelLogType
+  photo?: string // Base64 (full compressed image)
+  photoPath?: string // Firebase Storage path
+  thumbnailPhoto?: string // Base64 (200px thumbnail)
+  thumbnailPhotoPath?: string
+  exif?: ExifMetadata
+  latitude?: number
+  longitude?: number
+  address?: string // 역지오코딩 결과
+  placeName?: string
+  memo?: string
+  expense?: ExpenseData // type='receipt' 전용
   createdAt: Date
   updatedAt: Date
 }
@@ -173,7 +243,7 @@ export interface TripStatistics {
 export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
 
 export interface AIGenerateRequest {
-  type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'day-recommend' | 'day-suggest' | 'test'
+  type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'day-recommend' | 'day-suggest' | 'receipt-food' | 'receipt-general' | 'test'
   context: Record<string, unknown>
   image?: string // base64 (for vision)
   model?: ClaudeModel
@@ -237,6 +307,7 @@ export interface Settings {
   language: 'ko' | 'en'
   isMusicPlayerEnabled: boolean
   lastBackupDate?: Date
+  settingsUpdatedAt?: Date // Tracks when settings were last modified (for sync comparison)
   // 시간대 설정
   detectedTimezone?: string // 마지막 감지된 시간대
   timezoneAutoDetect: boolean // 자동 감지 활성화 (기본: true)
@@ -247,6 +318,10 @@ export interface Settings {
   claudeApiKey?: string
   claudeModel?: ClaudeModel
   claudeEnabled?: boolean
+  // OpenAI TTS 설정 (API key는 localStorage에만 저장)
+  openaiApiKey?: string
+  openaiTtsModel?: 'tts-1' | 'tts-1-hd'
+  openaiTtsVoice?: string
 }
 
 // Default settings
@@ -261,6 +336,8 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultTravelMode: 'DRIVE',
   claudeEnabled: false,
   claudeModel: 'sonnet',
+  openaiTtsModel: 'tts-1',
+  openaiTtsVoice: 'alloy',
 }
 
 // Sync Status
@@ -271,7 +348,33 @@ export interface SyncProgress {
   step?: string // e.g., '여행 동기화 중...'
   localOnlyCount?: number // local-only items to be removed
   error?: string
+  skipped?: boolean // true when initial sync was skipped due to cooldown
 }
+
+// Sync Conflict Types
+export type SyncEntityType = 'trip' | 'plan' | 'place' | 'travelLog'
+
+export interface ConflictField {
+  field: string
+  localValue: unknown
+  cloudValue: unknown
+}
+
+export interface PendingConflict {
+  id: string
+  entityType: SyncEntityType
+  entityId: number
+  firebaseId: string
+  entityLabel: string
+  conflictFields: ConflictField[]
+  localVersion: Record<string, unknown>
+  cloudVersion: Record<string, unknown>
+  localUpdatedAt: Date
+  cloudUpdatedAt: Date
+  detectedAt: Date
+}
+
+export type ConflictResolution = 'local' | 'cloud'
 
 // UI Types
 export interface Toast {
@@ -286,59 +389,3 @@ export interface Toast {
   }
 }
 
-// Firebase Migration Types
-export interface FirebaseTrip {
-  user_id: string
-  title: string
-  country: string
-  start_date: string
-  end_date: string
-  cover_image?: string
-  plans_count?: number
-  created_at: { seconds: number; nanoseconds: number }
-  updated_at: { seconds: number; nanoseconds: number }
-}
-
-export interface FirebasePlan {
-  trip_id: string
-  day: number
-  place_name: string
-  start_time: string
-  end_time?: string
-  type: PlanType
-  address?: string
-  website?: string
-  opening_hours?: string
-  memo?: string
-  photos?: string[]
-  youtube_link?: string
-  map_url?: string
-  latitude?: number
-  longitude?: number
-  created_at: { seconds: number; nanoseconds: number }
-  updated_at: { seconds: number; nanoseconds: number }
-}
-
-export interface FirebasePlace {
-  name: string
-  type: PlanType
-  address?: string
-  rating?: number
-  map_url?: string
-  website?: string
-  google_place_id?: string
-  latitude?: number
-  longitude?: number
-  favorite: boolean
-  usage_count: number
-  created_at: { seconds: number; nanoseconds: number }
-  updated_at: { seconds: number; nanoseconds: number }
-}
-
-export interface MigrationResult {
-  success: boolean
-  tripsImported: number
-  plansImported: number
-  placesImported: number
-  errors: string[]
-}

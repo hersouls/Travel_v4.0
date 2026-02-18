@@ -99,6 +99,18 @@ export const usePlaceStore = create<PlaceState>()(
             if (savedPlace) {
               const firebaseId = await syncManager.uploadPlace(savedPlace)
               await db.updatePlace(id, { firebaseId })
+              // Upload place photos in background if present
+              if (savedPlace.photos?.length && firebaseId) {
+                const updatedPlace = await db.getPlace(id)
+                if (updatedPlace) {
+                  import('@/services/imageSync').then(({ uploadPlacePhotos }) => {
+                    import('@/stores/authStore').then(({ useAuthStore }) => {
+                      const userId = useAuthStore.getState().user?.uid
+                      if (userId) uploadPlacePhotos(userId, updatedPlace)
+                    })
+                  }).catch(console.error)
+                }
+              }
             }
           }
 
@@ -116,6 +128,10 @@ export const usePlaceStore = create<PlaceState>()(
       updatePlace: async (id, updates) => {
         set({ isLoading: true, error: null })
         try {
+          // If photos changed, clear storage paths to trigger re-upload
+          if ('photos' in updates) {
+            (updates as Partial<Place>).photoPaths = undefined
+          }
           await db.updatePlace(id, updates)
 
           // Sync to Firestore
@@ -125,6 +141,15 @@ export const usePlaceStore = create<PlaceState>()(
               const firebaseId = await syncManager.uploadPlace(updatedPlace)
               if (!updatedPlace.firebaseId && firebaseId) {
                 await db.updatePlace(id, { firebaseId })
+              }
+              // Upload place photos in background if changed
+              if ('photos' in updates && updatedPlace.photos?.length && updatedPlace.firebaseId) {
+                import('@/services/imageSync').then(({ uploadPlacePhotos }) => {
+                  import('@/stores/authStore').then(({ useAuthStore }) => {
+                    const userId = useAuthStore.getState().user?.uid
+                    if (userId) uploadPlacePhotos(userId, updatedPlace)
+                  })
+                }).catch(console.error)
               }
             }
           }
@@ -148,6 +173,9 @@ export const usePlaceStore = create<PlaceState>()(
           }
           const firebaseId = placeSnapshot.firebaseId
 
+          // Mark as pending delete to prevent listener re-creation during undo window
+          if (firebaseId) syncManager.addPendingDelete(firebaseId)
+
           // Immediately delete from local DB
           await db.deletePlace(id)
 
@@ -160,9 +188,10 @@ export const usePlaceStore = create<PlaceState>()(
           const timer = setTimeout(async () => {
             if (undone) return
             if (syncManager.isActive() && firebaseId) {
-              syncManager.deleteRemotePlace(firebaseId).catch((e) =>
-                console.error('[Sync] Failed to delete remote place:', e))
+              try { await syncManager.deleteRemotePlace(firebaseId) }
+              catch (e) { console.error('[Sync] Failed to delete remote place:', e) }
             }
+            if (firebaseId) syncManager.removePendingDelete(firebaseId)
           }, UNDO_TIMEOUT_MS)
 
           useUIStore.getState().showToast({
@@ -175,6 +204,7 @@ export const usePlaceStore = create<PlaceState>()(
               onClick: async () => {
                 undone = true
                 clearTimeout(timer)
+                if (firebaseId) syncManager.removePendingDelete(firebaseId)
                 await db.addPlace({ ...placeSnapshot, id: undefined } as Omit<Place, 'id'>)
                 const restoredPlaces = await db.getAllPlaces()
                 set({ places: restoredPlaces })

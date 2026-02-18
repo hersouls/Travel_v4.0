@@ -125,6 +125,18 @@ export const useTripStore = create<TripState>()(
             if (savedTrip) {
               const firebaseId = await syncManager.uploadTrip(savedTrip)
               await db.updateTrip(id, { firebaseId })
+              // Upload cover image in background if present
+              if (savedTrip.coverImage && firebaseId) {
+                const updatedTrip = await db.getTrip(id)
+                if (updatedTrip) {
+                  import('@/services/imageSync').then(({ uploadTripCoverImage }) => {
+                    import('@/stores/authStore').then(({ useAuthStore }) => {
+                      const userId = useAuthStore.getState().user?.uid
+                      if (userId) uploadTripCoverImage(userId, updatedTrip)
+                    })
+                  }).catch(console.error)
+                }
+              }
             }
           }
 
@@ -142,6 +154,10 @@ export const useTripStore = create<TripState>()(
       updateTrip: async (id, updates) => {
         set({ isLoading: true, error: null })
         try {
+          // If coverImage changed, clear storage path to trigger re-upload
+          if ('coverImage' in updates) {
+            updates.coverImagePath = undefined
+          }
           await db.updateTrip(id, updates)
 
           // Sync to Firestore
@@ -151,6 +167,26 @@ export const useTripStore = create<TripState>()(
               const firebaseId = await syncManager.uploadTrip(updatedTrip)
               if (!updatedTrip.firebaseId && firebaseId) {
                 await db.updateTrip(id, { firebaseId })
+              }
+              // Upload cover image in background if changed
+              if ('coverImage' in updates && updatedTrip.coverImage && updatedTrip.firebaseId) {
+                import('@/services/imageSync').then(({ uploadTripCoverImage }) => {
+                  import('@/stores/authStore').then(({ useAuthStore }) => {
+                    const userId = useAuthStore.getState().user?.uid
+                    if (userId) uploadTripCoverImage(userId, updatedTrip)
+                  })
+                }).catch(console.error)
+              }
+              // If coverImage was cleared, delete from Storage
+              if ('coverImage' in updates && !updates.coverImage && updatedTrip.firebaseId) {
+                import('@/services/imageSync').then(({ deleteEntityImages }) => {
+                  import('@/stores/authStore').then(({ useAuthStore }) => {
+                    const userId = useAuthStore.getState().user?.uid
+                    if (userId && updatedTrip.firebaseId) {
+                      deleteEntityImages(userId, 'trips', updatedTrip.firebaseId)
+                    }
+                  })
+                }).catch(console.error)
               }
             }
           }
@@ -181,6 +217,12 @@ export const useTripStore = create<TripState>()(
             return
           }
 
+          // Mark as pending delete to prevent listener re-creation during undo window
+          if (firebaseId) syncManager.addPendingDelete(firebaseId)
+          for (const plan of plansSnapshot) {
+            if (plan.firebaseId) syncManager.addPendingDelete(plan.firebaseId)
+          }
+
           // Immediately delete from local DB
           await db.deleteTrip(id)
 
@@ -198,8 +240,16 @@ export const useTripStore = create<TripState>()(
           const timer = setTimeout(async () => {
             if (undone) return
             if (syncManager.isActive() && firebaseId) {
-              syncManager.deleteRemoteTrip(firebaseId).catch((e) =>
-                console.error('[Sync] Failed to delete remote trip:', e))
+              try {
+                await syncManager.deleteRemoteTrip(firebaseId)
+              } catch (e) {
+                console.error('[Sync] Failed to delete remote trip:', e)
+              }
+            }
+            // Clean up pending deletes
+            if (firebaseId) syncManager.removePendingDelete(firebaseId)
+            for (const plan of plansSnapshot) {
+              if (plan.firebaseId) syncManager.removePendingDelete(plan.firebaseId)
             }
           }, UNDO_TIMEOUT_MS)
 
@@ -213,6 +263,11 @@ export const useTripStore = create<TripState>()(
               onClick: async () => {
                 undone = true
                 clearTimeout(timer)
+                // Remove pending deletes on undo
+                if (firebaseId) syncManager.removePendingDelete(firebaseId)
+                for (const plan of plansSnapshot) {
+                  if (plan.firebaseId) syncManager.removePendingDelete(plan.firebaseId)
+                }
                 // Restore trip
                 const restoredId = await db.addTrip(tripSnapshot)
                 // Restore plans
@@ -287,6 +342,18 @@ export const useTripStore = create<TripState>()(
             if (savedPlan) {
               const firebaseId = await syncManager.uploadPlan(savedPlan)
               await db.updatePlan(id, { firebaseId })
+              // Upload plan photos in background if present
+              if (savedPlan.photos?.length && firebaseId) {
+                const updatedPlan = await db.getPlan(id)
+                if (updatedPlan) {
+                  import('@/services/imageSync').then(({ uploadPlanPhotos }) => {
+                    import('@/stores/authStore').then(({ useAuthStore }) => {
+                      const userId = useAuthStore.getState().user?.uid
+                      if (userId) uploadPlanPhotos(userId, updatedPlan)
+                    })
+                  }).catch(console.error)
+                }
+              }
             }
           }
 
@@ -307,6 +374,10 @@ export const useTripStore = create<TripState>()(
       updatePlan: async (id, updates) => {
         set({ isLoading: true, error: null })
         try {
+          // If photos changed, clear storage paths to trigger re-upload
+          if ('photos' in updates) {
+            (updates as Partial<Plan>).photoPaths = undefined
+          }
           await db.updatePlan(id, updates)
           const plan = await db.getPlan(id)
           if (plan) {
@@ -315,6 +386,15 @@ export const useTripStore = create<TripState>()(
               const firebaseId = await syncManager.uploadPlan(plan)
               if (!plan.firebaseId && firebaseId) {
                 await db.updatePlan(id, { firebaseId })
+              }
+              // Upload plan photos in background if changed
+              if ('photos' in updates && plan.photos?.length && plan.firebaseId) {
+                import('@/services/imageSync').then(({ uploadPlanPhotos }) => {
+                  import('@/stores/authStore').then(({ useAuthStore }) => {
+                    const userId = useAuthStore.getState().user?.uid
+                    if (userId) uploadPlanPhotos(userId, plan)
+                  })
+                }).catch(console.error)
               }
             }
 
@@ -348,6 +428,12 @@ export const useTripStore = create<TripState>()(
             (s) => s.fromPlanId === id || s.toPlanId === id,
           )
 
+          // Mark as pending delete to prevent listener re-creation during undo window
+          if (firebaseId) syncManager.addPendingDelete(firebaseId)
+          for (const seg of affectedSegments) {
+            if (seg.firebaseId) syncManager.addPendingDelete(seg.firebaseId)
+          }
+
           // Immediately delete from local DB
           await db.deletePlan(id)
           await db.deleteRouteSegmentsForPlan(id)
@@ -365,15 +451,20 @@ export const useTripStore = create<TripState>()(
             if (undone) return
             if (syncManager.isActive()) {
               if (firebaseId) {
-                syncManager.deleteRemotePlan(firebaseId).catch((e) =>
-                  console.error('[Sync] Failed to delete remote plan:', e))
+                try { await syncManager.deleteRemotePlan(firebaseId) }
+                catch (e) { console.error('[Sync] Failed to delete remote plan:', e) }
               }
               for (const seg of affectedSegments) {
                 if (seg.firebaseId) {
-                  syncManager.deleteRemoteRouteSegment(seg.firebaseId).catch((e) =>
-                    console.error('[Sync] Failed to delete remote route segment:', e))
+                  try { await syncManager.deleteRemoteRouteSegment(seg.firebaseId) }
+                  catch (e) { console.error('[Sync] Failed to delete remote route segment:', e) }
                 }
               }
+            }
+            // Clean up pending deletes
+            if (firebaseId) syncManager.removePendingDelete(firebaseId)
+            for (const seg of affectedSegments) {
+              if (seg.firebaseId) syncManager.removePendingDelete(seg.firebaseId)
             }
           }, UNDO_TIMEOUT_MS)
 
@@ -387,6 +478,11 @@ export const useTripStore = create<TripState>()(
               onClick: async () => {
                 undone = true
                 clearTimeout(timer)
+                // Remove pending deletes on undo
+                if (firebaseId) syncManager.removePendingDelete(firebaseId)
+                for (const seg of affectedSegments) {
+                  if (seg.firebaseId) syncManager.removePendingDelete(seg.firebaseId)
+                }
                 await db.addPlan({ ...planSnapshot, id: undefined } as Omit<Plan, 'id'>)
                 const restoredPlans = await db.getPlansForTrip(tripId)
                 const restoredTrips = await db.getAllTrips()
@@ -441,7 +537,7 @@ export const useTripStore = create<TripState>()(
 
           const sourcePlans = await db.getPlansForTrip(id)
 
-          // Create duplicated trip (reset id, firebaseId)
+          // Create duplicated trip (reset id, firebaseId, coverImagePath)
           const newTripData: Omit<Trip, 'id'> = {
             title: `${sourceTrip.title} (복사)`,
             country: sourceTrip.country,
@@ -465,7 +561,7 @@ export const useTripStore = create<TripState>()(
             }
           }
 
-          // Duplicate all plans (reset id, firebaseId, update tripId)
+          // Duplicate all plans (reset id, firebaseId, photoPaths, update tripId)
           for (const plan of sourcePlans) {
             const newPlanData: Omit<Plan, 'id'> = {
               tripId: newTripId,
@@ -480,6 +576,7 @@ export const useTripStore = create<TripState>()(
               openingHours: plan.openingHours,
               memo: plan.memo,
               photos: plan.photos,
+              // photoPaths intentionally omitted — new entity needs its own upload
               youtubeLink: plan.youtubeLink,
               mapUrl: plan.mapUrl,
               latitude: plan.latitude,

@@ -4,7 +4,7 @@
 // ============================================
 
 import { useState, useRef } from 'react'
-import { Sparkles, Check, X } from 'lucide-react'
+import { Sparkles, Check, X, Loader2 } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -14,22 +14,7 @@ import {
   parseItineraryResponse,
 } from '@/services/claudeService'
 import type { Trip, GeneratedItinerary } from '@/types'
-
-const INTEREST_OPTIONS = [
-  { value: '관광', label: '관광' },
-  { value: '맛집', label: '맛집' },
-  { value: '쇼핑', label: '쇼핑' },
-  { value: '자연', label: '자연' },
-  { value: '문화', label: '문화' },
-  { value: '야경', label: '야경' },
-  { value: '카페', label: '카페' },
-]
-
-const STYLE_OPTIONS = [
-  { value: '여유로운', label: '여유로운' },
-  { value: '알찬', label: '알찬' },
-  { value: '균형', label: '균형' },
-]
+import { AI_MESSAGES, INTEREST_OPTIONS, STYLE_OPTIONS, PLAN_TYPE_LABELS } from '@/utils/constants'
 
 interface AIDayRecommendDialogProps {
   trip: Trip
@@ -71,7 +56,7 @@ export function AIDayRecommendDialog({
 
   const handleGenerate = async () => {
     if (!claudeApiKey) {
-      setError('API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력하세요.')
+      setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
     if (!keywords.trim() && interests.length === 0) {
@@ -104,7 +89,7 @@ export function AIDayRecommendDialog({
           : (response as unknown as GeneratedItinerary)
 
       if (!parsed || !parsed.days) {
-        setError('AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.')
+        setError(AI_MESSAGES.PARSE_ERROR)
         return
       }
 
@@ -135,13 +120,6 @@ export function AIDayRecommendDialog({
     }
   }
 
-  const planTypeLabels: Record<string, string> = {
-    attraction: '관광',
-    restaurant: '맛집',
-    hotel: '숙소',
-    transport: '교통',
-    other: '기타',
-  }
 
   return (
     <Dialog open={open} onClose={handleClose} size="xl">
@@ -154,7 +132,7 @@ export function AIDayRecommendDialog({
       <DialogBody>
         {isGenerating ? (
           <div className="flex flex-col items-center gap-3 py-12">
-            <div className="w-10 h-10 border-4 border-primary-500 border-t-transparent rounded-full animate-spin" />
+            <Loader2 className="size-8 animate-spin text-primary-500" />
             <p className="text-sm text-zinc-500 animate-pulse">AI가 일정을 생성하고 있습니다...</p>
             <p className="text-xs text-zinc-400">보통 10~30초 소요됩니다</p>
           </div>
@@ -172,7 +150,7 @@ export function AIDayRecommendDialog({
             )}
 
             {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+              <div className="p-3 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg text-sm text-danger-600 dark:text-danger-400">
                 {error}
               </div>
             )}
@@ -260,7 +238,7 @@ export function AIDayRecommendDialog({
                     )}
                   </div>
                   <span className="text-xs px-2 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-300">
-                    {planTypeLabels[plan.type] || plan.type}
+                    {PLAN_TYPE_LABELS[plan.type as keyof typeof PLAN_TYPE_LABELS] || plan.type}
                   </span>
                 </div>
               ))}
@@ -270,7 +248,7 @@ export function AIDayRecommendDialog({
       </DialogBody>
       <DialogActions>
         <Button color="secondary" onClick={handleClose}>
-          {isGenerating ? '닫기' : '취소'}
+          닫기
         </Button>
         {isGenerating && (
           <Button color="danger" outline onClick={handleCancel} leftIcon={<X className="size-4" />}>

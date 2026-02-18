@@ -98,6 +98,7 @@ export function MobileNav() {
                           <Link
                             to={item.path}
                             onClick={closeMobileMenu}
+                            aria-current={isActive ? 'page' : undefined}
                             className={clsx(
                               'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors min-h-[44px]',
                               isActive

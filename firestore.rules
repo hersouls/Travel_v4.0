@@ -26,6 +26,17 @@ service cloud.firestore {
       match /routeSegments/{segmentId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      match /travelLogs/{logId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Shared trips (public read, authenticated write)
+    match /sharedTrips/{shareId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null;
     }
 
     // Deny all other access

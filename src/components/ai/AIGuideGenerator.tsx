@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateWithStreaming, buildGuideContext } from '@/services/claudeService'
 import type { Plan, Trip } from '@/types'
+import { AI_MESSAGES } from '@/utils/constants'
 
 interface AIGuideGeneratorProps {
   plan: Plan
@@ -30,7 +31,7 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
 
   const handleGenerate = () => {
     if (!claudeApiKey) {
-      setError('API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력하세요.')
+      setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
 
@@ -78,7 +79,7 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
         </p>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+          <div className="mb-4 p-3 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg text-sm text-danger-600 dark:text-danger-400">
             {error}
           </div>
         )}
@@ -109,7 +110,7 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
       </DialogBody>
       <DialogActions>
         <Button color="secondary" onClick={onClose}>
-          취소
+          닫기
         </Button>
         {!generatedText && !isGenerating && (
           <Button

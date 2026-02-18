@@ -93,29 +93,29 @@ const solidStyles = {
     'border-transparent bg-primary-600 text-white',
     'data-[hover]:bg-primary-500 data-[active]:bg-primary-700',
     'dark:bg-primary-500 dark:data-[hover]:bg-primary-400 dark:data-[active]:bg-primary-600',
-    '[--btn-icon:theme(colors.white/80%)] data-[hover]:[--btn-icon:theme(colors.white)]'
+    '[--btn-icon:#ffffffcc] data-[hover]:[--btn-icon:white]'
   ),
   secondary: clsx(
     'border-zinc-950/10 bg-white text-zinc-950',
     'data-[hover]:bg-zinc-950/[2.5%] data-[active]:bg-zinc-950/5',
     'dark:border-white/15 dark:bg-white/5 dark:text-white',
     'dark:data-[hover]:bg-white/10 dark:data-[active]:bg-white/15',
-    '[--btn-icon:theme(colors.zinc.500)] data-[hover]:[--btn-icon:theme(colors.zinc.700)]'
+    '[--btn-icon:var(--color-zinc-500)] data-[hover]:[--btn-icon:var(--color-zinc-700)]'
   ),
   danger: clsx(
     'border-transparent bg-danger-600 text-white',
     'data-[hover]:bg-danger-500 data-[active]:bg-danger-700',
-    '[--btn-icon:theme(colors.white/80%)] data-[hover]:[--btn-icon:theme(colors.white)]'
+    '[--btn-icon:#ffffffcc] data-[hover]:[--btn-icon:white]'
   ),
   success: clsx(
     'border-transparent bg-success-600 text-white',
     'data-[hover]:bg-success-500 data-[active]:bg-success-700',
-    '[--btn-icon:theme(colors.white/80%)] data-[hover]:[--btn-icon:theme(colors.white)]'
+    '[--btn-icon:#ffffffcc] data-[hover]:[--btn-icon:white]'
   ),
   warning: clsx(
     'border-transparent bg-warning-500 text-white',
     'data-[hover]:bg-warning-400 data-[active]:bg-warning-600',
-    '[--btn-icon:theme(colors.white/80%)] data-[hover]:[--btn-icon:theme(colors.white)]'
+    '[--btn-icon:#ffffffcc] data-[hover]:[--btn-icon:white]'
   ),
 }
 
@@ -126,7 +126,7 @@ const outlineStyles = {
     'data-[active]:bg-primary-100',
     'dark:text-primary-400 dark:border-primary-500/30',
     'dark:data-[hover]:border-primary-400 dark:data-[hover]:bg-primary-950/50',
-    '[--btn-icon:theme(colors.primary.500)]'
+    '[--btn-icon:var(--color-primary-500)]'
   ),
   secondary: clsx(
     'border-zinc-300 text-zinc-700',
@@ -134,22 +134,22 @@ const outlineStyles = {
     'data-[active]:bg-zinc-100',
     'dark:text-zinc-300 dark:border-zinc-700',
     'dark:data-[hover]:border-zinc-600 dark:data-[hover]:bg-zinc-800/50',
-    '[--btn-icon:theme(colors.zinc.500)]'
+    '[--btn-icon:var(--color-zinc-500)]'
   ),
   danger: clsx(
     'border-danger-500/50 text-danger-600',
     'data-[hover]:border-danger-500 data-[hover]:bg-danger-50',
-    '[--btn-icon:theme(colors.danger.500)]'
+    '[--btn-icon:var(--color-danger-500)]'
   ),
   success: clsx(
     'border-success-500/50 text-success-600',
     'data-[hover]:border-success-500 data-[hover]:bg-success-50',
-    '[--btn-icon:theme(colors.success.500)]'
+    '[--btn-icon:var(--color-success-500)]'
   ),
   warning: clsx(
     'border-warning-500/50 text-warning-600',
     'data-[hover]:border-warning-500 data-[hover]:bg-warning-50',
-    '[--btn-icon:theme(colors.warning.500)]'
+    '[--btn-icon:var(--color-warning-500)]'
   ),
 }
 
@@ -160,7 +160,7 @@ const plainStyles = {
     'data-[active]:bg-primary-100',
     'dark:text-primary-400',
     'dark:data-[hover]:bg-primary-950/50',
-    '[--btn-icon:theme(colors.primary.500)]'
+    '[--btn-icon:var(--color-primary-500)]'
   ),
   secondary: clsx(
     'border-transparent text-zinc-700',
@@ -168,25 +168,25 @@ const plainStyles = {
     'data-[active]:bg-zinc-200',
     'dark:text-zinc-300',
     'dark:data-[hover]:bg-zinc-800',
-    '[--btn-icon:theme(colors.zinc.500)]'
+    '[--btn-icon:var(--color-zinc-500)]'
   ),
   danger: clsx(
     'border-transparent text-danger-600',
     'data-[hover]:bg-danger-50',
     'dark:text-danger-400',
-    '[--btn-icon:theme(colors.danger.500)]'
+    '[--btn-icon:var(--color-danger-500)]'
   ),
   success: clsx(
     'border-transparent text-success-600',
     'data-[hover]:bg-success-50',
     'dark:text-success-400',
-    '[--btn-icon:theme(colors.success.500)]'
+    '[--btn-icon:var(--color-success-500)]'
   ),
   warning: clsx(
     'border-transparent text-warning-600',
     'data-[hover]:bg-warning-50',
     'dark:text-warning-400',
-    '[--btn-icon:theme(colors.warning.500)]'
+    '[--btn-icon:var(--color-warning-500)]'
   ),
 }
 

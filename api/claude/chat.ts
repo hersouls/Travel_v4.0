@@ -51,7 +51,7 @@ function buildSystemPrompt(tripContext?: { title?: string; country?: string }): 
 역할:
 - 여행 일정 제안 및 최적화
 - 현지 맛집, 관광지, 숙소 추천
-- 예산 계획 및 교통편 안내
+- 교통편 안내
 - 현지 문화, 날씨, 주의사항 정보 제공
 - 여행 팁 및 실용적 조언
 

@@ -1,16 +1,23 @@
 // ============================================
 // useTTS Hook - TTS 상태 관리
+// OpenAI TTS (API key 있을 때) / Browser TTS (fallback)
 // ============================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ttsService, type TTSOptions } from '@/services/ttsService'
+import { openaiTtsService } from '@/services/openaiTtsService'
 import { useAudioStore } from '@/stores/audioStore'
+import { useSettingsStore } from '@/stores/settingsStore'
+
+export type TTSMode = 'openai' | 'browser'
 
 interface UseTTSReturn {
   // 상태
   isSupported: boolean
   isPlaying: boolean
   isPaused: boolean
+  isGenerating: boolean
+  ttsMode: TTSMode
   rate: number
   availableVoices: SpeechSynthesisVoice[]
   selectedVoice: SpeechSynthesisVoice | null
@@ -37,6 +44,7 @@ export function useTTS(): UseTTSReturn {
   const [isSupported, setIsSupported] = useState(true) // Always true due to fallback
   const [isPlaying, setIsPlaying] = useState(false)
   const [isPaused, setIsPaused] = useState(false)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [rate, setRateState] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(RATE_STORAGE_KEY)
@@ -54,6 +62,16 @@ export function useTTS(): UseTTSReturn {
   const [progress, setProgress] = useState(0)
   const [startOffset, setStartOffset] = useState(0)
   const [fullText, setFullText] = useState('')
+
+  // Track which mode is active for current playback
+  const activeModeRef = useRef<TTSMode>('browser')
+
+  // OpenAI settings from store
+  const openaiApiKey = useSettingsStore((s) => s.openaiApiKey)
+  const openaiTtsModel = useSettingsStore((s) => s.openaiTtsModel) || 'tts-1'
+  const openaiTtsVoice = useSettingsStore((s) => s.openaiTtsVoice) || 'alloy'
+
+  const ttsMode: TTSMode = openaiApiKey ? 'openai' : 'browser'
 
   // 초기화
   useEffect(() => {
@@ -83,6 +101,7 @@ export function useTTS(): UseTTSReturn {
 
     return () => {
       ttsService.stop()
+      openaiTtsService.dispose()
     }
   }, [])
 
@@ -91,20 +110,55 @@ export function useTTS(): UseTTSReturn {
     localStorage.setItem(RATE_STORAGE_KEY, rate.toString())
   }, [rate])
 
-  // 상태 동기화를 위한 폴링
+  // OpenAI TTS event listeners
+  useEffect(() => {
+    const unsubTime = openaiTtsService.onTimeUpdate(() => {
+      if (activeModeRef.current === 'openai') {
+        setProgress(openaiTtsService.progress)
+        if (openaiTtsService.isPlaying) {
+          setIsPlaying(true)
+          setIsPaused(false)
+        }
+      }
+    })
+
+    const unsubEnd = openaiTtsService.onEnded(() => {
+      if (activeModeRef.current === 'openai') {
+        setIsPlaying(false)
+        setIsPaused(false)
+        setProgress(1)
+        setCurrentText('')
+        useAudioStore.getState().stopAudio('tts')
+      }
+    })
+
+    return () => {
+      unsubTime()
+      unsubEnd()
+    }
+  }, [])
+
+  // 상태 동기화를 위한 폴링 (browser mode only)
   useEffect(() => {
     if (!isSupported) return
 
     const interval = setInterval(() => {
-      const speaking = ttsService.isSpeaking()
-      const paused = ttsService.isPaused()
+      if (activeModeRef.current === 'browser') {
+        const speaking = ttsService.isSpeaking()
+        const paused = ttsService.isPaused()
 
-      // 상태가 변경되었을 때만 업데이트 (불필요한 렌더링 방지)
-      if (isPlaying !== (speaking && !paused)) setIsPlaying(speaking && !paused)
-      if (isPaused !== paused) setIsPaused(paused)
+        if (isPlaying !== (speaking && !paused)) setIsPlaying(speaking && !paused)
+        if (isPaused !== paused) setIsPaused(paused)
 
-      const newFallbackMode = ttsService.isFallbackMode()
-      if (isFallbackMode !== newFallbackMode) setIsFallbackMode(newFallbackMode)
+        const newFallbackMode = ttsService.isFallbackMode()
+        if (isFallbackMode !== newFallbackMode) setIsFallbackMode(newFallbackMode)
+      } else if (activeModeRef.current === 'openai') {
+        // Sync pause state for OpenAI mode
+        const playing = openaiTtsService.isPlaying
+        const paused = openaiTtsService.isPaused
+        if (isPlaying !== playing) setIsPlaying(playing)
+        if (isPaused !== paused) setIsPaused(paused)
+      }
     }, 250)
 
     return () => clearInterval(interval)
@@ -116,6 +170,44 @@ export function useTTS(): UseTTSReturn {
 
       setError(null)
       setCurrentText(text)
+
+      if (ttsMode === 'openai' && offset === 0) {
+        // OpenAI TTS mode
+        activeModeRef.current = 'openai'
+
+        // Stop any browser TTS
+        ttsService.stop()
+
+        setFullText(text)
+        setStartOffset(0)
+        setProgress(0)
+        setIsGenerating(true)
+
+        // 배타적 재생
+        useAudioStore.getState().playAudio('tts')
+
+        openaiTtsService.setRate(rate)
+        openaiTtsService.generate({
+          text,
+          model: openaiTtsModel as 'tts-1' | 'tts-1-hd',
+          voice: openaiTtsVoice,
+          apiKey: openaiApiKey!,
+        }).then(() => {
+          setIsGenerating(false)
+          setIsPlaying(true)
+          setIsPaused(false)
+        }).catch((err) => {
+          setIsGenerating(false)
+          setIsPlaying(false)
+          setError(err instanceof Error ? err.message : 'TTS 생성 실패')
+          useAudioStore.getState().stopAudio('tts')
+        })
+
+        return
+      }
+
+      // Browser TTS mode (or seeking in openai mode not supported, fall through)
+      activeModeRef.current = 'browser'
 
       // 처음 재생하는 경우 fullText 설정
       if (offset === 0) {
@@ -136,26 +228,15 @@ export function useTTS(): UseTTSReturn {
 
       ttsService.speak(text, options, {
         onStart: () => {
-          console.log('[useTTS] onStart')
           setIsPlaying(true)
           setIsPaused(false)
         },
         onEnd: () => {
-          console.log('[useTTS] onEnd')
           setIsPlaying(false)
           setIsPaused(false)
-          // onEnd doesn't necessarily mean finished if seeking, but seek calls play again.
-          // If we finished naturally:
-          if (offset === 0 && text.length === fullText.length) {
-            setProgress(1)
-            setCurrentText('')
-            useAudioStore.getState().stopAudio('tts')
-          } else {
-            // Sliced text finished
-            setProgress(1)
-            setCurrentText('')
-            useAudioStore.getState().stopAudio('tts')
-          }
+          setProgress(1)
+          setCurrentText('')
+          useAudioStore.getState().stopAudio('tts')
         },
         onError: (err) => {
           console.error('[useTTS] onError:', err)
@@ -178,26 +259,25 @@ export function useTTS(): UseTTSReturn {
         }
       })
     },
-    [rate, selectedVoice, fullText] // fullText dependency added
+    [rate, selectedVoice, fullText, ttsMode, openaiApiKey, openaiTtsModel, openaiTtsVoice]
   )
 
   const seek = useCallback((percentage: number) => {
+    if (activeModeRef.current === 'openai' && openaiTtsService.hasAudio()) {
+      openaiTtsService.seekByPercentage(percentage)
+      setProgress(percentage)
+      return
+    }
+
     if (!fullText) return
 
-    // Calculate new index
+    // Browser TTS seek (character-based)
     const targetIndex = Math.floor(fullText.length * Math.min(0.99, Math.max(0, percentage)))
-
-    // Update progress immediately for UI responsiveness
     setProgress(percentage)
     setStartOffset(targetIndex)
-
-    // Stop current
     ttsService.stop()
 
-    // Play from new position
     const textToPlay = fullText.slice(targetIndex)
-
-    // Use setTimeout to ensure stop completes and UI updates
     setTimeout(() => {
       play(textToPlay, selectedVoice, targetIndex)
     }, 10)
@@ -213,17 +293,13 @@ export function useTTS(): UseTTSReturn {
         localStorage.removeItem(VOICE_STORAGE_KEY)
       }
 
-      // 재생 중이면 새 voice로 restart (현재 위치부터)
-      // restartWithText가 제공되면 그것을 사용 (보통 fullText일 것임)
-      const textToUse = restartWithText || fullText || currentText
+      // Only restart for browser mode
+      if (activeModeRef.current !== 'browser') return
 
+      const textToUse = restartWithText || fullText || currentText
       if ((ttsService.isSpeaking() || ttsService.isPaused()) && textToUse) {
         ttsService.stop()
-
-        // 현재 위치 유지 (startOffset)
-        // 하지만 fullText 기준 이어야 함.
         const currentSlice = textToUse.slice(startOffset)
-
         setTimeout(() => {
           play(currentSlice, voice, startOffset)
         }, 50)
@@ -234,19 +310,31 @@ export function useTTS(): UseTTSReturn {
 
 
   const pause = useCallback(() => {
-    ttsService.pause()
+    if (activeModeRef.current === 'openai') {
+      openaiTtsService.pause()
+    } else {
+      ttsService.pause()
+    }
     setIsPaused(true)
   }, [])
 
   const resume = useCallback(() => {
-    ttsService.resume()
+    if (activeModeRef.current === 'openai') {
+      openaiTtsService.resume()
+    } else {
+      ttsService.resume()
+    }
     setIsPaused(false)
   }, [])
 
   const stop = useCallback(() => {
+    if (activeModeRef.current === 'openai') {
+      openaiTtsService.stop()
+    }
     ttsService.stop()
     setIsPlaying(false)
     setIsPaused(false)
+    setIsGenerating(false)
     setCurrentText('')
     setError(null)
     setProgress(0)
@@ -256,30 +344,37 @@ export function useTTS(): UseTTSReturn {
 
   const togglePlayPause = useCallback(
     (text: string) => {
+      if (isGenerating) return // Don't toggle while generating
+
       if (isPlaying && !isPaused) {
         pause()
       } else if (isPaused) {
         resume()
       } else {
         // New play
-        setFullText(text) // Ensure full text is set
+        setFullText(text)
         play(text, null, 0)
       }
     },
-    [isPlaying, isPaused, pause, resume, play]
+    [isPlaying, isPaused, isGenerating, pause, resume, play]
   )
 
   const setRate = useCallback((newRate: number) => {
     const clampedRate = Math.max(0.5, Math.min(2.0, newRate))
     setRateState(clampedRate)
-    // 재생 중인 오디오에도 즉시 적용
-    ttsService.setRate(clampedRate)
+    if (activeModeRef.current === 'openai') {
+      openaiTtsService.setRate(clampedRate)
+    } else {
+      ttsService.setRate(clampedRate)
+    }
   }, [])
 
   return {
     isSupported,
     isPlaying,
     isPaused,
+    isGenerating,
+    ttsMode,
     rate,
     availableVoices,
     selectedVoice,

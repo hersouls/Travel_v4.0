@@ -6,6 +6,7 @@ import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import type { ClaudeModel } from '@/types'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { AI_MESSAGES } from '@/utils/constants'
 
 export interface ChatMessage {
   id: string
@@ -42,7 +43,7 @@ export const useChatStore = create<ChatState>()(
           const errorMsg: ChatMessage = {
             id: crypto.randomUUID(),
             role: 'assistant',
-            content: 'API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력해주세요.',
+            content: AI_MESSAGES.API_KEY_MISSING,
             timestamp: new Date(),
           }
           set((state) => ({ messages: [...state.messages, errorMsg] }))

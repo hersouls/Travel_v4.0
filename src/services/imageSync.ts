@@ -1,0 +1,407 @@
+// ============================================
+// Image Sync Service
+// Firebase Storage upload/download for images
+// (coverImage for trips, photos for plans/places)
+// ============================================
+
+import {
+  ref,
+  uploadBytes,
+  getBlob,
+  deleteObject,
+  listAll,
+} from 'firebase/storage'
+import { doc, updateDoc } from 'firebase/firestore'
+import { getFirebaseStorage, getFirebaseDb } from '@/services/firebase'
+import { base64ToBlob, getImageFormat } from '@/services/imageStorage'
+import { db as dexieDb } from '@/services/database'
+import type { Trip, Plan, Place, TravelLog } from '@/types'
+
+// ============================================
+// Constants
+// ============================================
+
+const MAX_CONCURRENT = 3
+
+// ============================================
+// Core Upload / Download
+// ============================================
+
+async function uploadImageToStorage(storagePath: string, base64: string): Promise<void> {
+  const storage = getFirebaseStorage()
+  const blob = base64ToBlob(base64)
+  const storageRef = ref(storage, storagePath)
+  await uploadBytes(storageRef, blob, { contentType: blob.type })
+}
+
+async function downloadImageFromStorage(storagePath: string): Promise<string> {
+  const storage = getFirebaseStorage()
+  const storageRef = ref(storage, storagePath)
+  // Use getBlob instead of getDownloadURL+fetch to avoid CORS issues
+  const blob = await getBlob(storageRef)
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+// ============================================
+// Trip Cover Image
+// ============================================
+
+export async function uploadTripCoverImage(userId: string, trip: Trip): Promise<void> {
+  if (!trip.firebaseId || !trip.coverImage) return
+
+  const ext = getImageFormat(trip.coverImage)
+  const storagePath = `users/${userId}/trips/${trip.firebaseId}/cover.${ext}`
+
+  try {
+    await uploadImageToStorage(storagePath, trip.coverImage)
+
+    // Update Firestore doc with storage path
+    const firestore = getFirebaseDb()
+    const tripRef = doc(firestore, 'users', userId, 'trips', trip.firebaseId)
+    await updateDoc(tripRef, { coverImagePath: storagePath })
+
+    // Update local record
+    if (trip.id) {
+      await dexieDb.trips.update(trip.id, { coverImagePath: storagePath })
+    }
+
+    console.log('[ImageSync] Uploaded trip cover:', trip.firebaseId)
+  } catch (error) {
+    console.error('[ImageSync] Failed to upload trip cover:', trip.firebaseId, error)
+  }
+}
+
+export async function downloadTripCoverImage(trip: Trip): Promise<void> {
+  if (!trip.coverImagePath || !trip.id) return
+  if (trip.coverImage) return // Already have local Base64
+
+  try {
+    const base64 = await downloadImageFromStorage(trip.coverImagePath)
+    await dexieDb.trips.update(trip.id, { coverImage: base64 })
+    console.log('[ImageSync] Downloaded trip cover:', trip.id)
+  } catch (error) {
+    console.error('[ImageSync] Failed to download trip cover:', trip.id, error)
+  }
+}
+
+// ============================================
+// Plan Photos
+// ============================================
+
+export async function uploadPlanPhotos(userId: string, plan: Plan): Promise<void> {
+  if (!plan.firebaseId || !plan.photos?.length) return
+
+  const paths: string[] = []
+
+  for (let i = 0; i < plan.photos.length; i++) {
+    const photo = plan.photos[i]
+    if (!photo) { paths.push(''); continue }
+    const ext = getImageFormat(photo)
+    const storagePath = `users/${userId}/plans/${plan.firebaseId}/photo_${i}.${ext}`
+
+    try {
+      await uploadImageToStorage(storagePath, photo)
+      paths.push(storagePath)
+    } catch (error) {
+      console.error(`[ImageSync] Failed to upload plan photo ${i}:`, plan.firebaseId, error)
+      paths.push('')
+    }
+  }
+
+  const validCount = paths.filter((p) => p !== '').length
+  if (validCount > 0) {
+    try {
+      const firestore = getFirebaseDb()
+      const planRef = doc(firestore, 'users', userId, 'plans', plan.firebaseId)
+      await updateDoc(planRef, { photoPaths: paths })
+
+      if (plan.id) {
+        await dexieDb.plans.update(plan.id, { photoPaths: paths })
+      }
+      console.log('[ImageSync] Uploaded plan photos:', plan.firebaseId, `${validCount}/${plan.photos.length}`)
+    } catch (error) {
+      console.error('[ImageSync] Failed to update plan photoPaths:', plan.firebaseId, error)
+    }
+  }
+}
+
+export async function downloadPlanPhotos(plan: Plan): Promise<void> {
+  if (!plan.photoPaths?.length || !plan.id) return
+  if (plan.photos?.length) return // Already have local photos
+
+  const photos: string[] = []
+
+  for (const path of plan.photoPaths) {
+    if (!path) continue
+    try {
+      const base64 = await downloadImageFromStorage(path)
+      photos.push(base64)
+    } catch (error) {
+      console.error('[ImageSync] Failed to download plan photo:', path, error)
+    }
+  }
+
+  if (photos.length > 0) {
+    await dexieDb.plans.update(plan.id, { photos })
+    console.log('[ImageSync] Downloaded plan photos:', plan.id, photos.length)
+  }
+}
+
+// ============================================
+// Place Photos
+// ============================================
+
+export async function uploadPlacePhotos(userId: string, place: Place): Promise<void> {
+  if (!place.firebaseId || !place.photos?.length) return
+
+  const paths: string[] = []
+
+  for (let i = 0; i < place.photos.length; i++) {
+    const photo = place.photos[i]
+    if (!photo) { paths.push(''); continue }
+    const ext = getImageFormat(photo)
+    const storagePath = `users/${userId}/places/${place.firebaseId}/photo_${i}.${ext}`
+
+    try {
+      await uploadImageToStorage(storagePath, photo)
+      paths.push(storagePath)
+    } catch (error) {
+      console.error(`[ImageSync] Failed to upload place photo ${i}:`, place.firebaseId, error)
+      paths.push('')
+    }
+  }
+
+  const validCount = paths.filter((p) => p !== '').length
+  if (validCount > 0) {
+    try {
+      const firestore = getFirebaseDb()
+      const placeRef = doc(firestore, 'users', userId, 'places', place.firebaseId)
+      await updateDoc(placeRef, { photoPaths: paths })
+
+      if (place.id) {
+        await dexieDb.places.update(place.id, { photoPaths: paths })
+      }
+      console.log('[ImageSync] Uploaded place photos:', place.firebaseId, `${validCount}/${place.photos.length}`)
+    } catch (error) {
+      console.error('[ImageSync] Failed to update place photoPaths:', place.firebaseId, error)
+    }
+  }
+}
+
+export async function downloadPlacePhotos(place: Place): Promise<void> {
+  if (!place.photoPaths?.length || !place.id) return
+  if (place.photos?.length) return // Already have local photos
+
+  const photos: string[] = []
+
+  for (const path of place.photoPaths) {
+    if (!path) continue
+    try {
+      const base64 = await downloadImageFromStorage(path)
+      photos.push(base64)
+    } catch (error) {
+      console.error('[ImageSync] Failed to download place photo:', path, error)
+    }
+  }
+
+  if (photos.length > 0) {
+    await dexieDb.places.update(place.id, { photos })
+    console.log('[ImageSync] Downloaded place photos:', place.id, photos.length)
+  }
+}
+
+// ============================================
+// Travel Log Photos
+// ============================================
+
+export async function uploadTravelLogPhoto(userId: string, log: TravelLog): Promise<void> {
+  if (!log.firebaseId) return
+
+  try {
+    // Upload main photo
+    if (log.photo) {
+      const ext = getImageFormat(log.photo)
+      const storagePath = `users/${userId}/travelLogs/${log.firebaseId}/photo.${ext}`
+      await uploadImageToStorage(storagePath, log.photo)
+
+      const firestore = getFirebaseDb()
+      const logRef = doc(firestore, 'users', userId, 'travelLogs', log.firebaseId)
+      await updateDoc(logRef, { photoPath: storagePath })
+
+      if (log.id) {
+        await dexieDb.travelLogs.update(log.id, { photoPath: storagePath })
+      }
+    }
+
+    // Upload thumbnail
+    if (log.thumbnailPhoto) {
+      const thumbExt = getImageFormat(log.thumbnailPhoto)
+      const thumbPath = `users/${userId}/travelLogs/${log.firebaseId}/thumb.${thumbExt}`
+      await uploadImageToStorage(thumbPath, log.thumbnailPhoto)
+
+      const firestore = getFirebaseDb()
+      const logRef = doc(firestore, 'users', userId, 'travelLogs', log.firebaseId)
+      await updateDoc(logRef, { thumbnailPhotoPath: thumbPath })
+
+      if (log.id) {
+        await dexieDb.travelLogs.update(log.id, { thumbnailPhotoPath: thumbPath })
+      }
+    }
+
+    console.log('[ImageSync] Uploaded travel log photo:', log.firebaseId)
+  } catch (error) {
+    console.error('[ImageSync] Failed to upload travel log photo:', error)
+  }
+}
+
+export async function downloadTravelLogPhoto(log: TravelLog): Promise<void> {
+  if (!log.id) return
+
+  try {
+    const updates: Partial<TravelLog> = {}
+
+    if (log.photoPath && !log.photo) {
+      updates.photo = await downloadImageFromStorage(log.photoPath)
+    }
+
+    if (log.thumbnailPhotoPath && !log.thumbnailPhoto) {
+      updates.thumbnailPhoto = await downloadImageFromStorage(log.thumbnailPhotoPath)
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await dexieDb.travelLogs.update(log.id, updates)
+      console.log('[ImageSync] Downloaded travel log photo:', log.id)
+    }
+  } catch (error) {
+    console.error('[ImageSync] Failed to download travel log photo:', error)
+  }
+}
+
+// ============================================
+// Deletion
+// ============================================
+
+export async function deleteEntityImages(
+  userId: string,
+  entityType: 'trips' | 'plans' | 'places' | 'travelLogs',
+  entityFirebaseId: string,
+): Promise<void> {
+  const storage = getFirebaseStorage()
+  const folderRef = ref(storage, `users/${userId}/${entityType}/${entityFirebaseId}`)
+
+  try {
+    const result = await listAll(folderRef)
+    if (result.items.length > 0) {
+      await Promise.allSettled(result.items.map((item) => deleteObject(item)))
+      console.log('[ImageSync] Deleted images for:', entityType, entityFirebaseId)
+    }
+  } catch (error) {
+    // listAll may throw if folder doesn't exist — that's OK
+    console.warn('[ImageSync] Delete folder warning:', entityType, entityFirebaseId, error)
+  }
+}
+
+// ============================================
+// Bulk Sync (called after initial metadata sync)
+// ============================================
+
+export async function syncAllImagesBackground(
+  userId: string,
+  onProgress?: (step: string) => void,
+): Promise<void> {
+  // ── Phase 1: Upload local images missing from cloud ──
+  onProgress?.('이미지 업로드 확인 중...')
+
+  const uploadTasks: (() => Promise<void>)[] = []
+
+  const trips = await dexieDb.trips.toArray()
+  for (const trip of trips) {
+    if (trip.coverImage && trip.firebaseId && !trip.coverImagePath) {
+      uploadTasks.push(() => uploadTripCoverImage(userId, trip))
+    }
+  }
+
+  const plans = await dexieDb.plans.toArray()
+  for (const plan of plans) {
+    if (plan.photos?.length && plan.firebaseId && !plan.photoPaths?.length) {
+      uploadTasks.push(() => uploadPlanPhotos(userId, plan))
+    }
+  }
+
+  const places = await dexieDb.places.toArray()
+  for (const place of places) {
+    if (place.photos?.length && place.firebaseId && !place.photoPaths?.length) {
+      uploadTasks.push(() => uploadPlacePhotos(userId, place))
+    }
+  }
+
+  const travelLogs = await dexieDb.travelLogs.toArray()
+  for (const log of travelLogs) {
+    if (log.photo && log.firebaseId && !log.photoPath) {
+      uploadTasks.push(() => uploadTravelLogPhoto(userId, log))
+    }
+  }
+
+  if (uploadTasks.length > 0) {
+    onProgress?.(`이미지 업로드 중 (0/${uploadTasks.length})...`)
+    for (let i = 0; i < uploadTasks.length; i += MAX_CONCURRENT) {
+      const batch = uploadTasks.slice(i, i + MAX_CONCURRENT)
+      await Promise.allSettled(batch.map((fn) => fn()))
+      const done = Math.min(i + MAX_CONCURRENT, uploadTasks.length)
+      onProgress?.(`이미지 업로드 중 (${done}/${uploadTasks.length})...`)
+    }
+  }
+
+  // ── Phase 2: Download cloud images missing locally ──
+  onProgress?.('이미지 다운로드 확인 중...')
+
+  const downloadTasks: (() => Promise<void>)[] = []
+
+  // Re-read entities (paths may have been updated during upload phase)
+  const freshTrips = await dexieDb.trips.toArray()
+  for (const trip of freshTrips) {
+    if (!trip.coverImage && trip.coverImagePath) {
+      downloadTasks.push(() => downloadTripCoverImage(trip))
+    }
+  }
+
+  const freshPlans = await dexieDb.plans.toArray()
+  for (const plan of freshPlans) {
+    if ((!plan.photos || plan.photos.length === 0) && plan.photoPaths?.length) {
+      downloadTasks.push(() => downloadPlanPhotos(plan))
+    }
+  }
+
+  const freshPlaces = await dexieDb.places.toArray()
+  for (const place of freshPlaces) {
+    if ((!place.photos || place.photos.length === 0) && place.photoPaths?.length) {
+      downloadTasks.push(() => downloadPlacePhotos(place))
+    }
+  }
+
+  const freshLogs = await dexieDb.travelLogs.toArray()
+  for (const log of freshLogs) {
+    if (!log.photo && log.photoPath) {
+      downloadTasks.push(() => downloadTravelLogPhoto(log))
+    }
+  }
+
+  if (downloadTasks.length > 0) {
+    onProgress?.(`이미지 다운로드 중 (0/${downloadTasks.length})...`)
+    for (let i = 0; i < downloadTasks.length; i += MAX_CONCURRENT) {
+      const batch = downloadTasks.slice(i, i + MAX_CONCURRENT)
+      await Promise.allSettled(batch.map((fn) => fn()))
+      const done = Math.min(i + MAX_CONCURRENT, downloadTasks.length)
+      onProgress?.(`이미지 다운로드 중 (${done}/${downloadTasks.length})...`)
+    }
+  }
+
+  if (uploadTasks.length > 0 || downloadTasks.length > 0) {
+    onProgress?.('이미지 동기화 완료')
+  }
+}

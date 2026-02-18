@@ -1,6 +1,8 @@
 // ============================================
 // Sync Hook
 // Auth 상태 변화에 따라 syncManager 시작/중지
+// StrictMode 이중 마운트는 SyncManager 내부
+// generation 카운터로 처리됨 (첫 번째 sync 자동 중단)
 // ============================================
 
 import { useEffect } from 'react'
@@ -27,6 +29,11 @@ export function useSync() {
       useTripStore.getState().loadTrips()
       usePlaceStore.getState().loadPlaces()
       useSettingsStore.getState().initialize()
+      // Reload current trip/plans to pick up downloaded images
+      const currentTrip = useTripStore.getState().currentTrip
+      if (currentTrip?.id) {
+        useTripStore.getState().loadTrip(currentTrip.id)
+      }
     })
 
     const unsubStatus = syncManager.onSyncStatus((progress) => {

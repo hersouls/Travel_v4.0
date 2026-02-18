@@ -9,6 +9,7 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateStructured, buildImageAnalysisContext } from '@/services/claudeService'
+import { AI_MESSAGES } from '@/utils/constants'
 
 interface AnalysisResult {
   placeName: string
@@ -54,7 +55,7 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
 
   const handleAnalyze = async () => {
     if (!claudeApiKey) {
-      setError('API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력하세요.')
+      setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
 
@@ -78,7 +79,7 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
         try {
           setResult(JSON.parse(response))
         } catch {
-          setError('AI 응답을 파싱할 수 없습니다.')
+          setError(AI_MESSAGES.PARSE_ERROR)
         }
       } else {
         setResult(response)
@@ -101,14 +102,14 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
       <DialogBody>
         <div className="space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-600 dark:text-red-400">
+            <div className="p-3 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg text-sm text-danger-600 dark:text-danger-400">
               {error}
             </div>
           )}
 
           {/* Image Upload */}
           {!imagePreview ? (
-            <label className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-xl cursor-pointer hover:border-indigo-500 transition-colors">
+            <label className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-zinc-300 dark:border-zinc-600 rounded-xl cursor-pointer hover:border-indigo-500 dark:hover:border-indigo-400 transition-colors">
               <Camera className="size-10 text-zinc-400" />
               <span className="text-sm text-zinc-500">사진을 선택하세요</span>
               <span className="text-xs text-zinc-400">JPG, PNG 지원</span>
@@ -188,7 +189,7 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
       </DialogBody>
       <DialogActions>
         <Button color="secondary" onClick={onClose}>
-          취소
+          닫기
         </Button>
         {imagePreview && !result && (
           <Button

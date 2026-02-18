@@ -5,7 +5,7 @@
 export const APP_NAME = 'Moonwave Travel'
 export const APP_VERSION = '4.0.0'
 export const APP_DESCRIPTION = '여행 일정 관리 및 추억 기록 도구'
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 // Storage Keys
 export const STORAGE_KEYS = {
@@ -37,7 +37,7 @@ export const PLAN_TYPE_ICONS = {
 // Plan Type Labels
 export const PLAN_TYPE_LABELS = {
   attraction: '관광',
-  restaurant: '식당',
+  restaurant: '맛집',
   hotel: '숙소',
   transport: '교통',
   car: '렌트카',
@@ -157,3 +157,68 @@ export const COLOR_PALETTES: Record<string, PaletteDefinition> = {
     },
   },
 }
+
+// Expense Category Labels (Korean)
+export const EXPENSE_CATEGORY_LABELS: Record<string, string> = {
+  food: '식비',
+  transport: '교통',
+  accommodation: '숙소',
+  shopping: '쇼핑',
+  attraction: '관광',
+  other: '기타',
+} as const
+
+// Expense Category Icons (Lucide icon names)
+export const EXPENSE_CATEGORY_ICONS: Record<string, string> = {
+  food: 'Utensils',
+  transport: 'Bus',
+  accommodation: 'Bed',
+  shopping: 'ShoppingBag',
+  attraction: 'Camera',
+  other: 'MoreHorizontal',
+} as const
+
+// Currency Symbols
+export const CURRENCY_SYMBOLS: Record<string, string> = {
+  KRW: '₩',
+  JPY: '¥',
+  USD: '$',
+  EUR: '€',
+  GBP: '£',
+  CNY: '¥',
+  THB: '฿',
+  VND: '₫',
+  SGD: 'S$',
+  AUD: 'A$',
+  TWD: 'NT$',
+} as const
+
+// Travel Log Type Labels
+export const TRAVEL_LOG_TYPE_LABELS: Record<string, string> = {
+  photo: '사진',
+  receipt: '영수증',
+  memo: '메모',
+} as const
+
+// AI Error/Status Messages
+export const AI_MESSAGES = {
+  API_KEY_MISSING: 'API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력하세요.',
+  PARSE_ERROR: 'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.',
+} as const
+
+// AI Dialog Options
+export const INTEREST_OPTIONS = [
+  { value: '관광', label: '관광' },
+  { value: '맛집', label: '맛집' },
+  { value: '쇼핑', label: '쇼핑' },
+  { value: '자연', label: '자연' },
+  { value: '문화', label: '문화' },
+  { value: '야경', label: '야경' },
+  { value: '카페', label: '카페' },
+] as const
+
+export const STYLE_OPTIONS = [
+  { value: '여유로운', label: '여유로운' },
+  { value: '알찬', label: '알찬' },
+  { value: '균형', label: '균형' },
+] as const

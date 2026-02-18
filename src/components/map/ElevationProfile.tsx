@@ -168,7 +168,7 @@ export function ElevationProfile({
           +{Math.round(stats.totalAscent)}m
         </span>
         <span className="flex items-center gap-1">
-          <TrendingUp className="size-3 text-red-500 rotate-180" />
+          <TrendingUp className="size-3 text-danger-500 rotate-180" />
           -{Math.round(stats.totalDescent)}m
         </span>
         <span>

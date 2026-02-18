@@ -11,6 +11,7 @@ import { MusicPlayer } from '@/components/audio'
 import { TimezoneAlert } from '@/components/timezone'
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt'
 import { SyncProgressOverlay } from '@/components/sync/SyncProgressOverlay'
+import { ConflictResolverModal } from '@/components/sync/ConflictResolverModal'
 import { CommandPalette } from '@/components/search/CommandPalette'
 import { useTimezoneDetection } from '@/hooks/useTimezoneDetection'
 import { subscribeToBroadcast, type BroadcastMessage } from '@/services/broadcast'
@@ -83,6 +84,11 @@ export default function App() {
       }
       if (type.startsWith('PLACE_')) {
         usePlaceStore.getState().loadPlaces()
+      }
+      if (type.startsWith('LOG_')) {
+        // TravelLog changes from another tab — the active TravelLog page
+        // will re-fetch on its own via store subscriptions if open.
+        // No global reload needed since logs are trip-scoped.
       }
       if (type === 'SETTINGS_CHANGED') {
         useSettingsStore.getState().initialize()
@@ -168,6 +174,9 @@ export default function App() {
 
       {/* Sync Progress Overlay */}
       <SyncProgressOverlay />
+
+      {/* Sync Conflict Resolver */}
+      <ConflictResolverModal />
 
       {/* Command Palette */}
       <CommandPalette />

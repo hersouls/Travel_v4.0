@@ -5,6 +5,7 @@
 import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
 import type { PlanType } from '@/types'
+import { PLAN_TYPE_LABELS } from '@/utils/constants'
 
 type BadgeColor = 'zinc' | 'primary' | 'success' | 'warning' | 'danger' | 'blue' | 'purple' | 'pink' | 'orange' | 'cyan'
 
@@ -99,16 +100,6 @@ const planTypeColors: Record<PlanType, BadgeColor> = {
   other: 'zinc',
 }
 
-const planTypeLabels: Record<PlanType, string> = {
-  attraction: '관광',
-  restaurant: '식당',
-  hotel: '숙소',
-  transport: '교통',
-  car: '렌트카',
-  plane: '항공',
-  airport: '공항',
-  other: '기타',
-}
 
 interface PlanTypeBadgeProps {
   type: PlanType
@@ -119,7 +110,7 @@ interface PlanTypeBadgeProps {
 export function PlanTypeBadge({ type, size = 'sm', className }: PlanTypeBadgeProps) {
   return (
     <Badge color={planTypeColors[type]} size={size} className={className}>
-      {planTypeLabels[type]}
+      {PLAN_TYPE_LABELS[type]}
     </Badge>
   )
 }

@@ -1,0 +1,6 @@
+.playwright-mcp
+*.jpg
+*.png
+*.md
+!README.md
+고도화.md

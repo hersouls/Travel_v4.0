@@ -2,7 +2,7 @@
 // AudioPlayer Component - TTS 오디오 플레이어
 // ============================================
 
-import { Play, Pause, Square, Volume2, VolumeX, Mic, ExternalLink, Sparkles } from 'lucide-react'
+import { Play, Pause, Square, Volume2, VolumeX, Mic, ExternalLink, Sparkles, Loader2 } from 'lucide-react'
 import { useTTS } from './useTTS'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { cn } from '@/utils/cn'
@@ -21,14 +21,27 @@ const SPEED_OPTIONS = [
   { value: 2.0, label: '2.0x' },
 ]
 
+const OPENAI_VOICES = [
+  { value: 'alloy', label: 'Alloy', desc: '중성적' },
+  { value: 'echo', label: 'Echo', desc: '남성적' },
+  { value: 'fable', label: 'Fable', desc: '따뜻한' },
+  { value: 'onyx', label: 'Onyx', desc: '깊은' },
+  { value: 'nova', label: 'Nova', desc: '여성적' },
+  { value: 'shimmer', label: 'Shimmer', desc: '밝은' },
+]
+
 const MOONYOU_GUIDE_GEM_URL = 'https://gemini.google.com/gem/1pSqw6tcLNq--HKClJEGOBlK-qRiBsGqr?usp=sharing'
 
 export function AudioPlayer({ text, compact = false, className }: AudioPlayerProps) {
   const claudeEnabled = useSettingsStore((state) => state.claudeEnabled)
+  const openaiTtsVoice = useSettingsStore((state) => state.openaiTtsVoice) || 'alloy'
+  const setOpenaiTtsVoice = useSettingsStore((state) => state.setOpenaiTtsVoice)
   const {
     isSupported,
     isPlaying,
     isPaused,
+    isGenerating,
+    ttsMode,
     rate,
     availableVoices,
     selectedVoice,
@@ -79,9 +92,12 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
     }
   }
 
+  const handleOpenaiVoiceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setOpenaiTtsVoice(e.target.value)
+  }
+
   // 음성 이름을 간결하게 표시
   const getVoiceDisplayName = (voice: SpeechSynthesisVoice) => {
-    // 이름에서 불필요한 부분 제거
     let name = voice.name
       .replace('Microsoft ', '')
       .replace('Google ', '')
@@ -110,15 +126,23 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
         <button
           type="button"
           onClick={handlePlayPause}
+          disabled={isGenerating}
           className={cn(
             'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-            isPlaying && !isPaused
+            isGenerating
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+              : isPlaying && !isPaused
               ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300'
               : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
           )}
-          aria-label={isPlaying && !isPaused ? '일시정지' : isPaused ? '재개' : '재생'}
+          aria-label={isGenerating ? 'AI 음성 생성 중' : isPlaying && !isPaused ? '일시정지' : isPaused ? '재개' : '재생'}
         >
-          {isPlaying && !isPaused ? (
+          {isGenerating ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              <span>생성 중...</span>
+            </>
+          ) : isPlaying && !isPaused ? (
             <>
               <Pause className="size-4" />
               <span>일시정지</span>
@@ -146,6 +170,10 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
             <Square className="size-4" />
           </button>
         )}
+
+        {ttsMode === 'openai' && !isPlaying && !isPaused && !isGenerating && (
+          <span className="text-[10px] text-violet-500 dark:text-violet-400 font-medium">AI</span>
+        )}
       </div>
     )
   }
@@ -156,7 +184,7 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
       {/* 진행바 */}
       <div className="flex items-center gap-2 group">
         <span className="text-xs text-zinc-400 font-mono w-8 text-right">
-          {Math.floor(progress * 100)}%
+          {isGenerating ? '...' : `${Math.floor(progress * 100)}%`}
         </span>
         <div className="relative flex-1 h-4 flex items-center">
           <input
@@ -166,19 +194,25 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
             step="0.01"
             value={progress}
             onChange={(e) => seek(parseFloat(e.target.value))}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+            disabled={isGenerating}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
             aria-label="재생 위치"
           />
           <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-emerald-500 transition-all duration-100 ease-linear"
-              style={{ width: `${progress * 100}%` }}
+              className={cn(
+                'h-full transition-all duration-100 ease-linear',
+                isGenerating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'
+              )}
+              style={{ width: isGenerating ? '100%' : `${progress * 100}%` }}
             />
           </div>
-          <div
-            className="absolute h-3 w-3 bg-white border border-zinc-200 dark:border-zinc-600 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-            style={{ left: `calc(${progress * 100}% - 6px)` }}
-          />
+          {!isGenerating && (
+            <div
+              className="absolute h-3 w-3 bg-white border border-zinc-200 dark:border-zinc-600 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              style={{ left: `calc(${progress * 100}% - 6px)` }}
+            />
+          )}
         </div>
       </div>
 
@@ -188,15 +222,23 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
         <button
           type="button"
           onClick={handlePlayPause}
+          disabled={isGenerating}
           className={cn(
             'inline-flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all',
-            isPlaying && !isPaused
+            isGenerating
+              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+              : isPlaying && !isPaused
               ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-lg shadow-emerald-500/25'
               : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-800/50'
           )}
-          aria-label={isPlaying && !isPaused ? '일시정지' : isPaused ? '재개' : '재생'}
+          aria-label={isGenerating ? 'AI 음성 생성 중' : isPlaying && !isPaused ? '일시정지' : isPaused ? '재개' : '재생'}
         >
-          {isPlaying && !isPaused ? (
+          {isGenerating ? (
+            <>
+              <Loader2 className="size-5 animate-spin" />
+              <span>AI 음성 생성 중...</span>
+            </>
+          ) : isPlaying && !isPaused ? (
             <>
               <Pause className="size-5" />
               <span>일시정지</span>
@@ -228,6 +270,16 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
 
         {/* 속도 조절 */}
         <div className="flex items-center gap-2 ml-auto">
+          {/* TTS 모드 배지 */}
+          <span className={cn(
+            'text-[10px] font-medium px-1.5 py-0.5 rounded',
+            ttsMode === 'openai'
+              ? 'bg-violet-100 text-violet-600 dark:bg-violet-900/50 dark:text-violet-400'
+              : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400'
+          )}>
+            {ttsMode === 'openai' ? 'AI 음성' : '브라우저'}
+          </span>
+
           <span className="text-sm text-zinc-500">속도</span>
           <select
             value={rate}
@@ -243,8 +295,27 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
         </div>
       </div>
 
-      {/* 성우 선택 */}
-      {availableVoices.length > 0 && (
+      {/* 성우 선택 — OpenAI 모드 */}
+      {ttsMode === 'openai' && (
+        <div className="flex items-center gap-2">
+          <Sparkles className="size-4 text-violet-400" />
+          <span className="text-sm text-zinc-500">AI 음성</span>
+          <select
+            value={openaiTtsVoice}
+            onChange={handleOpenaiVoiceChange}
+            className="flex-1 h-8 px-2 pr-6 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-sm text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-2 focus:ring-violet-500"
+          >
+            {OPENAI_VOICES.map((voice) => (
+              <option key={voice.value} value={voice.value}>
+                {voice.label} ({voice.desc})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* 성우 선택 — Browser 모드 */}
+      {ttsMode === 'browser' && availableVoices.length > 0 && (
         <div className="flex items-center gap-2">
           <Mic className="size-4 text-zinc-400" />
           <span className="text-sm text-zinc-500">성우</span>
@@ -255,7 +326,7 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
           >
             <option value="">자동 (한국어 우선)</option>
             {koreanVoices.length > 0 && (
-              <optgroup label="🇰🇷 한국어">
+              <optgroup label="한국어">
                 {koreanVoices.map((voice) => (
                   <option key={voice.name} value={voice.name}>
                     {getVoiceDisplayName(voice)}
@@ -264,7 +335,7 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
               </optgroup>
             )}
             {otherVoices.length > 0 && (
-              <optgroup label="🌐 기타 언어">
+              <optgroup label="기타 언어">
                 {otherVoices.map((voice) => (
                   <option key={voice.name} value={voice.name}>
                     {getVoiceDisplayName(voice)}
@@ -277,41 +348,56 @@ export function AudioPlayer({ text, compact = false, className }: AudioPlayerPro
       )}
 
       {/* 음성 로드 상태 */}
-      {availableVoices.length === 0 && !isFallbackMode && (
+      {ttsMode === 'browser' && availableVoices.length === 0 && !isFallbackMode && (
         <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
-          <span>⏳ 음성을 로드하는 중...</span>
+          <span>음성을 로드하는 중...</span>
         </div>
       )}
 
       {/* 한국어 음성 정보 */}
-      {koreanVoices.length > 0 && !isPlaying && (
+      {ttsMode === 'browser' && koreanVoices.length > 0 && !isPlaying && (
         <div className="text-xs text-zinc-400">
           한국어 음성 {koreanVoices.length}개 사용 가능
         </div>
       )}
 
       {/* 재생 상태 표시 */}
-      {isPlaying && (
-        <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+      {(isPlaying || isGenerating) && (
+        <div className={cn(
+          'flex items-center gap-2 text-sm',
+          isGenerating
+            ? 'text-amber-600 dark:text-amber-400'
+            : 'text-emerald-600 dark:text-emerald-400'
+        )}>
           <div className="flex gap-0.5">
-            <span className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse" />
+            <span className={cn('w-1 h-3 rounded-full animate-pulse', isGenerating ? 'bg-amber-500' : 'bg-emerald-500')} />
             <span
-              className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse"
+              className={cn('w-1 h-3 rounded-full animate-pulse', isGenerating ? 'bg-amber-500' : 'bg-emerald-500')}
               style={{ animationDelay: '0.15s' }}
             />
             <span
-              className="w-1 h-3 bg-emerald-500 rounded-full animate-pulse"
+              className={cn('w-1 h-3 rounded-full animate-pulse', isGenerating ? 'bg-amber-500' : 'bg-emerald-500')}
               style={{ animationDelay: '0.3s' }}
             />
           </div>
-          <span>{isPaused ? '일시정지됨' : isFallbackMode ? '재생 중... (Google TTS)' : '재생 중...'}</span>
+          <span>
+            {isGenerating
+              ? 'AI 음성 생성 중...'
+              : isPaused
+                ? '일시정지됨'
+                : ttsMode === 'openai'
+                  ? '재생 중... (AI 음성)'
+                  : isFallbackMode
+                    ? '재생 중... (Google TTS)'
+                    : '재생 중...'}
+          </span>
         </div>
       )}
 
       {/* 에러 표시 */}
       {error && (
-        <div className="flex items-center gap-2 text-sm text-red-500 dark:text-red-400">
-          <span>⚠️ {error}</span>
+        <div className="flex items-center gap-2 text-sm text-danger-500 dark:text-danger-400">
+          <span>{error}</span>
         </div>
       )}
 

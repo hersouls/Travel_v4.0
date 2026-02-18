@@ -15,6 +15,9 @@ type MessageType =
   | 'PLACE_UPDATED'
   | 'PLACE_DELETED'
   | 'SETTINGS_CHANGED'
+  | 'LOG_CREATED'
+  | 'LOG_UPDATED'
+  | 'LOG_DELETED'
   | 'DATA_IMPORTED'
   | 'DATA_CLEARED'
 

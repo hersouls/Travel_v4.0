@@ -19,7 +19,6 @@ interface AIChatPanelProps {
 const EXAMPLE_PROMPTS = [
   '이 여행의 추천 일정을 만들어줘',
   '현지 맛집을 추천해줘',
-  '예산을 알려줘',
 ]
 
 function TypingIndicator() {

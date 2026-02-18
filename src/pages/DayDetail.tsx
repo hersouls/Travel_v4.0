@@ -53,6 +53,7 @@ import { formatTime } from '@/utils/format'
 import { getTripDurationSafe, getTripDayDate } from '@/utils/timezone'
 import { formatRating, formatReviewCount, extractPlaceInfo } from '@/services/googleMaps'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
+import { getMarkerColor } from '@/utils/mapStyles'
 import {
   Camera,
   Utensils,
@@ -70,6 +71,8 @@ import { useSwipeGesture } from '@/hooks/useSwipeGesture'
 import { RouteInfoPanel } from '@/components/map/RouteInfoPanel'
 import { RouteOptimizeButton } from '@/components/trip/RouteOptimizeButton'
 import { WeatherBadge } from '@/components/trip/WeatherBadge'
+import { MiniTimeline } from '@/components/travellog'
+import { useTravelLogStore } from '@/stores/travelLogStore'
 import { AIDayRecommendDialog } from '@/components/ai/AIDayRecommendDialog'
 import { AIDaySuggestDialog } from '@/components/ai/AIDaySuggestDialog'
 import { useDirections } from '@/hooks/useDirections'
@@ -327,10 +330,15 @@ export function DayDetail() {
   )
   const isAIAvailable = claudeEnabled || !!claudeApiKey
 
+  const dayTravelLogs = useTravelLogStore((s) => s.logs)
+  const loadLogsForDay = useTravelLogStore((s) => s.loadLogsForDay)
+  const clearTravelLogs = useTravelLogStore((s) => s.clearLogs)
+
   const [planToDelete, setPlanToDelete] = useState<number | null>(null)
   const [refreshingPlanId, setRefreshingPlanId] = useState<number | null>(null)
   const [isRecommendOpen, setIsRecommendOpen] = useState(false)
   const [isSuggestOpen, setIsSuggestOpen] = useState(false)
+  const [isDayPickerOpen, setIsDayPickerOpen] = useState(false)
 
   const dayNumber = day ? Number.parseInt(day) : 1
 
@@ -339,6 +347,14 @@ export function DayDetail() {
       loadTrip(Number.parseInt(id))
     }
   }, [id, loadTrip])
+
+  // Load travel logs for this day
+  useEffect(() => {
+    if (id) {
+      loadLogsForDay(Number.parseInt(id), dayNumber)
+    }
+    return () => clearTravelLogs()
+  }, [id, dayNumber, loadLogsForDay, clearTravelLogs])
 
   // Filter plans for this day only (order 우선, 없으면 startTime)
   const dayPlans = useMemo(() => {
@@ -453,20 +469,6 @@ export function DayDetail() {
     }
   }
 
-  // Marker colors by type
-  const getMarkerColor = (type: string) => {
-    const colors: Record<string, string> = {
-      attraction: '#8b5cf6',
-      restaurant: '#f97316',
-      hotel: '#3b82f6',
-      transport: '#6b7280',
-      car: '#84cc16',
-      plane: '#06b6d4',
-      airport: '#0ea5e9',
-      other: '#a1a1aa',
-    }
-    return colors[type] || '#a1a1aa'
-  }
 
   const createCustomMarker = (type: string, index: number) => {
     const color = getMarkerColor(type)
@@ -634,10 +636,12 @@ export function DayDetail() {
             >
               <ChevronLeft className="size-5" />
             </IconButton>
-            <h1 className="text-2xl font-bold text-[var(--foreground)]">
-              Day {dayNumber}
-              <span className="text-sm font-normal text-zinc-500 ml-2">/ {totalDays}</span>
-            </h1>
+            <button onClick={() => setIsDayPickerOpen(true)} className="text-left">
+              <h1 className="text-2xl font-bold text-[var(--foreground)]">
+                Day {dayNumber}
+                <span className="text-sm font-normal text-zinc-500 ml-2">/ {totalDays} ▾</span>
+              </h1>
+            </button>
             <IconButton
               plain
               color="secondary"
@@ -715,7 +719,8 @@ export function DayDetail() {
               zoom={13}
               style={{ height: '100%', width: '100%' }}
               scrollWheelZoom={false}
-              dragging={true}
+              dragging={false}
+              touchZoom={false}
             >
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -843,6 +848,13 @@ export function DayDetail() {
         )}
       </div>
 
+      {/* Travel Log Mini Timeline */}
+      {dayTravelLogs.length > 0 && trip?.id && (
+        <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800">
+          <MiniTimeline logs={dayTravelLogs} tripId={trip.id} />
+        </div>
+      )}
+
       {/* Delete Plan Dialog */}
       <Dialog open={planToDelete !== null} onClose={() => setPlanToDelete(null)}>
         <DialogTitle onClose={() => setPlanToDelete(null)}>일정 삭제</DialogTitle>
@@ -885,6 +897,44 @@ export function DayDetail() {
           onApply={handleApplySuggest}
         />
       )}
+
+      {/* Day Picker Grid Dialog */}
+      <Dialog open={isDayPickerOpen} onClose={() => setIsDayPickerOpen(false)} size="sm">
+        <DialogTitle onClose={() => setIsDayPickerOpen(false)}>Day 선택</DialogTitle>
+        <DialogBody>
+          <div className={`grid gap-2 ${totalDays > 15 ? 'grid-cols-7' : 'grid-cols-5'}`}>
+            {Array.from({ length: totalDays }, (_, i) => i + 1).map((d) => {
+              const dayPlanCount = plans.filter(p => p.day === d).length
+              const dayDateObj = getTripDayDate(trip.startDate, d)
+              const isCurrent = d === dayNumber
+              return (
+                <button
+                  key={d}
+                  onClick={() => {
+                    navigate(`/trips/${id}/day/${d}`)
+                    setIsDayPickerOpen(false)
+                  }}
+                  className={`flex flex-col items-center p-2 rounded-lg transition-colors ${
+                    isCurrent
+                      ? 'bg-primary-500 text-white'
+                      : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[var(--foreground)]'
+                  }`}
+                >
+                  <span className="text-lg font-bold">{d}</span>
+                  <span className={`text-[10px] ${isCurrent ? 'text-white/80' : 'text-zinc-400'}`}>
+                    {dayDateObj.toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}
+                  </span>
+                  {dayPlanCount > 0 && (
+                    <div className={`size-1.5 rounded-full mt-1 ${
+                      isCurrent ? 'bg-white' : 'bg-primary-500'
+                    }`} />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </DialogBody>
+      </Dialog>
       </div>
     </PageContainer>
   )
