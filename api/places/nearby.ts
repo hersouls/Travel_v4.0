@@ -27,7 +27,13 @@ interface NearbyPlace {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || []
+  const origin = req.headers.origin || ''
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  } else if (process.env.NODE_ENV !== 'production') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -129,7 +135,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (place.userRatingCount !== undefined) result.reviewCount = place.userRatingCount
       if (place.primaryType) result.category = place.primaryType
       if (place.photos && place.photos.length > 0) {
-        result.photoUrl = `https://places.googleapis.com/v1/${place.photos[0].name}/media?maxWidthPx=600&key=${apiKey}`
+        // API 키를 노출하지 않고 프록시 경로 사용
+        result.photoUrl = `/api/places/photo-proxy?name=${encodeURIComponent(place.photos[0].name)}&maxWidthPx=600`
       }
 
       return result

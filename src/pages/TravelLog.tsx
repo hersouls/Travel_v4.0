@@ -2,31 +2,64 @@
 // Travel Log Page
 // Timeline-based travel recording with photos,
 // receipts, memos and expense summaries
+// Enhanced: sorting, accordion, search, infinite
+// scroll, view modes, minimap
 // ============================================
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Camera, Receipt, FileText, MapPin } from 'lucide-react'
 import { PageContainer } from '@/components/layout'
-import { Card } from '@/components/ui/Card'
-import { Button, IconButton } from '@/components/ui/Button'
-import { Skeleton } from '@/components/ui/Skeleton'
-import { SpeedDialFAB } from '@/components/ui/SpeedDialFAB'
 import {
+  DayMinimap,
+  DaySection,
+  EditLogModal,
+  ExpenseSummary,
+  MemoLogInput,
   PhotoLogUploader,
   ReceiptScanner,
-  MemoLogInput,
-  TimelineCard,
-  ExpenseSummary,
-  EditLogModal,
+  ScrollToTopFAB,
+  SearchFilterBar,
 } from '@/components/travellog'
-import { useCurrentTrip, useTripLoading, useTripStore } from '@/stores/tripStore'
-import { useTravelLogStore, useTravelLogs, useTravelLogLoading } from '@/stores/travelLogStore'
-import { toast } from '@/stores/uiStore'
+import { ViewModeToggle } from '@/components/travellog/ViewModeToggle'
+import type { ViewMode } from '@/components/travellog/ViewModeToggle'
+import { Button, IconButton } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
+import { Lightbox } from '@/components/ui/Lightbox'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { SpeedDialFAB } from '@/components/ui/SpeedDialFAB'
+import { useBulkSelection } from '@/hooks/useBulkSelection'
+import { useTravelLogView } from '@/hooks/useTravelLogView'
+import type { SortOrder } from '@/hooks/useTravelLogView'
 import { reverseGeocode } from '@/services/geocodingService'
+import { useTravelLogLoading, useTravelLogStore, useTravelLogs } from '@/stores/travelLogStore'
+import { useCurrentTrip, useTripLoading, useTripStore } from '@/stores/tripStore'
+import { toast } from '@/stores/uiStore'
+import type { ExpenseCategory, TravelLog as TravelLogType } from '@/types'
 import { getTripDuration } from '@/utils/format'
 import { getTripDayDate } from '@/utils/timezone'
-import type { TravelLog as TravelLogType } from '@/types'
+import {
+  ArrowLeft,
+  ArrowUpDown,
+  Camera,
+  ChevronsUpDown,
+  FileText,
+  MapPin,
+  Receipt,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+
+type LogFilter = 'all' | 'photo' | 'receipt' | 'memo'
+
+const FILTER_OPTIONS: { value: LogFilter; label: string }[] = [
+  { value: 'all', label: '전체' },
+  { value: 'photo', label: '사진' },
+  { value: 'receipt', label: '영수증' },
+  { value: 'memo', label: '메모' },
+]
+
+const INITIAL_LOAD_COUNT = 3
 
 export function TravelLog() {
   const { id } = useParams<{ id: string }>()
@@ -43,13 +76,32 @@ export function TravelLog() {
   const deleteLog = useTravelLogStore((s) => s.deleteLog)
   const clearLogs = useTravelLogStore((s) => s.clearLogs)
 
+  // Core UI state
   const [activeDay, setActiveDay] = useState(1)
+  const [activeFilter, setActiveFilter] = useState<LogFilter>('all')
   const [isPhotoOpen, setIsPhotoOpen] = useState(false)
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
   const [isMemoOpen, setIsMemoOpen] = useState(false)
   const [editingLog, setEditingLog] = useState<TravelLogType | null>(null)
 
-  const tripId = id ? parseInt(id) : 0
+  // Enhancement state
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
+  const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set())
+  const [loadedDayCount, setLoadedDayCount] = useState(INITIAL_LOAD_COUNT)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>('timeline')
+  const [showSearch, setShowSearch] = useState(false)
+
+  // Lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxImages, setLightboxImages] = useState<string[]>([])
+  const [lightboxIndex, setLightboxIndex] = useState(0)
+
+  // Bulk selection
+  const bulk = useBulkSelection<number>()
+
+  const tripId = id ? Number.parseInt(id) : 0
 
   // Load trip and logs
   useEffect(() => {
@@ -65,100 +117,227 @@ export function TravelLog() {
     return getTripDuration(trip.startDate, trip.endDate)
   }, [trip])
 
-  const days = useMemo(() => {
-    return Array.from({ length: totalDays }, (_, i) => i + 1)
+  // Use the extracted view hook for all data computation
+  const {
+    sortedDays,
+    visibleDays,
+    logsByDay,
+    filteredLogsByDay,
+    dayExpenses,
+    daySummaries,
+    hasMoreDays,
+    totalFilteredCount,
+  } = useTravelLogView({
+    logs,
+    totalDays,
+    sortOrder,
+    activeFilter,
+    categoryFilter,
+    searchQuery,
+    loadedDayCount,
+  })
+
+  // Initialize expandedDays when logs first load (one-time initialization)
+  const initializedRef = useRef(false)
+  useEffect(() => {
+    if (logs.length > 0 && !initializedRef.current) {
+      initializedRef.current = true
+      const firstDay = sortOrder === 'newest' ? totalDays : 1
+      setExpandedDays(new Set([firstDay]))
+      setActiveDay(firstDay)
+    }
+  }, [logs.length, sortOrder, totalDays])
+
+  // Reset on sort order change
+  const handleSortToggle = useCallback(() => {
+    setSortOrder((prev) => {
+      const next = prev === 'newest' ? 'oldest' : 'newest'
+      setLoadedDayCount(INITIAL_LOAD_COUNT)
+      const firstDay = next === 'newest' ? totalDays : 1
+      setExpandedDays(new Set([firstDay]))
+      setActiveDay(firstDay)
+      return next
+    })
   }, [totalDays])
 
-  // Group logs by day
-  const logsByDay = useMemo(() => {
-    const grouped: Record<number, TravelLogType[]> = {}
-    for (const log of logs) {
-      if (!grouped[log.day]) grouped[log.day] = []
-      grouped[log.day].push(log)
-    }
-    // Sort by timestamp within each day
-    for (const day of Object.keys(grouped)) {
-      grouped[parseInt(day)].sort(
-        (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      )
-    }
-    return grouped
-  }, [logs])
+  // Accordion handlers
+  const toggleDay = useCallback((day: number) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev)
+      if (next.has(day)) next.delete(day)
+      else next.add(day)
+      return next
+    })
+  }, [])
 
-  // Day expense subtotals
-  const dayExpenses = useMemo(() => {
-    const result: Record<number, Record<string, number>> = {}
-    for (const log of logs) {
-      if (log.type !== 'receipt' || !log.expense) continue
-      if (!result[log.day]) result[log.day] = {}
-      const { currency, totalAmount } = log.expense
-      result[log.day][currency] = (result[log.day][currency] || 0) + totalAmount
-    }
-    return result
-  }, [logs])
+  const expandAll = useCallback(() => {
+    setExpandedDays(new Set(sortedDays))
+  }, [sortedDays])
+
+  const collapseAll = useCallback(() => {
+    setExpandedDays(new Set())
+  }, [])
+
+  // Day tab click: expand + scroll
+  const handleDayTabClick = useCallback(
+    (day: number) => {
+      setActiveDay(day)
+      setExpandedDays((prev) => {
+        if (prev.has(day)) return prev
+        const next = new Set(prev)
+        next.add(day)
+        return next
+      })
+      // Ensure day is loaded
+      const dayIndex = sortedDays.indexOf(day)
+      if (dayIndex >= loadedDayCount) {
+        setLoadedDayCount(dayIndex + 1)
+      }
+      requestAnimationFrame(() => {
+        document
+          .getElementById(`log-day-${day}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    },
+    [sortedDays, loadedDayCount],
+  )
+
+  // Minimap day click
+  const handleMinimapDayClick = useCallback(
+    (day: number) => {
+      handleDayTabClick(day)
+    },
+    [handleDayTabClick],
+  )
 
   // Handle adding logs (with optional reverse geocoding)
-  const handleAddLogs = useCallback(async (newLogs: Array<Omit<TravelLogType, 'id' | 'createdAt' | 'updatedAt'>>) => {
-    let count = 0
-    for (const logData of newLogs) {
-      try {
-        // Attempt reverse geocoding if coordinates available but no address
-        let address = logData.address
-        if (!address && logData.latitude && logData.longitude) {
-          try {
-            address = (await reverseGeocode(logData.latitude, logData.longitude)) || undefined
-          } catch {
-            // geocoding failure is non-critical
+  const handleAddLogs = useCallback(
+    async (newLogs: Array<Omit<TravelLogType, 'id' | 'createdAt' | 'updatedAt'>>) => {
+      let count = 0
+      for (const logData of newLogs) {
+        try {
+          let address = logData.address
+          if (!address && logData.latitude && logData.longitude) {
+            try {
+              address = (await reverseGeocode(logData.latitude, logData.longitude)) || undefined
+            } catch {
+              // geocoding failure is non-critical
+            }
           }
+          await addLog({ ...logData, address })
+          count++
+        } catch (err) {
+          console.error('[TravelLog] Failed to add log:', err)
         }
-        await addLog({ ...logData, address })
-        count++
+      }
+      if (count > 0) {
+        toast.success(`${count}개 기록이 추가되었습니다`)
+      }
+    },
+    [addLog],
+  )
+
+  const handleAddSingleLog = useCallback(
+    async (logData: Omit<TravelLogType, 'id' | 'createdAt' | 'updatedAt'>) => {
+      await handleAddLogs([logData])
+    },
+    [handleAddLogs],
+  )
+
+  const handleEditLog = useCallback(
+    async (id: number, updates: Partial<TravelLogType>) => {
+      await updateLog(id, updates)
+      toast.success('기록이 수정되었습니다')
+    },
+    [updateLog],
+  )
+
+  const handleDeleteLog = useCallback(
+    async (logId: number) => {
+      await deleteLog(logId)
+    },
+    [deleteLog],
+  )
+
+  // Lightbox: collect photos from same day and open
+  const handlePhotoClick = useCallback(
+    (photo: string) => {
+      let dayPhotos: string[] = []
+      for (const [, dayLogs] of Object.entries(logsByDay)) {
+        const photos = dayLogs.filter((l) => l.photo).map((l) => l.photo!)
+        if (photos.includes(photo)) {
+          dayPhotos = photos
+          break
+        }
+      }
+      if (dayPhotos.length === 0) {
+        dayPhotos = [photo]
+      }
+      const idx = dayPhotos.indexOf(photo)
+      setLightboxImages(dayPhotos)
+      setLightboxIndex(idx >= 0 ? idx : 0)
+      setLightboxOpen(true)
+    },
+    [logsByDay],
+  )
+
+  // Bulk delete
+  const handleBulkDelete = useCallback(async () => {
+    const ids = bulk.selectedIds
+    if (ids.length === 0) return
+    if (!window.confirm(`${ids.length}개 기록을 삭제하시겠습니까?`)) return
+
+    for (const logId of ids) {
+      try {
+        await deleteLog(logId)
       } catch (err) {
-        console.error('[TravelLog] Failed to add log:', err)
+        console.error('[TravelLog] Failed to delete log:', logId, err)
       }
     }
-    if (count > 0) {
-      toast.success(`${count}개 기록이 추가되었습니다`)
-    }
-  }, [addLog])
+    toast.success(`${ids.length}개 기록이 삭제되었습니다`)
+    bulk.clearSelection()
+  }, [bulk, deleteLog])
 
-  const handleAddSingleLog = useCallback(async (logData: Omit<TravelLogType, 'id' | 'createdAt' | 'updatedAt'>) => {
-    await handleAddLogs([logData])
-  }, [handleAddLogs])
+  const handleLongPress = useCallback(
+    (logId: number) => {
+      bulk.enterSelectionMode()
+      bulk.toggle(logId)
+    },
+    [bulk],
+  )
 
-  const handleEditLog = useCallback(async (id: number, updates: Partial<TravelLogType>) => {
-    await updateLog(id, updates)
-    toast.success('기록이 수정되었습니다')
-  }, [updateLog])
-
-  const handleDeleteLog = useCallback(async (logId: number) => {
-    await deleteLog(logId)
-  }, [deleteLog])
+  // Load more days
+  const handleLoadMore = useCallback(() => {
+    setLoadedDayCount((c) => c + INITIAL_LOAD_COUNT)
+  }, [])
 
   // SpeedDial actions
-  const fabActions = useMemo(() => [
-    {
-      id: 'memo',
-      icon: <FileText className="size-5" />,
-      label: '메모',
-      onClick: () => setIsMemoOpen(true),
-      color: 'bg-success-500 text-white hover:bg-success-400',
-    },
-    {
-      id: 'receipt',
-      icon: <Receipt className="size-5" />,
-      label: '영수증',
-      onClick: () => setIsReceiptOpen(true),
-      color: 'bg-warning-500 text-white hover:bg-warning-400',
-    },
-    {
-      id: 'photo',
-      icon: <Camera className="size-5" />,
-      label: '사진',
-      onClick: () => setIsPhotoOpen(true),
-      color: 'bg-primary-500 text-white hover:bg-primary-400',
-    },
-  ], [])
+  const fabActions = useMemo(
+    () => [
+      {
+        id: 'memo',
+        icon: <FileText className="size-5" />,
+        label: '메모',
+        onClick: () => setIsMemoOpen(true),
+        color: 'bg-success-500 text-white hover:bg-success-400',
+      },
+      {
+        id: 'receipt',
+        icon: <Receipt className="size-5" />,
+        label: '영수증',
+        onClick: () => setIsReceiptOpen(true),
+        color: 'bg-warning-500 text-white hover:bg-warning-400',
+      },
+      {
+        id: 'photo',
+        icon: <Camera className="size-5" />,
+        label: '사진',
+        onClick: () => setIsPhotoOpen(true),
+        color: 'bg-primary-500 text-white hover:bg-primary-400',
+      },
+    ],
+    [],
+  )
 
   if (isLoadingTrip) {
     return (
@@ -187,34 +366,64 @@ export function TravelLog() {
 
   return (
     <PageContainer>
-      <div className="space-y-6 animate-fade-in">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
-            <ArrowLeft className="size-5" />
-          </IconButton>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-[var(--foreground)]">여행 기록</h1>
-            <p className="text-sm text-zinc-500 truncate">{trip.title}</p>
+      <div className="space-y-4 animate-fade-in">
+        {/* Header / Bulk selection action bar */}
+        {bulk.isSelectionMode ? (
+          <div className="flex items-center gap-3 px-3 py-2 bg-primary-50 dark:bg-primary-900/20 rounded-xl border border-primary-200 dark:border-primary-800">
+            <IconButton
+              plain
+              color="secondary"
+              onClick={bulk.clearSelection}
+              aria-label="선택 취소"
+            >
+              <X className="size-5" />
+            </IconButton>
+            <span className="flex-1 text-sm font-medium text-primary-700 dark:text-primary-300">
+              {bulk.count}개 선택됨
+            </span>
+            <Button
+              color="danger"
+              size="sm"
+              onClick={handleBulkDelete}
+              leftIcon={<Trash2 className="size-4" />}
+            >
+              삭제
+            </Button>
           </div>
-        </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <IconButton
+              plain
+              color="secondary"
+              onClick={() => navigate(`/trips/${tripId}`)}
+              aria-label="뒤로 가기"
+            >
+              <ArrowLeft className="size-5" />
+            </IconButton>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl font-bold text-[var(--foreground)]">여행 기록</h1>
+              <p className="text-sm text-zinc-500 truncate">{trip.title}</p>
+            </div>
+          </div>
+        )}
 
         {/* Expense Summary */}
         <ExpenseSummary logs={logs} />
 
-        {/* Sticky Day Tab Bar */}
-        {days.length > 0 && (
+        {/* Sticky Day Tab Bar + Controls */}
+        {sortedDays.length > 0 && (
           <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-[var(--background)] border-b border-zinc-200 dark:border-zinc-800">
+            {/* Day tabs */}
             <div className="flex gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {days.map((day) => {
+              {sortedDays.map((day) => {
                 const dayLogs = logsByDay[day] || []
+                const dayDate = getTripDayDate(trip.startDate, day)
+                const dateLabel = dayDate ? `${dayDate.getMonth() + 1}/${dayDate.getDate()}` : ''
                 return (
                   <button
+                    type="button"
                     key={day}
-                    onClick={() => {
-                      setActiveDay(day)
-                      document.getElementById(`log-day-${day}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }}
+                    onClick={() => handleDayTabClick(day)}
                     className={`flex-shrink-0 min-w-[2.75rem] flex flex-col items-center py-1.5 px-1 rounded-xl text-center transition-colors ${
                       activeDay === day
                         ? 'bg-primary-500 text-white'
@@ -222,10 +431,21 @@ export function TravelLog() {
                     }`}
                   >
                     <span className="text-sm font-bold leading-tight">{day}</span>
+                    {dateLabel && (
+                      <span
+                        className={`text-[10px] leading-tight ${
+                          activeDay === day ? 'text-white/70' : 'text-zinc-400 dark:text-zinc-500'
+                        }`}
+                      >
+                        {dateLabel}
+                      </span>
+                    )}
                     {dayLogs.length > 0 && (
-                      <span className={`text-[10px] leading-tight ${
-                        activeDay === day ? 'text-white/70' : 'text-zinc-400 dark:text-zinc-500'
-                      }`}>
+                      <span
+                        className={`text-[10px] leading-tight ${
+                          activeDay === day ? 'text-white/60' : 'text-zinc-400 dark:text-zinc-500'
+                        }`}
+                      >
                         {dayLogs.length}
                       </span>
                     )}
@@ -233,7 +453,79 @@ export function TravelLog() {
                 )
               })}
             </div>
+
+            {/* Controls row: filters + sort + accordion + view mode */}
+            <div className="flex items-center gap-1.5 mt-2">
+              {/* Type filter chips */}
+              {FILTER_OPTIONS.map((opt) => (
+                <button
+                  type="button"
+                  key={opt.value}
+                  onClick={() => setActiveFilter(opt.value)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+                    activeFilter === opt.value
+                      ? 'bg-zinc-800 dark:bg-zinc-200 text-white dark:text-zinc-900'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+
+              <div className="flex-1" />
+
+              {/* Sort toggle */}
+              <button
+                type="button"
+                onClick={handleSortToggle}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                title={sortOrder === 'newest' ? '최신순' : '오래된순'}
+              >
+                <ArrowUpDown className="size-3" />
+                <span className="hidden sm:inline">
+                  {sortOrder === 'newest' ? '최신순' : '오래된순'}
+                </span>
+              </button>
+
+              {/* Expand/Collapse all */}
+              <button
+                type="button"
+                onClick={expandedDays.size === sortedDays.length ? collapseAll : expandAll}
+                className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                title={expandedDays.size === sortedDays.length ? '모두 접기' : '모두 펼치기'}
+              >
+                <ChevronsUpDown className="size-3" />
+              </button>
+
+              {/* Search toggle */}
+              <button
+                type="button"
+                onClick={() => setShowSearch((p) => !p)}
+                className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg transition-colors ${
+                  showSearch || searchQuery || categoryFilter
+                    ? 'bg-primary-500 text-white'
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                }`}
+                title="검색"
+              >
+                <Search className="size-3" />
+              </button>
+
+              {/* View mode toggle */}
+              <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+            </div>
           </div>
+        )}
+
+        {/* Search + Category Filter Bar */}
+        {showSearch && (
+          <SearchFilterBar
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
+            resultCount={searchQuery.trim() || categoryFilter ? totalFilteredCount : undefined}
+          />
         )}
 
         {/* Day Sections */}
@@ -255,70 +547,100 @@ export function TravelLog() {
               <p className="text-zinc-500 mb-6 text-sm">
                 사진, 영수증, 메모를 추가하여 여행을 기록해보세요.
               </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button
+                  color="primary"
+                  size="sm"
+                  onClick={() => setIsPhotoOpen(true)}
+                  leftIcon={<Camera className="size-4" />}
+                >
+                  사진 추가
+                </Button>
+                <Button
+                  color="warning"
+                  size="sm"
+                  onClick={() => setIsReceiptOpen(true)}
+                  leftIcon={<Receipt className="size-4" />}
+                >
+                  영수증 스캔
+                </Button>
+                <Button
+                  color="success"
+                  size="sm"
+                  onClick={() => setIsMemoOpen(true)}
+                  leftIcon={<FileText className="size-4" />}
+                >
+                  메모 작성
+                </Button>
+              </div>
             </div>
           </Card>
         ) : (
-          <div className="space-y-8">
-            {days.map((day) => {
-              const dayLogs = logsByDay[day] || []
+          <div className="space-y-3">
+            {visibleDays.map((day) => {
+              const dayLogs = filteredLogsByDay[day] || []
+              const allDayLogs = logsByDay[day] || []
               const dayDate = getTripDayDate(trip.startDate, day)
-              const expenses = dayExpenses[day]
 
-              if (dayLogs.length === 0) return null
+              // Skip days with no logs at all (unfiltered)
+              if (allDayLogs.length === 0) return null
 
               return (
-                <div key={day} id={`log-day-${day}`} style={{ scrollMarginTop: '3.5rem' }}>
-                  {/* Day header */}
-                  <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h2 className="text-base font-semibold text-[var(--foreground)]">
-                        Day {day}
-                      </h2>
-                      <p className="text-xs text-zinc-500">
-                        {dayDate.toLocaleDateString('ko-KR', {
-                          month: 'long',
-                          day: 'numeric',
-                          weekday: 'short',
-                        })}
-                      </p>
-                    </div>
-                    {expenses && (
-                      <div className="text-right">
-                        {Object.entries(expenses).map(([currency, amount]) => {
-                          const symbol = currency === 'KRW' ? '₩' : currency === 'JPY' ? '¥' : currency === 'USD' ? '$' : currency
-                          return (
-                            <p key={currency} className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                              {['KRW', 'JPY', 'VND'].includes(currency)
-                                ? `${symbol}${amount.toLocaleString()}`
-                                : `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                              }
-                            </p>
-                          )
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Timeline cards */}
-                  <div>
-                    {dayLogs.map((log) => (
-                      <TimelineCard
-                        key={log.id}
-                        log={log}
-                        onEdit={(log) => setEditingLog(log)}
-                        onDelete={handleDeleteLog}
-                      />
-                    ))}
-                  </div>
-                </div>
+                <DaySection
+                  key={day}
+                  day={day}
+                  date={dayDate}
+                  logs={dayLogs}
+                  allDayLogs={allDayLogs}
+                  expenses={dayExpenses[day]}
+                  isExpanded={expandedDays.has(day)}
+                  onToggleExpand={() => toggleDay(day)}
+                  summary={daySummaries[day]}
+                  onEdit={(log) => setEditingLog(log)}
+                  onDelete={handleDeleteLog}
+                  onPhotoClick={handlePhotoClick}
+                  isSelectionMode={bulk.isSelectionMode}
+                  isSelected={bulk.isSelected}
+                  onToggleSelect={bulk.toggle}
+                  onLongPress={handleLongPress}
+                  viewMode={viewMode}
+                />
               )
             })}
+
+            {/* Load More button */}
+            {hasMoreDays && (
+              <div className="flex justify-center pt-2 pb-4">
+                <Button color="secondary" size="sm" onClick={handleLoadMore}>
+                  이전 기록 더 보기
+                </Button>
+              </div>
+            )}
+
+            {/* No results message for search/filter */}
+            {totalFilteredCount === 0 &&
+              (searchQuery.trim() || categoryFilter || activeFilter !== 'all') && (
+                <Card padding="lg" className="text-center">
+                  <p className="text-sm text-zinc-500">검색 조건에 맞는 기록이 없습니다</p>
+                </Card>
+              )}
           </div>
         )}
       </div>
 
       {/* Speed Dial FAB */}
-      <SpeedDialFAB actions={fabActions} />
+      {!bulk.isSelectionMode && <SpeedDialFAB actions={fabActions} />}
+
+      {/* Scroll to Top FAB */}
+      {!bulk.isSelectionMode && <ScrollToTopFAB />}
+
+      {/* Day Minimap (desktop only) */}
+      <DayMinimap
+        days={visibleDays}
+        currentDay={activeDay}
+        logsByDay={filteredLogsByDay}
+        onDayClick={handleMinimapDayClick}
+      />
 
       {/* Photo Uploader Dialog */}
       <PhotoLogUploader
@@ -329,6 +651,7 @@ export function TravelLog() {
         tripEndDate={trip.endDate}
         defaultDay={activeDay}
         totalDays={totalDays}
+        tripCountry={trip.country}
         onComplete={handleAddLogs}
       />
 
@@ -347,6 +670,7 @@ export function TravelLog() {
         open={isMemoOpen}
         onClose={() => setIsMemoOpen(false)}
         tripId={tripId}
+        tripStartDate={trip.startDate}
         defaultDay={activeDay}
         totalDays={totalDays}
         onComplete={handleAddSingleLog}
@@ -356,8 +680,17 @@ export function TravelLog() {
       <EditLogModal
         log={editingLog}
         totalDays={totalDays}
+        tripCountry={trip.country}
         onSave={handleEditLog}
         onClose={() => setEditingLog(null)}
+      />
+
+      {/* Lightbox */}
+      <Lightbox
+        images={lightboxImages}
+        initialIndex={lightboxIndex}
+        open={lightboxOpen}
+        onClose={() => setLightboxOpen(false)}
       />
     </PageContainer>
   )

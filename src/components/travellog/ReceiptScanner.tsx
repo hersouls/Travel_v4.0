@@ -4,15 +4,17 @@
 // ============================================
 
 import { useState, useCallback } from 'react'
-import { Receipt, Camera, Loader2, Sparkles, Check } from 'lucide-react'
+import { Receipt, Camera, Loader2, Sparkles, Check, RotateCcw } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Input'
+import { Lightbox } from '@/components/ui/Lightbox'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateStructured, buildReceiptFoodContext, buildReceiptGeneralContext } from '@/services/claudeService'
-import { compressImage } from '@/services/imageStorage'
+import { compressImage, getImageFormat } from '@/services/imageStorage'
 import { extractExif } from '@/services/exifService'
+import { toast } from '@/stores/uiStore'
 import { AI_MESSAGES, EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import type { TravelLog, ExpenseData, ExpenseCategory, ExifMetadata } from '@/types'
 
@@ -45,6 +47,7 @@ export function ReceiptScanner({
   const [day, setDay] = useState(defaultDay)
   const [memo, setMemo] = useState('')
   const [extractedExif, setExtractedExif] = useState<ExifMetadata | null>(null)
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
 
   const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -82,9 +85,10 @@ export function ReceiptScanner({
     setError(null)
 
     try {
+      const format = imagePreview ? `image/${getImageFormat(imagePreview)}` : undefined
       const request = mode === 'food'
-        ? buildReceiptFoodContext(imageBase64)
-        : buildReceiptGeneralContext(imageBase64)
+        ? buildReceiptFoodContext(imageBase64, format)
+        : buildReceiptGeneralContext(imageBase64, format)
 
       const result = await generateStructured<ExpenseData>(request, claudeApiKey, claudeModel)
 
@@ -98,16 +102,22 @@ export function ReceiptScanner({
         setExpense(result)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '영수증 분석에 실패했습니다.')
+      const msg = err instanceof Error ? err.message : '영수증 분석에 실패했습니다.'
+      if (msg.includes('api_key') || msg.includes('authentication')) {
+        setError('API 키를 확인해주세요. 설정에서 Claude API 키를 재입력할 수 있습니다.')
+      } else if (msg.includes('429') || msg.includes('rate')) {
+        setError('요청이 너무 많습니다. 잠시 후 다시 시도해주세요.')
+      } else {
+        setError(`${msg} 모드를 변경하거나 재시도해주세요.`)
+      }
     } finally {
       setIsAnalyzing(false)
     }
-  }, [claudeApiKey, claudeModel, imageBase64, mode])
+  }, [claudeApiKey, claudeModel, imageBase64, imagePreview, mode])
 
-  const handleConfirm = useCallback(() => {
-    if (!expense || !imagePreview) return
-
-    const log: Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'> = {
+  const buildLog = useCallback((): Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'> | null => {
+    if (!expense || !imagePreview) return null
+    return {
       tripId,
       day,
       timestamp: expense.receiptDate ? new Date(expense.receiptDate).toISOString() : new Date().toISOString(),
@@ -121,9 +131,30 @@ export function ReceiptScanner({
       latitude: extractedExif?.latitude,
       longitude: extractedExif?.longitude,
     }
+  }, [expense, imagePreview, thumbnailBase64, tripId, day, memo, extractedExif])
+
+  const handleConfirm = useCallback(() => {
+    const log = buildLog()
+    if (!log) return
     onComplete(log)
     handleClose()
-  }, [expense, imagePreview, thumbnailBase64, tripId, day, memo, onComplete])
+  }, [buildLog, onComplete])
+
+  const handleConfirmAndContinue = useCallback(() => {
+    const log = buildLog()
+    if (!log) return
+    onComplete(log)
+
+    // Reset form but keep dialog open
+    setImagePreview(null)
+    setImageBase64(null)
+    setThumbnailBase64(null)
+    setExpense(null)
+    setError(null)
+    setMemo('')
+    setExtractedExif(null)
+    toast.success('영수증이 등록되었습니다')
+  }, [buildLog, onComplete])
 
   const handleClose = useCallback(() => {
     setImagePreview(null)
@@ -152,7 +183,7 @@ export function ReceiptScanner({
       <DialogBody>
         <div className="space-y-4">
           {error && (
-            <div className="p-3 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg text-sm text-danger-600 dark:text-danger-400">
+            <div className="p-3 bg-danger-50 dark:bg-danger-900/20 border border-danger-200 dark:border-danger-800 rounded-lg text-sm text-danger-600 dark:text-danger-400 whitespace-pre-line">
               {error}
             </div>
           )}
@@ -202,7 +233,8 @@ export function ReceiptScanner({
                 <img
                   src={imagePreview}
                   alt="영수증"
-                  className="w-full max-h-[200px] object-contain"
+                  className="w-full max-h-[400px] object-contain cursor-pointer"
+                  onClick={() => setIsLightboxOpen(true)}
                 />
                 <label className="absolute bottom-2 right-2">
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/90 dark:bg-zinc-900/90 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer hover:bg-white dark:hover:bg-zinc-900 transition-colors">
@@ -311,7 +343,16 @@ export function ReceiptScanner({
         <Button color="secondary" onClick={handleClose}>
           취소
         </Button>
-        {imagePreview && !expense && (
+        {error && imagePreview && !isAnalyzing && (
+          <Button
+            color="warning"
+            onClick={handleAnalyze}
+            leftIcon={<RotateCcw className="size-4" />}
+          >
+            재시도
+          </Button>
+        )}
+        {imagePreview && !expense && !error && (
           <Button
             color="primary"
             onClick={handleAnalyze}
@@ -322,15 +363,32 @@ export function ReceiptScanner({
           </Button>
         )}
         {expense && (
-          <Button
-            color="primary"
-            onClick={handleConfirm}
-            leftIcon={<Check className="size-4" />}
-          >
-            등록
-          </Button>
+          <>
+            <Button
+              color="secondary"
+              onClick={handleConfirmAndContinue}
+            >
+              등록 후 계속
+            </Button>
+            <Button
+              color="primary"
+              onClick={handleConfirm}
+              leftIcon={<Check className="size-4" />}
+            >
+              등록
+            </Button>
+          </>
         )}
       </DialogActions>
+
+      {imagePreview && (
+        <Lightbox
+          images={[imagePreview]}
+          initialIndex={0}
+          open={isLightboxOpen}
+          onClose={() => setIsLightboxOpen(false)}
+        />
+      )}
     </Dialog>
   )
 }

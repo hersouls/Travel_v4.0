@@ -33,6 +33,15 @@ const categoryColorClasses: Record<ExpenseCategory, string> = {
   other: 'text-[var(--muted-foreground)] bg-[var(--muted)]',
 }
 
+const categoryBarColors: Record<ExpenseCategory, string> = {
+  food: 'bg-warning-500',
+  transport: 'bg-primary-500',
+  accommodation: 'bg-purple-500',
+  shopping: 'bg-pink-500',
+  attraction: 'bg-cyan-500',
+  other: 'bg-zinc-400',
+}
+
 interface CategoryTotal {
   category: ExpenseCategory
   totals: Record<string, number>
@@ -55,7 +64,7 @@ function formatAmount(amount: number, currency: string): string {
 export function ExpenseSummary({ logs, className, defaultOpen = false }: ExpenseSummaryProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
-  const { categoryTotals, currencyTotals, totalCount } = useMemo(() => {
+  const { categoryTotals, currencyTotals, totalCount, maxCategoryAmount } = useMemo(() => {
     const catMap = new Map<ExpenseCategory, { totals: Record<string, number>; count: number }>()
     const curMap = new Map<string, number>()
 
@@ -87,7 +96,12 @@ export function ExpenseSummary({ logs, className, defaultOpen = false }: Expense
       .map(([currency, total]) => ({ currency, total }))
       .sort((a, b) => b.total - a.total)
 
-    return { categoryTotals, currencyTotals, totalCount: count }
+    // Max category amount for bar chart scaling
+    const maxCategoryAmount = categoryTotals.length > 0
+      ? Math.max(...categoryTotals.map((c) => Object.values(c.totals).reduce((s, v) => s + v, 0)))
+      : 0
+
+    return { categoryTotals, currencyTotals, totalCount: count, maxCategoryAmount }
   }, [logs])
 
   if (totalCount === 0) return null
@@ -133,14 +147,16 @@ export function ExpenseSummary({ logs, className, defaultOpen = false }: Expense
             </div>
           )}
 
-          {/* Category breakdown */}
+          {/* Category breakdown with bar chart */}
           <div className={clsx(currencyTotals.length <= 1 && 'pt-3', 'space-y-2')}>
             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">카테고리별</span>
             {categoryTotals.map(({ category, totals, count }) => {
               const Icon = categoryIcons[category]
+              const catTotal = Object.values(totals).reduce((s, v) => s + v, 0)
+              const pct = maxCategoryAmount > 0 ? (catTotal / maxCategoryAmount) * 100 : 0
               return (
                 <div key={category} className="flex items-center gap-3">
-                  <div className={clsx('size-8 rounded-lg flex items-center justify-center', categoryColorClasses[category])}>
+                  <div className={clsx('size-8 rounded-lg flex items-center justify-center flex-shrink-0', categoryColorClasses[category])}>
                     <Icon className="size-4" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -156,6 +172,13 @@ export function ExpenseSummary({ logs, className, defaultOpen = false }: Expense
                           {formatAmount(amt, cur)}
                         </span>
                       ))}
+                    </div>
+                    {/* Bar chart */}
+                    <div className="mt-1 h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                      <div
+                        className={clsx('h-full rounded-full transition-all', categoryBarColors[category])}
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
                 </div>

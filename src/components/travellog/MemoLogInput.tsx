@@ -3,17 +3,20 @@
 // Day + time + text memo + optional photo
 // ============================================
 
-import { useState, useCallback } from 'react'
-import { FileText, Camera, X } from 'lucide-react'
+import { useState, useCallback, useMemo } from 'react'
+import { FileText, Camera, X, AlertTriangle } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Input'
 import { compressImage } from '@/services/imageStorage'
+import { getTripDayDate } from '@/utils/timezone'
+import { toast } from '@/stores/uiStore'
 import type { TravelLog } from '@/types'
 
 interface MemoLogInputProps {
   tripId: number
+  tripStartDate: string
   defaultDay: number
   totalDays: number
   onComplete: (log: Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'>) => void
@@ -22,7 +25,7 @@ interface MemoLogInputProps {
 }
 
 export function MemoLogInput({
-  tripId, defaultDay, totalDays, onComplete, onClose, open,
+  tripId, tripStartDate, defaultDay, totalDays, onComplete, onClose, open,
 }: MemoLogInputProps) {
   const [day, setDay] = useState(defaultDay)
   const [time, setTime] = useState(() => {
@@ -33,6 +36,24 @@ export function MemoLogInput({
   const [placeName, setPlaceName] = useState('')
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [thumbnailBase64, setThumbnailBase64] = useState<string | null>(null)
+
+  // Time/day sync warning
+  const timeWarning = useMemo(() => {
+    try {
+      const dayDate = getTripDayDate(tripStartDate, day)
+      if (!dayDate) return null
+      const [hours, minutes] = time.split(':').map(Number)
+      const selectedTime = new Date(dayDate)
+      selectedTime.setHours(hours, minutes, 0, 0)
+      const now = new Date()
+      if (selectedTime.getTime() > now.getTime() + 60 * 60 * 1000) {
+        return '선택한 시간이 현재보다 미래입니다. 확인해주세요.'
+      }
+    } catch {
+      // ignore
+    }
+    return null
+  }, [tripStartDate, day, time])
 
   const handlePhotoSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -53,14 +74,14 @@ export function MemoLogInput({
     setThumbnailBase64(null)
   }, [])
 
-  const handleConfirm = useCallback(() => {
-    if (!memo.trim()) return
+  const buildLog = useCallback((): Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'> | null => {
+    if (!memo.trim()) return null
 
     const timestamp = new Date()
     const [hours, minutes] = time.split(':').map(Number)
     timestamp.setHours(hours, minutes, 0, 0)
 
-    const log: Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'> = {
+    return {
       tripId,
       day,
       timestamp: timestamp.toISOString(),
@@ -70,9 +91,27 @@ export function MemoLogInput({
       photo: photoPreview || undefined,
       thumbnailPhoto: thumbnailBase64 || undefined,
     }
+  }, [tripId, day, time, memo, placeName, photoPreview, thumbnailBase64])
+
+  const handleConfirm = useCallback(() => {
+    const log = buildLog()
+    if (!log) return
     onComplete(log)
     handleClose()
-  }, [tripId, day, time, memo, placeName, photoPreview, thumbnailBase64, onComplete])
+  }, [buildLog, onComplete])
+
+  const handleConfirmAndContinue = useCallback(() => {
+    const log = buildLog()
+    if (!log) return
+    onComplete(log)
+
+    // Reset form but keep dialog open
+    setMemo('')
+    setPlaceName('')
+    setPhotoPreview(null)
+    setThumbnailBase64(null)
+    toast.success('메모가 등록되었습니다')
+  }, [buildLog, onComplete])
 
   const handleClose = useCallback(() => {
     setMemo('')
@@ -92,6 +131,14 @@ export function MemoLogInput({
       </DialogTitle>
       <DialogBody>
         <div className="space-y-4">
+          {/* Time warning */}
+          {timeWarning && (
+            <div className="flex items-start gap-2 p-3 bg-warning-50 dark:bg-warning-900/20 border border-warning-200 dark:border-warning-800 rounded-lg text-sm text-warning-700 dark:text-warning-400">
+              <AlertTriangle className="size-4 flex-shrink-0 mt-0.5" />
+              {timeWarning}
+            </div>
+          )}
+
           {/* Day & Time */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -167,6 +214,11 @@ export function MemoLogInput({
         <Button color="secondary" onClick={handleClose}>
           취소
         </Button>
+        {memo.trim() && (
+          <Button color="secondary" onClick={handleConfirmAndContinue}>
+            등록 후 계속
+          </Button>
+        )}
         <Button
           color="primary"
           onClick={handleConfirm}

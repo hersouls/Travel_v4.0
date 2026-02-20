@@ -13,7 +13,13 @@ interface PhotoResult {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || []
+  const origin = req.headers.origin || ''
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  } else if (process.env.NODE_ENV !== 'production') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -75,7 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         heightPx?: number
         authorAttributions?: Array<{ displayName?: string }>
       }) => ({
-        url: `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=600&key=${apiKey}`,
+        url: `/api/places/photo-proxy?name=${encodeURIComponent(photo.name)}&maxWidthPx=600`,
         widthPx: photo.widthPx || 0,
         heightPx: photo.heightPx || 0,
         attribution: photo.authorAttributions?.[0]?.displayName || '',

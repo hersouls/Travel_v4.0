@@ -11,7 +11,13 @@ interface StreetViewResponse {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || []
+  const origin = req.headers.origin || ''
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin)
+  } else if (process.env.NODE_ENV !== 'production') {
+    res.setHeader('Access-Control-Allow-Origin', '*')
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -71,8 +77,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(result)
     }
 
-    // Street View is available, construct the image URL
-    const imageUrl = `https://maps.googleapis.com/maps/api/streetview?size=${sizeStr}&location=${latNum},${lngNum}&heading=${headingStr}&key=${apiKey}`
+    // API 키를 프록시 경로로 대체
+    const imageUrl = `/api/maps/streetview-image?lat=${latNum}&lng=${lngNum}&size=${sizeStr}&heading=${headingStr}`
 
     const result: StreetViewResponse = {
       imageUrl,

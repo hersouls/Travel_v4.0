@@ -243,9 +243,10 @@ export interface TripStatistics {
 export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
 
 export interface AIGenerateRequest {
-  type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'day-recommend' | 'day-suggest' | 'receipt-food' | 'receipt-general' | 'test'
+  type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'analyze-photo-location' | 'day-recommend' | 'day-suggest' | 'receipt-food' | 'receipt-general' | 'test'
   context: Record<string, unknown>
   image?: string // base64 (for vision)
+  imageFormat?: string // MIME type: 'image/jpeg' | 'image/webp' | 'image/png' | 'image/gif'
   model?: ClaudeModel
   stream?: boolean
 }

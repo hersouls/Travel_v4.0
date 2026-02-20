@@ -2,7 +2,7 @@
 // Google Maps View Component
 // ============================================
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useMemo } from 'react'
 import { useGoogleMapsLoader } from '@/hooks/useGoogleMapsLoader'
 import { MARKER_COLORS, ROUTE_COLORS } from '@/utils/mapStyles'
 import type { Plan, RouteSegment, TravelMode } from '@/types'
@@ -32,17 +32,26 @@ export function GoogleMapView({
   const mapInstanceRef = useRef<google.maps.Map | null>(null)
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([])
   const polylinesRef = useRef<google.maps.Polyline[]>([])
+  const keydownListenersRef = useRef<Array<{ el: HTMLElement; handler: (e: KeyboardEvent) => void }>>([])
   const { isLoaded, isError } = useGoogleMapsLoader()
 
+  // onMarkerClick를 ref로 저장하여 의존성 문제 해결
+  const onMarkerClickRef = useRef(onMarkerClick)
+  onMarkerClickRef.current = onMarkerClick
+
   // Filter plans
-  const filteredPlans = plans.filter((p) => {
-    if (!p.latitude || !p.longitude) return false
-    if (selectedDay != null && p.day !== selectedDay) return false
-    return true
-  })
+  const filteredPlans = useMemo(() =>
+    plans.filter((p) => {
+      if (!p.latitude || !p.longitude) return false
+      if (selectedDay != null && p.day !== selectedDay) return false
+      return true
+    }),
+    [plans, selectedDay]
+  )
 
   // Calculate center from plans
-  const mapCenter = center || (() => {
+  const mapCenter = useMemo(() => {
+    if (center) return center
     if (filteredPlans.length === 0) return { lat: 37.5665, lng: 126.978 }
     const lats = filteredPlans.map((p) => p.latitude!)
     const lngs = filteredPlans.map((p) => p.longitude!)
@@ -50,7 +59,7 @@ export function GoogleMapView({
       lat: (Math.min(...lats) + Math.max(...lats)) / 2,
       lng: (Math.min(...lngs) + Math.max(...lngs)) / 2,
     }
-  })()
+  }, [center, filteredPlans])
 
   // Initialize map
   useEffect(() => {
@@ -65,12 +74,17 @@ export function GoogleMapView({
       zoomControl: true,
       mapId: 'moonwave-travel-map',
     })
-  }, [isLoaded])
-
+  }, [isLoaded, mapCenter, zoom, mapTypeControl])
 
   // Update markers
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return
+
+    // 기존 keydown 리스너 정리
+    keydownListenersRef.current.forEach(({ el, handler }) => {
+      el.removeEventListener('keydown', handler)
+    })
+    keydownListenersRef.current = []
 
     // Clear existing markers
     markersRef.current.forEach((m) => (m.map = null))
@@ -100,13 +114,15 @@ export function GoogleMapView({
       `
       pinEl.textContent = `${index + 1}`
 
-      // Keyboard support for markers
-      pinEl.addEventListener('keydown', (e) => {
+      // Keyboard support - 리스너를 추적하여 정리 가능하게
+      const keydownHandler = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
-          onMarkerClick?.(plan)
+          onMarkerClickRef.current?.(plan)
         }
-      })
+      }
+      pinEl.addEventListener('keydown', keydownHandler)
+      keydownListenersRef.current.push({ el: pinEl, handler: keydownHandler })
 
       const marker = new google.maps.marker.AdvancedMarkerElement({
         map: mapInstanceRef.current!,
@@ -116,7 +132,7 @@ export function GoogleMapView({
       })
 
       marker.addListener('click', () => {
-        onMarkerClick?.(plan)
+        onMarkerClickRef.current?.(plan)
       })
 
       markersRef.current.push(marker)
@@ -134,7 +150,6 @@ export function GoogleMapView({
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return
 
-    // Clear existing polylines
     polylinesRef.current.forEach((p) => p.setMap(null))
     polylinesRef.current = []
 
@@ -147,9 +162,7 @@ export function GoogleMapView({
 
     filteredSegments.forEach((segment) => {
       try {
-        const path = google.maps.geometry.encoding.decodePath(
-          segment.encodedPolyline,
-        )
+        const path = google.maps.geometry.encoding.decodePath(segment.encodedPolyline)
         const color = ROUTE_COLORS[segment.travelMode] || ROUTE_COLORS.DRIVE
         const isDashed = segment.travelMode === 'WALK'
 
@@ -160,18 +173,11 @@ export function GoogleMapView({
           strokeWeight: 4,
           map: mapInstanceRef.current!,
           ...(isDashed && {
-            icons: [
-              {
-                icon: {
-                  path: 'M 0,-1 0,1',
-                  strokeOpacity: 0.8,
-                  strokeWeight: 4,
-                  scale: 3,
-                },
-                offset: '0',
-                repeat: '16px',
-              },
-            ],
+            icons: [{
+              icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.8, strokeWeight: 4, scale: 3 },
+              offset: '0',
+              repeat: '16px',
+            }],
           }),
         })
 
@@ -185,6 +191,10 @@ export function GoogleMapView({
   // Cleanup
   useEffect(() => {
     return () => {
+      keydownListenersRef.current.forEach(({ el, handler }) => {
+        el.removeEventListener('keydown', handler)
+      })
+      keydownListenersRef.current = []
       markersRef.current.forEach((m) => (m.map = null))
       polylinesRef.current.forEach((p) => p.setMap(null))
     }
@@ -192,9 +202,7 @@ export function GoogleMapView({
 
   if (isError) {
     return (
-      <div
-        className={`flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded-2xl ${className}`}
-      >
+      <div className={`flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded-2xl ${className}`}>
         <p className="text-zinc-500 text-sm">Google Maps를 불러올 수 없습니다</p>
       </div>
     )
@@ -202,9 +210,7 @@ export function GoogleMapView({
 
   if (!isLoaded) {
     return (
-      <div
-        className={`flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded-2xl animate-pulse ${className}`}
-      >
+      <div className={`flex items-center justify-center bg-zinc-100 dark:bg-zinc-900 rounded-2xl animate-pulse ${className}`}>
         <p className="text-zinc-400 text-sm">지도 로딩 중...</p>
       </div>
     )

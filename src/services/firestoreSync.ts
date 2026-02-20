@@ -63,14 +63,25 @@ function dateToMs(date: Date | string | undefined | null): number {
 // Retry Helper
 // ============================================
 
-async function withRetry<T>(fn: () => Promise<T>, label: string): Promise<T> {
-  try {
-    return await fn()
-  } catch (firstError) {
-    console.warn(`[Sync] ${label} failed, retrying in 2s...`, firstError)
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    return await fn()
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxRetries = 3,
+  baseDelayMs = 1000,
+): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      if (attempt === maxRetries) break
+      const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 500
+      console.warn(`[Sync] ${label} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${Math.round(delay)}ms...`, error)
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
   }
+  throw lastError
 }
 
 // ============================================
@@ -329,6 +340,8 @@ class SyncManager {
   private mergeInProgress = false
   private syncGeneration = 0
   private notifyTimer: ReturnType<typeof setTimeout> | null = null
+  private echoTimers: ReturnType<typeof setTimeout>[] = []
+  private resolvedTimers: ReturnType<typeof setTimeout>[] = []
   private static readonly NOTIFY_DEBOUNCE_MS = 300
   private static readonly CONCURRENT_EDIT_THRESHOLD_MS = 60_000
 
@@ -360,7 +373,11 @@ class SyncManager {
 
   private markPushed(key: string): void {
     this.recentlyPushed.add(key)
-    setTimeout(() => this.recentlyPushed.delete(key), 10_000)
+    const timer = setTimeout(() => {
+      this.recentlyPushed.delete(key)
+      this.echoTimers = this.echoTimers.filter(t => t !== timer)
+    }, 10_000)
+    this.echoTimers.push(timer)
   }
 
   private isEcho(key: string): boolean {
@@ -373,7 +390,11 @@ class SyncManager {
   markResolved(entityType: string, firebaseId: string): void {
     const key = `${entityType}:${firebaseId}`
     this.recentlyResolved.add(key)
-    setTimeout(() => this.recentlyResolved.delete(key), 15_000)
+    const timer = setTimeout(() => {
+      this.recentlyResolved.delete(key)
+      this.resolvedTimers = this.resolvedTimers.filter(t => t !== timer)
+    }, 15_000)
+    this.resolvedTimers.push(timer)
   }
 
   private isRecentlyResolved(entityType: string, firebaseId: string): boolean {
@@ -436,7 +457,7 @@ class SyncManager {
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(options?: { clearData?: boolean }): Promise<void> {
     // Flush any pending batch writes before stopping
     try {
       await this.flushBatch()
@@ -449,17 +470,68 @@ class SyncManager {
     this.userId = null
     this.isSyncing = false
     this.mergeInProgress = false
-    this.recentlyPushed.clear()
-    this.pendingDeletes.clear()
+
+    // 타이머 정리
+    this.echoTimers.forEach(t => clearTimeout(t))
+    this.echoTimers = []
+    this.resolvedTimers.forEach(t => clearTimeout(t))
+    this.resolvedTimers = []
     if (this.notifyTimer) {
       clearTimeout(this.notifyTimer)
       this.notifyTimer = null
     }
+    this.recentlyPushed.clear()
+    this.recentlyResolved.clear()
+    this.pendingDeletes.clear()
     if (this._isActive) {
       this._isActive = false
       this.notifyActiveChange()
     }
+
+    // Clear user data if requested (e.g., on logout or user switch)
+    if (options?.clearData) {
+      await this.clearUserData()
+    }
+
     console.log('[Sync] Stopped')
+  }
+
+  /**
+   * Clear all user-specific data from IndexedDB.
+   * Preserves settings (theme, language, etc.) in both IndexedDB and localStorage.
+   * Called on logout to prevent stale data resurrection on next login.
+   */
+  async clearUserData(): Promise<void> {
+    console.log('[Sync] Clearing user data from IndexedDB...')
+    try {
+      await dexieDb.transaction('rw', [
+        dexieDb.trips,
+        dexieDb.plans,
+        dexieDb.places,
+        dexieDb.routeSegments,
+        dexieDb.travelLogs,
+      ], async () => {
+        await dexieDb.trips.clear()
+        await dexieDb.plans.clear()
+        await dexieDb.places.clear()
+        await dexieDb.routeSegments.clear()
+        await dexieDb.travelLogs.clear()
+      })
+      // Clear sync cooldown timestamps from sessionStorage
+      try {
+        const keysToRemove: string[] = []
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i)
+          if (key?.startsWith(SyncManager.SESSION_KEY_PREFIX)) {
+            keysToRemove.push(key)
+          }
+        }
+        keysToRemove.forEach(key => sessionStorage.removeItem(key))
+      } catch { /* ignore sessionStorage errors */ }
+      console.log('[Sync] User data cleared from IndexedDB')
+    } catch (error) {
+      console.error('[Sync] Failed to clear user data:', error)
+    }
   }
 
   onSyncUpdate(callback: SyncCallback): () => void {
@@ -667,16 +739,18 @@ class SyncManager {
       }
     }
 
-    // Local has firebaseId but remote doesn't → re-upload to preserve data
-    // (Real-time listeners handle active remote deletions during session)
+    // Local has firebaseId but remote doesn't → deleted remotely, clean up locally
+    // (firebaseId proves it was previously synced; absence from cloud = intentional deletion)
     for (const trip of localTrips) {
       if (trip.firebaseId && !remoteMap.has(trip.firebaseId) && trip.id) {
         try {
-          this.markPushed(`trip:${trip.firebaseId}`)
-          await setDoc(doc(tripsRef, trip.firebaseId), tripToFirestore(trip))
-          console.log('[Sync] Re-uploaded trip missing from cloud:', trip.firebaseId, trip.title)
+          await dexieDb.plans.where('tripId').equals(trip.id).delete()
+          await dexieDb.routeSegments.where('tripId').equals(trip.id).delete()
+          await dexieDb.travelLogs.where('tripId').equals(trip.id).delete()
+          await dexieDb.trips.delete(trip.id)
+          console.log('[Sync] Deleted locally (remotely deleted trip):', trip.firebaseId, trip.title)
         } catch (e) {
-          console.error('[Sync] Failed to re-upload trip:', trip.firebaseId, e)
+          console.error('[Sync] Failed to clean up orphaned trip:', trip.firebaseId, e)
         }
       }
     }
@@ -764,15 +838,14 @@ class SyncManager {
       }
     }
 
-    // Local has firebaseId but remote doesn't → re-upload to preserve data
+    // Local has firebaseId but remote doesn't → deleted remotely, clean up locally
     for (const plan of localPlans) {
       if (plan.firebaseId && !remoteMap.has(plan.firebaseId) && plan.id) {
         try {
-          this.markPushed(`plan:${plan.firebaseId}`)
-          await setDoc(doc(plansRef, plan.firebaseId), planToFirestore(plan))
-          console.log('[Sync] Re-uploaded plan missing from cloud:', plan.firebaseId, plan.placeName)
+          await dexieDb.plans.delete(plan.id)
+          console.log('[Sync] Deleted locally (remotely deleted plan):', plan.firebaseId, plan.placeName)
         } catch (e) {
-          console.error('[Sync] Failed to re-upload plan:', plan.firebaseId, e)
+          console.error('[Sync] Failed to clean up orphaned plan:', plan.firebaseId, e)
         }
       }
     }
@@ -842,15 +915,14 @@ class SyncManager {
       }
     }
 
-    // Local has firebaseId but remote doesn't → re-upload to preserve data
+    // Local has firebaseId but remote doesn't → deleted remotely, clean up locally
     for (const place of localPlaces) {
       if (place.firebaseId && !remoteMap.has(place.firebaseId) && place.id) {
         try {
-          this.markPushed(`place:${place.firebaseId}`)
-          await setDoc(doc(placesRef, place.firebaseId), placeToFirestore(place))
-          console.log('[Sync] Re-uploaded place missing from cloud:', place.firebaseId, place.name)
+          await dexieDb.places.delete(place.id)
+          console.log('[Sync] Deleted locally (remotely deleted place):', place.firebaseId, place.name)
         } catch (e) {
-          console.error('[Sync] Failed to re-upload place:', place.firebaseId, e)
+          console.error('[Sync] Failed to clean up orphaned place:', place.firebaseId, e)
         }
       }
     }
@@ -973,15 +1045,14 @@ class SyncManager {
       }
     }
 
-    // Local has firebaseId but remote doesn't → re-upload to preserve data
+    // Local has firebaseId but remote doesn't → deleted remotely, clean up locally
     for (const seg of localSegments) {
       if (seg.firebaseId && !remoteMap.has(seg.firebaseId) && seg.id) {
         try {
-          this.markPushed(`routeSegment:${seg.firebaseId}`)
-          await setDoc(doc(segmentsRef, seg.firebaseId), routeSegmentToFirestore(seg))
-          console.log('[Sync] Re-uploaded routeSegment missing from cloud:', seg.firebaseId)
+          await dexieDb.routeSegments.delete(seg.id)
+          console.log('[Sync] Deleted locally (remotely deleted routeSegment):', seg.firebaseId)
         } catch (e) {
-          console.error('[Sync] Failed to re-upload routeSegment:', seg.firebaseId, e)
+          console.error('[Sync] Failed to clean up orphaned routeSegment:', seg.firebaseId, e)
         }
       }
     }
@@ -1071,15 +1142,14 @@ class SyncManager {
       }
     }
 
-    // Local has firebaseId but remote doesn't → re-upload to preserve data
+    // Local has firebaseId but remote doesn't → deleted remotely, clean up locally
     for (const log of localLogs) {
       if (log.firebaseId && !remoteMap.has(log.firebaseId) && log.id) {
         try {
-          this.markPushed(`travelLog:${log.firebaseId}`)
-          await setDoc(doc(logsRef, log.firebaseId), travelLogToFirestore(log))
-          console.log('[Sync] Re-uploaded travelLog missing from cloud:', log.firebaseId)
+          await dexieDb.travelLogs.delete(log.id)
+          console.log('[Sync] Deleted locally (remotely deleted travelLog):', log.firebaseId)
         } catch (e) {
-          console.error('[Sync] Failed to re-upload travelLog:', log.firebaseId, e)
+          console.error('[Sync] Failed to clean up orphaned travelLog:', log.firebaseId, e)
         }
       }
     }

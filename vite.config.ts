@@ -43,6 +43,8 @@ export default defineConfig({
           'firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/storage'],
           'pdf': ['@react-pdf/renderer'],
           'sentry': ['@sentry/react'],
+          'date': ['date-fns', 'date-fns-tz'],
+          'validation': ['zod'],
         },
       },
     },

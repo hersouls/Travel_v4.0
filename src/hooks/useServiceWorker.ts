@@ -58,22 +58,27 @@ export function useServiceWorker() {
     console.log('[useServiceWorker] Applying update...')
     setState(prev => ({ ...prev, isUpdating: true }))
 
-    // Listen for controller change to reload
     let reloading = false
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
+
+    const handleControllerChange = () => {
       if (reloading) return
       reloading = true
       console.log('[useServiceWorker] Controller changed, reloading...')
+      // 리스너 정리 후 리로드
+      navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
       window.location.reload()
-    })
+    }
+
+    navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
 
     // Send SKIP_WAITING to the waiting worker
     waitingWorker.postMessage({ type: 'SKIP_WAITING' })
 
-    // Fallback: if controllerchange doesn't fire within 3 seconds, force reload
+    // Fallback: if controllerchange doesn't fire within 3 seconds
     setTimeout(() => {
       if (!reloading) {
         console.warn('[useServiceWorker] controllerchange timeout, forcing reload')
+        navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
         window.location.reload()
       }
     }, 3000)

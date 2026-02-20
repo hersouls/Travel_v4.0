@@ -3,7 +3,7 @@
 // Slide-in menu bar (MCA v2.0 style)
 // ============================================
 
-import { Fragment } from 'react'
+import { Fragment, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/react'
 import { LayoutDashboard, MapPin, Plus, Settings, Info, X, Star, Plane } from 'lucide-react'
@@ -32,8 +32,8 @@ export function MobileNav() {
   const setMobileMenuOpen = useUIStore((state) => state.setMobileMenuOpen)
   const trips = useTrips()
 
-  const favoriteTrips = trips.filter((t) => t.isFavorite).slice(0, 5)
-  const recentTrips = trips.filter((t) => !t.isFavorite).slice(0, 5)
+  const favoriteTrips = useMemo(() => trips.filter((t) => t.isFavorite).slice(0, 5), [trips])
+  const recentTrips = useMemo(() => trips.filter((t) => !t.isFavorite).slice(0, 5), [trips])
 
   const closeMobileMenu = () => setMobileMenuOpen(false)
 

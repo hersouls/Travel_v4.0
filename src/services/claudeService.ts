@@ -19,6 +19,9 @@ export async function generateWithStreaming(
   onDone: () => void,
   onError: (error: Error) => void,
 ): Promise<void> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 120_000) // 2분 타임아웃
+
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
@@ -27,6 +30,7 @@ export async function generateWithStreaming(
         'x-api-key': apiKey,
       },
       body: JSON.stringify({ ...request, model, stream: true }),
+      signal: controller.signal,
     })
 
     if (!response.ok) {
@@ -66,7 +70,13 @@ export async function generateWithStreaming(
 
     onDone()
   } catch (err) {
-    onError(err instanceof Error ? err : new Error(String(err)))
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      onError(new Error('요청 시간이 초과되었습니다'))
+    } else {
+      onError(err instanceof Error ? err : new Error(String(err)))
+    }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -80,29 +90,43 @@ export async function generateStructured<T = string>(
   model: ClaudeModel,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-    },
-    body: JSON.stringify({ ...request, model, stream: false }),
-    signal,
-  })
+  // signal이 없으면 기본 60초 타임아웃 적용
+  const controller = signal ? null : new AbortController()
+  const timeout = controller ? setTimeout(() => controller.abort(), 60_000) : null
 
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({ error: 'Unknown error' }))
-    throw new Error(errData.error || `HTTP ${response.status}`)
-  }
-
-  const data = await response.json()
-  const content = data.content as string
-
-  // Try parsing as JSON for structured types
   try {
-    return JSON.parse(content) as T
-  } catch {
-    return content as T
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
+      body: JSON.stringify({ ...request, model, stream: false }),
+      signal: signal || controller?.signal,
+    })
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error(errData.error || `HTTP ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    // Null safety 체크 추가
+    if (!data || typeof data.content !== 'string') {
+      throw new Error('Invalid API response: missing content field')
+    }
+
+    const content = data.content
+
+    // Try parsing as JSON for structured types
+    try {
+      return JSON.parse(content) as T
+    } catch {
+      return content as T
+    }
+  } finally {
+    if (timeout) clearTimeout(timeout)
   }
 }
 
@@ -168,11 +192,26 @@ export function buildMemoContext(plan: Plan, country?: string): Record<string, u
   }
 }
 
-export function buildImageAnalysisContext(base64Image: string): AIGenerateRequest {
+export function buildImageAnalysisContext(base64Image: string, imageFormat?: string): AIGenerateRequest {
   return {
     type: 'analyze-image',
     context: {},
     image: base64Image,
+    imageFormat,
+  }
+}
+
+export function buildPhotoLocationContext(
+  base64Image: string,
+  imageFormat?: string,
+  tripCountry?: string,
+): AIGenerateRequest {
+  return {
+    type: 'analyze-photo-location',
+    context: { country: tripCountry || '' },
+    image: base64Image,
+    imageFormat,
+    stream: false,
   }
 }
 
@@ -180,20 +219,22 @@ export function buildImageAnalysisContext(base64Image: string): AIGenerateReques
 // Receipt OCR Context Builders
 // ============================================
 
-export function buildReceiptFoodContext(base64Image: string): AIGenerateRequest {
+export function buildReceiptFoodContext(base64Image: string, imageFormat?: string): AIGenerateRequest {
   return {
     type: 'receipt-food',
     context: {},
     image: base64Image,
+    imageFormat,
     stream: false,
   }
 }
 
-export function buildReceiptGeneralContext(base64Image: string): AIGenerateRequest {
+export function buildReceiptGeneralContext(base64Image: string, imageFormat?: string): AIGenerateRequest {
   return {
     type: 'receipt-general',
     context: {},
     image: base64Image,
+    imageFormat,
     stream: false,
   }
 }

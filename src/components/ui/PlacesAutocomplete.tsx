@@ -66,7 +66,7 @@ export function PlacesAutocomplete({
       } as PlacePrediction & { isLocal?: boolean, originalPlace?: Place }))
   }, [localPlaces])
 
-  // Debounced search
+  // Debounced search (레이스 컨디션 방지)
   useEffect(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current)
@@ -81,21 +81,27 @@ export function PlacesAutocomplete({
     const localResults = searchLocalPlaces(query)
     setPredictions(localResults)
 
+    let cancelled = false
+
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true)
       try {
         const results = await searchPlaces(query)
-        // Merge: Local results first, filtering out duplicates if Google returns them (by placeId check if possible, hard to do perfectly, so just stack)
-        setPredictions(prev => [
-          ...localResults,
-          ...results.filter(r => !localResults.some(lr => lr.placeId === `local_${r.placeId || ''}`)) // Simple dedup attempt
-        ])
+        if (!cancelled) {
+          setPredictions([
+            ...localResults,
+            ...results.filter(r => !localResults.some(lr => lr.placeId === `local_${r.placeId || ''}`))
+          ])
+        }
       } finally {
-        setIsLoading(false)
+        if (!cancelled) {
+          setIsLoading(false)
+        }
       }
     }, 300)
 
     return () => {
+      cancelled = true
       if (debounceRef.current) {
         clearTimeout(debounceRef.current)
       }

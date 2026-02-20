@@ -74,14 +74,15 @@ export function useScrollAnimation<T extends HTMLElement = HTMLDivElement>(
     const element = ref.current
     if (!element) return
 
-    // Skip if already animated and once is true
     if (once && hasAnimated) return
+
+    let delayTimer: ReturnType<typeof setTimeout> | null = null
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
           if (delay > 0) {
-            setTimeout(() => {
+            delayTimer = setTimeout(() => {
               setIsVisible(true)
               setHasAnimated(true)
             }, delay)
@@ -102,7 +103,10 @@ export function useScrollAnimation<T extends HTMLElement = HTMLDivElement>(
 
     observer.observe(element)
 
-    return () => observer.disconnect()
+    return () => {
+      if (delayTimer) clearTimeout(delayTimer)
+      observer.disconnect()
+    }
   }, [threshold, rootMargin, delay, once, hasAnimated])
 
   const preset = animationPresets[animation]

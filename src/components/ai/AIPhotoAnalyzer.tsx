@@ -9,6 +9,7 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateStructured, buildImageAnalysisContext } from '@/services/claudeService'
+import { getImageFormat } from '@/services/imageStorage'
 import { AI_MESSAGES } from '@/utils/constants'
 
 interface AnalysisResult {
@@ -68,7 +69,8 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
     setError(null)
 
     try {
-      const request = buildImageAnalysisContext(imageBase64)
+      const format = imagePreview ? `image/${getImageFormat(imagePreview)}` : undefined
+      const request = buildImageAnalysisContext(imageBase64, format)
       const response = await generateStructured<AnalysisResult>(
         request,
         claudeApiKey,

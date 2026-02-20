@@ -2,7 +2,7 @@
 // Pull to Refresh Hook
 // ============================================
 
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 interface PullToRefreshOptions {
   onRefresh: () => Promise<void>
@@ -20,45 +20,49 @@ export function usePullToRefresh({
   const touchStartY = useRef(0)
   const isPulling = useRef(false)
 
-  const onTouchStart = useCallback((e: TouchEvent) => {
-    // Only activate when scrolled to top
-    if (window.scrollY <= 0) {
-      touchStartY.current = e.touches[0].clientY
-      isPulling.current = true
-    }
-  }, [])
+  // ref를 사용하여 stale closure 방지
+  const onRefreshRef = useRef(onRefresh)
+  onRefreshRef.current = onRefresh
+  const isRefreshingRef = useRef(isRefreshing)
+  isRefreshingRef.current = isRefreshing
+  const pullDistanceRef = useRef(pullDistance)
+  pullDistanceRef.current = pullDistance
 
-  const onTouchMove = useCallback(
-    (e: TouchEvent) => {
-      if (!isPulling.current || isRefreshing) return
+  useEffect(() => {
+    const onTouchStart = (e: TouchEvent) => {
+      if (window.scrollY <= 0) {
+        touchStartY.current = e.touches[0].clientY
+        isPulling.current = true
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isPulling.current || isRefreshingRef.current) return
       const diff = e.touches[0].clientY - touchStartY.current
       if (diff > 0 && window.scrollY <= 0) {
         const distance = Math.min(diff * 0.5, maxPull)
         setPullDistance(distance)
       }
-    },
-    [isRefreshing, maxPull]
-  )
+    }
 
-  const onTouchEnd = useCallback(async () => {
-    if (!isPulling.current) return
-    isPulling.current = false
+    const onTouchEnd = async () => {
+      if (!isPulling.current) return
+      isPulling.current = false
 
-    if (pullDistance >= threshold && !isRefreshing) {
-      setIsRefreshing(true)
-      setPullDistance(threshold * 0.5)
-      try {
-        await onRefresh()
-      } finally {
-        setIsRefreshing(false)
+      if (pullDistanceRef.current >= threshold && !isRefreshingRef.current) {
+        setIsRefreshing(true)
+        setPullDistance(threshold * 0.5)
+        try {
+          await onRefreshRef.current()
+        } finally {
+          setIsRefreshing(false)
+          setPullDistance(0)
+        }
+      } else {
         setPullDistance(0)
       }
-    } else {
-      setPullDistance(0)
     }
-  }, [pullDistance, threshold, isRefreshing, onRefresh])
 
-  useEffect(() => {
     document.addEventListener('touchstart', onTouchStart, { passive: true })
     document.addEventListener('touchmove', onTouchMove, { passive: true })
     document.addEventListener('touchend', onTouchEnd)
@@ -68,7 +72,7 @@ export function usePullToRefresh({
       document.removeEventListener('touchmove', onTouchMove)
       document.removeEventListener('touchend', onTouchEnd)
     }
-  }, [onTouchStart, onTouchMove, onTouchEnd])
+  }, [threshold, maxPull]) // 안정적인 값만 의존성에 포함
 
   return { pullDistance, isRefreshing, isActive: pullDistance > 0 }
 }

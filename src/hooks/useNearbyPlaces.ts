@@ -2,7 +2,7 @@
 // Nearby Places Hook
 // ============================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { NearbyPlace } from '@/types'
 import { searchNearby } from '@/services/nearbySearchService'
 
@@ -33,9 +33,16 @@ export function useNearbyPlaces({
   const [places, setPlaces] = useState<NearbyPlace[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const typesKey = JSON.stringify(types)
 
   const fetchPlaces = useCallback(async () => {
     if (!enabled || !latitude || !longitude) return
+
+    // 이전 요청 취소
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
 
     setIsLoading(true)
     setError(null)
@@ -47,16 +54,26 @@ export function useNearbyPlaces({
         types,
         maxResults,
       )
-      setPlaces(results)
+      // 취소된 요청의 결과 무시
+      if (!controller.signal.aborted) {
+        setPlaces(results)
+      }
     } catch (err) {
-      setError((err as Error).message || '주변 장소 검색에 실패했습니다')
+      if (!controller.signal.aborted) {
+        setError((err as Error).message || '주변 장소 검색에 실패했습니다')
+      }
     } finally {
-      setIsLoading(false)
+      if (!controller.signal.aborted) {
+        setIsLoading(false)
+      }
     }
-  }, [latitude, longitude, radiusMeters, JSON.stringify(types), maxResults, enabled])
+  }, [latitude, longitude, radiusMeters, typesKey, maxResults, enabled])
 
   useEffect(() => {
     fetchPlaces()
+    return () => {
+      abortRef.current?.abort()
+    }
   }, [fetchPlaces])
 
   return { places, isLoading, error, refresh: fetchPlaces }

@@ -181,6 +181,25 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 - 확실하지 않은 정보는 빈 값으로
 - 한국어로 작성`
 
+    case 'analyze-photo-location':
+      return `당신은 여행 사진의 위치를 분석하는 전문가입니다.
+사진에서 위치를 식별할 수 있는 모든 단서를 분석하세요:
+- 간판, 표지판, 텍스트 (어떤 언어든)
+- 랜드마크, 건물 외관, 브랜드 로고
+- 음식, 메뉴, 영수증의 가게 이름
+- 교통수단, 도로 표지판
+- 자연환경, 건축 양식
+${context.country ? `\n참고: 이 사진은 "${context.country}" 여행 중 촬영되었습니다.` : ''}
+
+반드시 아래 JSON만 출력하세요 (다른 텍스트 없이):
+{
+  "placeName": "구체적인 장소 이름 (예: Terminal 21, Suvarnabhumi Airport). 모르면 빈 문자열",
+  "estimatedLocation": "도시, 국가 (예: Bangkok, Thailand)",
+  "locationType": "attraction|restaurant|hotel|transport|shopping|other",
+  "confidence": "high|medium|low",
+  "clues": "위치를 판단한 근거를 한 줄로 요약"
+}`
+
     case 'receipt-food':
       return `당신은 영수증 OCR 전문가입니다.
 음식점/카페 영수증 사진을 분석하여 아래 JSON을 정확히 추출하세요:
@@ -197,6 +216,9 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 - 금액은 순수 숫자만 (쉼표/통화기호 제거)
 - currency는 ISO 4217 코드 (KRW, JPY, USD, EUR, THB, VND 등)
 - 읽을 수 없는 항목은 빈 문자열이나 0
+- 다국어 영수증 분석 가능: 한국어, 영어, 일본어, 중국어, 태국어, 베트남어 등
+- 은행 이체 알림, 카드 결제 문자, 모바일 결제 앱 캡처도 분석 가능
+- 현지 통화 정확히 식별: ฿=THB, ₫=VND, ¥=JPY(일본)/CNY(중국), ₩=KRW, $=USD, €=EUR, £=GBP
 - 반드시 JSON만 출력 (다른 텍스트 없이)`
 
     case 'receipt-general':
@@ -215,6 +237,9 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 - category는 가게 유형에 따라 자동 분류
 - 금액은 순수 숫자만
 - currency는 ISO 4217 코드
+- 다국어 영수증 분석 가능: 한국어, 영어, 일본어, 중국어, 태국어, 베트남어 등
+- 은행 이체 알림, 카드 결제 문자, 모바일 결제 앱 캡처도 분석 가능
+- 현지 통화 정확히 식별: ฿=THB, ₫=VND, ¥=JPY(일본)/CNY(중국), ₩=KRW, $=USD, €=EUR, £=GBP
 - 반드시 JSON만 출력 (다른 텍스트 없이)`
 
     case 'test':
@@ -293,6 +318,9 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
     case 'analyze-image':
       return '이 사진을 분석하여 장소 정보를 추출해주세요.'
 
+    case 'analyze-photo-location':
+      return `이 사진의 촬영 위치를 분석해주세요.${context.country ? ` (여행국가: ${context.country})` : ''}`
+
     case 'receipt-food':
       return '이 음식점 영수증에서 가게 이름, 메뉴, 금액을 추출해주세요.'
 
@@ -345,7 +373,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'Too many requests. Please try again later.' })
   }
 
-  const { type, context = {}, image, model, stream = true } = req.body || {}
+  const { type, context = {}, image, imageFormat, model, stream = true } = req.body || {}
 
   if (!type) {
     return res.status(400).json({ error: 'Request type is required' })
@@ -359,12 +387,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Build messages — support Vision (image) for analyze-image
     const userContent: Anthropic.MessageCreateParams['messages'][0]['content'] = []
 
-    if (image && ['analyze-image', 'receipt-food', 'receipt-general'].includes(type)) {
+    if (image && ['analyze-image', 'analyze-photo-location', 'receipt-food', 'receipt-general'].includes(type)) {
+      const validMediaTypes = ['image/jpeg', 'image/webp', 'image/png', 'image/gif'] as const
+      const mediaType = (imageFormat && validMediaTypes.includes(imageFormat))
+        ? imageFormat as typeof validMediaTypes[number]
+        : 'image/jpeg'
       userContent.push({
         type: 'image',
         source: {
           type: 'base64',
-          media_type: 'image/jpeg',
+          media_type: mediaType,
           data: image,
         },
       })

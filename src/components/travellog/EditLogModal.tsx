@@ -1,20 +1,27 @@
 // ============================================
 // Edit Log Modal Component
 // Handles editing of all 3 log types: photo, receipt, memo
+// With PlacesAutocomplete for location + AI location detection
 // ============================================
 
-import { useState, useCallback, useEffect } from 'react'
-import { Camera, Receipt, FileText, X } from 'lucide-react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { Camera, Receipt, FileText, X, MapPin, Sparkles, Loader2, Navigation } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea, Label } from '@/components/ui/Input'
+import { PlacesAutocomplete } from '@/components/ui/PlacesAutocomplete'
 import { compressImage } from '@/services/imageStorage'
+import { detectPhotoLocation } from '@/services/photoLocationService'
+import { getCurrentPosition, reverseGeocode } from '@/services/geocodingService'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import type { TravelLog, ExpenseData, ExpenseCategory } from '@/types'
+import type { PlaceDetails } from '@/services/placesAutocomplete'
 
 interface EditLogModalProps {
   log: TravelLog | null
   totalDays: number
+  tripCountry?: string
   onSave: (id: number, updates: Partial<TravelLog>) => Promise<void>
   onClose: () => void
 }
@@ -32,12 +39,17 @@ const titleConfig = {
   memo: { icon: FileText, label: '메모 기록 수정', iconClass: 'text-success-600 dark:text-success-400' },
 } as const
 
-export function EditLogModal({ log, totalDays, onSave, onClose }: EditLogModalProps) {
+export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: EditLogModalProps) {
   // Common fields
   const [day, setDay] = useState(1)
   const [time, setTime] = useState('')
   const [memo, setMemo] = useState('')
   const [placeName, setPlaceName] = useState('')
+
+  // Location fields
+  const [latitude, setLatitude] = useState<number | undefined>()
+  const [longitude, setLongitude] = useState<number | undefined>()
+  const [address, setAddress] = useState<string | undefined>()
 
   // Photo change (optional — keep existing if null)
   const [newPhotoPreview, setNewPhotoPreview] = useState<string | null>(null)
@@ -46,22 +58,69 @@ export function EditLogModal({ log, totalDays, onSave, onClose }: EditLogModalPr
   // Receipt-specific
   const [expense, setExpense] = useState<ExpenseData | null>(null)
 
+  // AI detection & device location
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false)
+  const [isGettingLocation, setIsGettingLocation] = useState(false)
+
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const claudeApiKey = useSettingsStore((s) => s.claudeApiKey)
+  const claudeModel = useSettingsStore((s) => s.claudeModel) || 'sonnet'
+
+  // Track original values for change detection
+  const originalRef = useRef<{
+    day: number; time: string; memo: string; placeName: string;
+    latitude?: number; longitude?: number; address?: string;
+    expense: string | null; hasNewPhoto: boolean
+  } | null>(null)
 
   // Initialize state from log prop
   useEffect(() => {
     if (!log) return
-    setDay(log.day)
     const d = new Date(log.timestamp)
-    setTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
+    const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+
+    setDay(log.day)
+    setTime(timeStr)
     setMemo(log.memo || '')
     setPlaceName(log.placeName || '')
+    setLatitude(log.latitude)
+    setLongitude(log.longitude)
+    setAddress(log.address)
     setNewPhotoPreview(null)
     setNewThumbnailBase64(null)
     setExpense(log.expense ? { ...log.expense } : null)
     setError(null)
+
+    originalRef.current = {
+      day: log.day,
+      time: timeStr,
+      memo: log.memo || '',
+      placeName: log.placeName || '',
+      latitude: log.latitude,
+      longitude: log.longitude,
+      address: log.address,
+      expense: log.expense ? JSON.stringify(log.expense) : null,
+      hasNewPhoto: false,
+    }
   }, [log])
+
+  // Detect unsaved changes
+  const hasChanges = useCallback((): boolean => {
+    if (!originalRef.current) return false
+    const orig = originalRef.current
+    if (day !== orig.day) return true
+    if (time !== orig.time) return true
+    if (memo !== orig.memo) return true
+    if (placeName !== orig.placeName) return true
+    if (latitude !== orig.latitude) return true
+    if (longitude !== orig.longitude) return true
+    if (address !== orig.address) return true
+    if (newPhotoPreview) return true
+    if (expense && orig.expense && JSON.stringify(expense) !== orig.expense) return true
+    return false
+  }, [day, time, memo, placeName, latitude, longitude, address, newPhotoPreview, expense])
 
   const handlePhotoChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -85,6 +144,67 @@ export function EditLogModal({ log, totalDays, onSave, onClose }: EditLogModalPr
     setExpense((prev) => prev ? { ...prev, [field]: value } : prev)
   }, [])
 
+  // PlacesAutocomplete handler
+  const handlePlaceSelect = useCallback((details: PlaceDetails) => {
+    setPlaceName(details.name)
+    setLatitude(details.latitude)
+    setLongitude(details.longitude)
+    setAddress(details.address)
+  }, [])
+
+  // AI location detection
+  const handleAIDetect = useCallback(async () => {
+    if (!claudeApiKey || !log) return
+
+    const photoBase64 = newPhotoPreview || log.photo
+    if (!photoBase64) return
+
+    setIsDetectingLocation(true)
+    setError(null)
+
+    try {
+      const result = await detectPhotoLocation(
+        photoBase64,
+        tripCountry || '',
+        claudeApiKey,
+        claudeModel,
+      )
+
+      if (result) {
+        setPlaceName(result.placeName)
+        setLatitude(result.latitude)
+        setLongitude(result.longitude)
+        setAddress(result.address)
+      } else {
+        setError('사진에서 위치를 감지하지 못했습니다.')
+      }
+    } catch {
+      setError('AI 위치 분석에 실패했습니다.')
+    } finally {
+      setIsDetectingLocation(false)
+    }
+  }, [claudeApiKey, claudeModel, log, newPhotoPreview, tripCountry])
+
+  // Device geolocation
+  const handleCurrentLocation = useCallback(async () => {
+    setIsGettingLocation(true)
+    setError(null)
+    try {
+      const pos = await getCurrentPosition()
+      const addr = await reverseGeocode(pos.lat, pos.lng)
+      setLatitude(pos.lat)
+      setLongitude(pos.lng)
+      setAddress(addr || undefined)
+      if (!placeName.trim()) {
+        setPlaceName(addr || `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '현재 위치를 가져올 수 없습니다.')
+    } finally {
+      setIsGettingLocation(false)
+    }
+  }, [placeName])
+
   const handleSave = useCallback(async () => {
     if (!log?.id) return
     setIsSaving(true)
@@ -99,6 +219,9 @@ export function EditLogModal({ log, totalDays, onSave, onClose }: EditLogModalPr
         timestamp: ts.toISOString(),
         memo: memo.trim() || undefined,
         placeName: placeName.trim() || undefined,
+        latitude,
+        longitude,
+        address: address || undefined,
       }
 
       // Only include new photo if user selected one
@@ -120,17 +243,24 @@ export function EditLogModal({ log, totalDays, onSave, onClose }: EditLogModalPr
     } finally {
       setIsSaving(false)
     }
-  }, [log, day, time, memo, placeName, newPhotoPreview, newThumbnailBase64, expense, onSave, onClose])
+  }, [log, day, time, memo, placeName, latitude, longitude, address, newPhotoPreview, newThumbnailBase64, expense, onSave, onClose])
 
   const handleClose = useCallback(() => {
+    if (hasChanges()) {
+      if (!window.confirm('수정한 내용이 있습니다. 저장하지 않고 닫으시겠습니까?')) {
+        return
+      }
+    }
     setError(null)
     onClose()
-  }, [onClose])
+  }, [onClose, hasChanges])
 
   if (!log) return null
 
   const TitleIcon = titleConfig[log.type].icon
   const currentPhoto = newPhotoPreview || log.thumbnailPhoto
+  const hasPhoto = Boolean(newPhotoPreview || log.photo)
+  const hasLocation = Boolean(latitude && longitude)
 
   return (
     <Dialog open={!!log} onClose={handleClose} size="lg">
@@ -302,14 +432,64 @@ export function EditLogModal({ log, totalDays, onSave, onClose }: EditLogModalPr
             </div>
           )}
 
-          {/* Common: Place Name */}
+          {/* Location: PlacesAutocomplete + AI detect */}
           {log.type !== 'receipt' && (
-            <Input
-              label="장소명 (선택)"
-              value={placeName}
-              onChange={setPlaceName}
-              placeholder="예: 도쿄타워, 하카타 라멘집"
-            />
+            <div className="space-y-2">
+              <PlacesAutocomplete
+                label="장소 검색"
+                placeholder="장소 이름 또는 주소를 검색하세요"
+                value={placeName}
+                onChange={setPlaceName}
+                onPlaceSelect={handlePlaceSelect}
+              />
+
+              {/* Current location display */}
+              {hasLocation && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-primary-50 dark:bg-primary-900/20 rounded-lg">
+                  <MapPin className="size-4 text-primary-500 flex-shrink-0" />
+                  <a
+                    href={`https://www.google.com/maps?q=${latitude},${longitude}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 text-xs text-primary-600 dark:text-primary-400 hover:underline truncate"
+                  >
+                    {address || `${latitude!.toFixed(4)}, ${longitude!.toFixed(4)}`}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => { setLatitude(undefined); setLongitude(undefined); setAddress(undefined) }}
+                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 flex-shrink-0"
+                    aria-label="위치 제거"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Location action buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  color="secondary"
+                  size="sm"
+                  onClick={handleCurrentLocation}
+                  leftIcon={isGettingLocation ? <Loader2 className="size-3.5 animate-spin" /> : <Navigation className="size-3.5" />}
+                  disabled={isGettingLocation || isDetectingLocation}
+                >
+                  {isGettingLocation ? '위치 확인 중...' : '현재 위치'}
+                </Button>
+                {hasPhoto && !hasLocation && claudeApiKey && (
+                  <Button
+                    color="secondary"
+                    size="sm"
+                    onClick={handleAIDetect}
+                    leftIcon={isDetectingLocation ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+                    disabled={isDetectingLocation || isGettingLocation}
+                  >
+                    {isDetectingLocation ? 'AI 분석 중...' : 'AI로 위치 감지'}
+                  </Button>
+                )}
+              </div>
+            </div>
           )}
 
           {/* Common: Memo */}

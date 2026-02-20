@@ -3,7 +3,7 @@
 // Renders a single travel log entry in timeline
 // ============================================
 
-import { useState } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { Camera, Receipt, FileText, MapPin, Clock, Trash2, Edit3, ChevronDown, ChevronUp } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
@@ -15,7 +15,13 @@ interface TimelineCardProps {
   log: TravelLog
   onEdit?: (log: TravelLog) => void
   onDelete?: (id: number) => void
+  onPhotoClick?: (photo: string) => void
   compact?: boolean
+  // Bulk selection
+  isSelectionMode?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (id: number) => void
+  onLongPress?: (id: number) => void
 }
 
 const typeConfig = {
@@ -50,28 +56,74 @@ function formatCurrency(amount: number, currency: string): string {
   return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export function TimelineCard({ log, onEdit, onDelete, compact = false }: TimelineCardProps) {
+export function TimelineCard({
+  log, onEdit, onDelete, onPhotoClick, compact = false,
+  isSelectionMode, isSelected, onToggleSelect, onLongPress,
+}: TimelineCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [exifExpanded, setExifExpanded] = useState(false)
   const config = typeConfig[log.type]
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // hasExifDetails: camera info only (GPS moved to header)
   const hasExifDetails = Boolean(
-    log.exif && (
-      log.exif.cameraMake ||
-      log.exif.cameraModel ||
-      (log.exif.latitude && log.exif.longitude)
-    )
+    log.exif && (log.exif.cameraMake || log.exif.cameraModel)
   )
+  const hasLocation = Boolean(log.latitude && log.longitude)
   const Icon = config.icon
   const time = formatTime(log.timestamp)
 
+  // Long press handlers for bulk selection
+  const handleTouchStart = useCallback(() => {
+    if (!onLongPress || !log.id) return
+    longPressTimer.current = setTimeout(() => {
+      onLongPress(log.id!)
+    }, 500)
+  }, [onLongPress, log.id])
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current)
+    }
+  }, [])
+
+  const handleCardClick = useCallback(() => {
+    if (isSelectionMode && onToggleSelect && log.id) {
+      onToggleSelect(log.id)
+    }
+  }, [isSelectionMode, onToggleSelect, log.id])
+
   return (
-    <div className="flex gap-3 group">
+    <div
+      className={clsx('flex gap-3 group', isSelectionMode && 'cursor-pointer')}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      onClick={isSelectionMode ? handleCardClick : undefined}
+    >
       {/* Timeline connector */}
       <div className="flex flex-col items-center flex-shrink-0">
-        <div className={clsx('size-8 rounded-full flex items-center justify-center text-white', config.bg)}>
-          <Icon className="size-4" />
-        </div>
+        {isSelectionMode ? (
+          <div className={clsx(
+            'size-8 rounded-full flex items-center justify-center border-2 transition-colors',
+            isSelected
+              ? 'bg-primary-500 border-primary-500 text-white'
+              : 'border-zinc-300 dark:border-zinc-600 bg-[var(--card)]'
+          )}>
+            {isSelected && <span className="text-xs font-bold">✓</span>}
+          </div>
+        ) : (
+          <div className={clsx('size-8 rounded-full flex items-center justify-center text-white', config.bg)}>
+            <Icon className="size-4" />
+          </div>
+        )}
         <div className="w-0.5 flex-1 bg-[var(--border)] mt-1" />
       </div>
 
@@ -79,7 +131,8 @@ export function TimelineCard({ log, onEdit, onDelete, compact = false }: Timelin
       <div className={clsx(
         'flex-1 mb-4 rounded-xl border border-[var(--border)] bg-[var(--card)]',
         'shadow-sm hover:shadow-md transition-shadow',
-        compact && 'mb-2'
+        compact && 'mb-2',
+        isSelected && 'ring-2 ring-primary-500 border-primary-500'
       )}>
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
@@ -89,15 +142,27 @@ export function TimelineCard({ log, onEdit, onDelete, compact = false }: Timelin
               {time}
             </span>
           )}
-          {log.address && (
+          {/* Location: Google Maps link if coordinates available */}
+          {hasLocation ? (
+            <a
+              href={`https://www.google.com/maps?q=${log.latitude},${log.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:underline truncate"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MapPin className="size-3 flex-shrink-0" />
+              <span className="truncate">{log.placeName || log.address || `${log.latitude!.toFixed(4)}, ${log.longitude!.toFixed(4)}`}</span>
+            </a>
+          ) : (log.placeName || log.address) ? (
             <span className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400 truncate">
               <MapPin className="size-3 flex-shrink-0" />
               <span className="truncate">{log.placeName || log.address}</span>
             </span>
-          )}
+          ) : null}
           <div className="flex-1" />
-          {!compact && (
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          {!compact && !isSelectionMode && (
+            <div className="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
               {onEdit && (
                 <IconButton plain color="secondary" onClick={() => onEdit(log)} aria-label="수정">
                   <Edit3 className="size-3.5" />
@@ -114,14 +179,18 @@ export function TimelineCard({ log, onEdit, onDelete, compact = false }: Timelin
 
         {/* Body */}
         <div className="p-3">
-          {/* Photo type */}
-          {log.type === 'photo' && log.thumbnailPhoto && (
+          {/* Photo type — use full photo with lazy loading */}
+          {log.type === 'photo' && (log.photo || log.thumbnailPhoto) && (
             <div className="mb-2">
               <img
-                src={log.thumbnailPhoto}
+                src={log.photo || log.thumbnailPhoto}
                 alt="여행 사진"
-                className="w-full max-h-48 object-cover rounded-lg"
+                className={clsx(
+                  'w-full max-h-48 object-cover rounded-lg',
+                  onPhotoClick && 'cursor-pointer hover:opacity-90 transition-opacity'
+                )}
                 loading="lazy"
+                onClick={onPhotoClick && log.photo ? (e) => { e.stopPropagation(); onPhotoClick(log.photo!) } : undefined}
               />
             </div>
           )}
@@ -165,14 +234,18 @@ export function TimelineCard({ log, onEdit, onDelete, compact = false }: Timelin
                 </>
               )}
 
-              {/* Receipt thumbnail */}
-              {log.thumbnailPhoto && (
+              {/* Receipt thumbnail — enlarged, clickable */}
+              {(log.photo || log.thumbnailPhoto) && (
                 <div className="mt-2">
                   <img
-                    src={log.thumbnailPhoto}
+                    src={log.photo || log.thumbnailPhoto}
                     alt="영수증"
-                    className="w-24 h-32 object-cover rounded-lg border border-zinc-200 dark:border-zinc-600"
+                    className={clsx(
+                      'w-32 h-40 object-cover rounded-lg border border-zinc-200 dark:border-zinc-600',
+                      onPhotoClick && 'cursor-pointer hover:opacity-90 transition-opacity'
+                    )}
                     loading="lazy"
+                    onClick={onPhotoClick && log.photo ? (e) => { e.stopPropagation(); onPhotoClick(log.photo!) } : undefined}
                   />
                 </div>
               )}
@@ -189,7 +262,7 @@ export function TimelineCard({ log, onEdit, onDelete, compact = false }: Timelin
             </p>
           )}
 
-          {/* EXIF Details (collapsible) */}
+          {/* EXIF Details — camera info only (GPS shown in header) */}
           {hasExifDetails && (
             <div className={clsx(
               'mt-2',
@@ -212,12 +285,6 @@ export function TimelineCard({ log, onEdit, onDelete, compact = false }: Timelin
                       <span>
                         {[log.exif?.cameraMake, log.exif?.cameraModel].filter(Boolean).join(' ')}
                       </span>
-                    </div>
-                  )}
-                  {log.exif?.latitude && log.exif?.longitude && (
-                    <div className="flex items-center gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
-                      <MapPin className="size-3 flex-shrink-0" />
-                      <span>{log.exif.latitude.toFixed(5)}, {log.exif.longitude.toFixed(5)}</span>
                     </div>
                   )}
                 </div>
