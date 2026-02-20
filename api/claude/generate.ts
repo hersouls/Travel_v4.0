@@ -242,6 +242,17 @@ ${context.country ? `\n참고: 이 사진은 "${context.country}" 여행 중 촬
 - 현지 통화 정확히 식별: ฿=THB, ₫=VND, ¥=JPY(일본)/CNY(중국), ₩=KRW, $=USD, €=EUR, £=GBP
 - 반드시 JSON만 출력 (다른 텍스트 없이)`
 
+    case 'travel-diary':
+      return `당신은 감성적이고 따뜻한 여행 에세이 작가입니다.
+주어진 여행 기록 데이터를 기반으로 자연스러운 여행 일기를 작성하세요.
+- 1인칭 시점으로 작성 (나는, 내가)
+- 장소명과 시간을 자연스럽게 녹여내기
+- 감정, 분위기, 날씨 등을 상상하여 풍부하게 묘사
+- 음식이나 소비 내역이 있으면 자연스럽게 언급
+- 마크다운 없이 순수 텍스트로 작성
+- 문단 나누기는 빈 줄로
+- 800~1500자 분량`
+
     case 'test':
       return '연결 테스트입니다. "Claude AI 연결 성공! 🎉" 라고만 답하세요.'
 
@@ -326,6 +337,15 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
 
     case 'receipt-general':
       return '이 영수증/결제 내역에서 정보를 추출해주세요.'
+
+    case 'travel-diary': {
+      const parts = [`여행 제목: ${context.tripTitle || '나의 여행'}`]
+      if (context.dayNumber) parts.push(`Day ${context.dayNumber}`)
+      if (context.totalDays) parts.push(`전체 ${context.totalDays}일 여행`)
+      if (context.logSummaries) parts.push(`\n여행 기록:\n${context.logSummaries}`)
+      parts.push('\n위 여행 기록을 바탕으로 감성적인 여행 일기를 작성해주세요.')
+      return parts.join('\n')
+    }
 
     case 'test':
       return '연결 테스트'

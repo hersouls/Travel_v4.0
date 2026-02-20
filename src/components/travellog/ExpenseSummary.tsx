@@ -4,7 +4,7 @@
 // ============================================
 
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, Utensils, Bus, Bed, ShoppingBag, Camera, MoreHorizontal } from 'lucide-react'
+import { ChevronDown, ChevronUp, Utensils, Bus, Bed, ShoppingBag, Camera, MoreHorizontal, MapPin, Route } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
 import { EXPENSE_CATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
@@ -13,6 +13,9 @@ interface ExpenseSummaryProps {
   logs: TravelLog[]
   className?: string
   defaultOpen?: boolean
+  totalTripDistance?: number
+  uniqueLocationCount?: number
+  dayCount?: number
 }
 
 const categoryIcons: Record<ExpenseCategory, typeof Utensils> = {
@@ -61,7 +64,7 @@ function formatAmount(amount: number, currency: string): string {
   return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export function ExpenseSummary({ logs, className, defaultOpen = false }: ExpenseSummaryProps) {
+export function ExpenseSummary({ logs, className, defaultOpen = false, totalTripDistance, uniqueLocationCount, dayCount }: ExpenseSummaryProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   const { categoryTotals, currencyTotals, totalCount, maxCategoryAmount } = useMemo(() => {
@@ -104,7 +107,9 @@ export function ExpenseSummary({ logs, className, defaultOpen = false }: Expense
     return { categoryTotals, currencyTotals, totalCount: count, maxCategoryAmount }
   }, [logs])
 
-  if (totalCount === 0) return null
+  const hasMovementStats = totalTripDistance != null && totalTripDistance > 0
+
+  if (totalCount === 0 && !hasMovementStats) return null
 
   return (
     <div className={clsx('rounded-xl border border-[var(--border)] bg-[var(--card)] overflow-hidden', className)}>
@@ -144,6 +149,40 @@ export function ExpenseSummary({ logs, className, defaultOpen = false }: Expense
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Movement statistics */}
+          {hasMovementStats && (
+            <div className={clsx(currencyTotals.length <= 1 && totalCount > 0 && 'pt-3', currencyTotals.length > 1 && '', totalCount === 0 && 'pt-3', 'space-y-1.5')}>
+              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">이동 통계</span>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+                  <Route className="size-4 mx-auto text-primary-500 mb-1" />
+                  <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                    {(totalTripDistance! / 1000).toFixed(1)}km
+                  </p>
+                  <p className="text-[10px] text-zinc-500">총 이동거리</p>
+                </div>
+                {uniqueLocationCount != null && uniqueLocationCount > 0 && (
+                  <div className="text-center p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+                    <MapPin className="size-4 mx-auto text-violet-500 mb-1" />
+                    <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                      {uniqueLocationCount}곳
+                    </p>
+                    <p className="text-[10px] text-zinc-500">방문 장소</p>
+                  </div>
+                )}
+                {dayCount != null && dayCount > 0 && (
+                  <div className="text-center p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+                    <Route className="size-4 mx-auto text-emerald-500 mb-1" />
+                    <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                      {(totalTripDistance! / 1000 / dayCount).toFixed(1)}km
+                    </p>
+                    <p className="text-[10px] text-zinc-500">일평균</p>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

@@ -26,6 +26,7 @@ const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.S
 const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About })))
 const NavigationView = lazy(() => import('@/pages/NavigationView').then(m => ({ default: m.NavigationView })))
 const TravelLogPage = lazy(() => import('@/pages/TravelLog').then(m => ({ default: m.TravelLog })))
+const TravelLogMapPage = lazy(() => import('@/pages/TravelLogMap').then(m => ({ default: m.TravelLogMap })))
 const SharedTrip = lazy(() => import('@/pages/SharedTrip').then(m => ({ default: m.SharedTrip })))
 
 // Loading fallback component
@@ -137,6 +138,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <TravelLogPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'trips/:id/log/map',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <TravelLogMapPage />
           </Suspense>
         ),
       },

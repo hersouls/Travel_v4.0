@@ -11,6 +11,7 @@ import { useCallback } from 'react'
 import { CompactView } from './CompactView'
 import { DaySectionHeader } from './DaySectionHeader'
 import { GridView } from './GridView'
+import { MovementIndicator } from './MovementIndicator'
 import { TimelineCard } from './TimelineCard'
 
 interface DaySectionProps {
@@ -25,11 +26,8 @@ interface DaySectionProps {
   onEdit: (log: TravelLog) => void
   onDelete: (id: number) => void
   onPhotoClick: (photo: string) => void
-  isSelectionMode: boolean
-  isSelected: (id: number) => boolean
-  onToggleSelect: (id: number) => void
-  onLongPress: (id: number) => void
   viewMode: 'timeline' | 'grid' | 'compact'
+  distanceKm?: number
 }
 
 export function DaySection({
@@ -44,11 +42,8 @@ export function DaySection({
   onEdit,
   onDelete,
   onPhotoClick,
-  isSelectionMode,
-  isSelected,
-  onToggleSelect,
-  onLongPress,
   viewMode,
+  distanceKm,
 }: DaySectionProps) {
   const handleEdit = useCallback((log: TravelLog) => onEdit(log), [onEdit])
   const handleDelete = useCallback((id: number) => onDelete(id), [onDelete])
@@ -65,6 +60,7 @@ export function DaySection({
         onToggle={onToggleExpand}
         summary={summary}
         expenses={expenses}
+        distanceKm={distanceKm}
       />
 
       <AnimatePresence initial={false}>
@@ -120,10 +116,6 @@ export function DaySection({
                   logs={logs}
                   onPhotoClick={onPhotoClick}
                   onEdit={onEdit}
-                  isSelectionMode={isSelectionMode}
-                  isSelected={isSelected}
-                  onToggleSelect={onToggleSelect}
-                  onLongPress={onLongPress}
                 />
               ) : viewMode === 'compact' ? (
                 <CompactView
@@ -131,25 +123,21 @@ export function DaySection({
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onPhotoClick={onPhotoClick}
-                  isSelectionMode={isSelectionMode}
-                  isSelected={isSelected}
-                  onToggleSelect={onToggleSelect}
-                  onLongPress={onLongPress}
                 />
               ) : (
                 <div>
-                  {logs.map((log) => (
-                    <TimelineCard
-                      key={log.id}
-                      log={log}
-                      onEdit={handleEdit}
-                      onDelete={handleDelete}
-                      onPhotoClick={onPhotoClick}
-                      isSelectionMode={isSelectionMode}
-                      isSelected={log.id ? isSelected(log.id) : false}
-                      onToggleSelect={onToggleSelect}
-                      onLongPress={onLongPress}
-                    />
+                  {logs.map((log, idx) => (
+                    <div key={log.id}>
+                      {idx > 0 && (
+                        <MovementIndicator fromLog={logs[idx - 1]} toLog={log} />
+                      )}
+                      <TimelineCard
+                        log={log}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
+                        onPhotoClick={onPhotoClick}
+                      />
+                    </div>
                   ))}
                 </div>
               )}

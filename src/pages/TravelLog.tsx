@@ -18,6 +18,10 @@ import {
   ScrollToTopFAB,
   SearchFilterBar,
 } from '@/components/travellog'
+import { AITravelDiary } from '@/components/travellog/AITravelDiary'
+import { ExportButton } from '@/components/travellog/ExportButton'
+import { LocationGroupView } from '@/components/travellog/LocationGroupView'
+import { TripReport } from '@/components/travellog/TripReport'
 import { ViewModeToggle } from '@/components/travellog/ViewModeToggle'
 import type { ViewMode } from '@/components/travellog/ViewModeToggle'
 import { Button, IconButton } from '@/components/ui/Button'
@@ -25,7 +29,6 @@ import { Card } from '@/components/ui/Card'
 import { Lightbox } from '@/components/ui/Lightbox'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { SpeedDialFAB } from '@/components/ui/SpeedDialFAB'
-import { useBulkSelection } from '@/hooks/useBulkSelection'
 import { useTravelLogView } from '@/hooks/useTravelLogView'
 import type { SortOrder } from '@/hooks/useTravelLogView'
 import { reverseGeocode } from '@/services/geocodingService'
@@ -41,10 +44,11 @@ import {
   Camera,
   ChevronsUpDown,
   FileText,
+  LayoutGrid,
+  Map,
   MapPin,
   Receipt,
   Search,
-  Trash2,
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -92,14 +96,12 @@ export function TravelLog() {
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('timeline')
   const [showSearch, setShowSearch] = useState(false)
+  const [groupMode, setGroupMode] = useState<'time' | 'location'>('time')
 
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxImages, setLightboxImages] = useState<string[]>([])
   const [lightboxIndex, setLightboxIndex] = useState(0)
-
-  // Bulk selection
-  const bulk = useBulkSelection<number>()
 
   const tripId = id ? Number.parseInt(id) : 0
 
@@ -127,6 +129,9 @@ export function TravelLog() {
     daySummaries,
     hasMoreDays,
     totalFilteredCount,
+    dayDistances,
+    totalTripDistance,
+    uniqueLocationCount,
   } = useTravelLogView({
     logs,
     totalDays,
@@ -281,31 +286,6 @@ export function TravelLog() {
     [logsByDay],
   )
 
-  // Bulk delete
-  const handleBulkDelete = useCallback(async () => {
-    const ids = bulk.selectedIds
-    if (ids.length === 0) return
-    if (!window.confirm(`${ids.length}개 기록을 삭제하시겠습니까?`)) return
-
-    for (const logId of ids) {
-      try {
-        await deleteLog(logId)
-      } catch (err) {
-        console.error('[TravelLog] Failed to delete log:', logId, err)
-      }
-    }
-    toast.success(`${ids.length}개 기록이 삭제되었습니다`)
-    bulk.clearSelection()
-  }, [bulk, deleteLog])
-
-  const handleLongPress = useCallback(
-    (logId: number) => {
-      bulk.enterSelectionMode()
-      bulk.toggle(logId)
-    },
-    [bulk],
-  )
-
   // Load more days
   const handleLoadMore = useCallback(() => {
     setLoadedDayCount((c) => c + INITIAL_LOAD_COUNT)
@@ -367,48 +347,46 @@ export function TravelLog() {
   return (
     <PageContainer>
       <div className="space-y-4 animate-fade-in">
-        {/* Header / Bulk selection action bar */}
-        {bulk.isSelectionMode ? (
-          <div className="flex items-center gap-3 px-3 py-2 bg-primary-50 dark:bg-primary-900/20 rounded-xl border border-primary-200 dark:border-primary-800">
-            <IconButton
-              plain
-              color="secondary"
-              onClick={bulk.clearSelection}
-              aria-label="선택 취소"
-            >
-              <X className="size-5" />
-            </IconButton>
-            <span className="flex-1 text-sm font-medium text-primary-700 dark:text-primary-300">
-              {bulk.count}개 선택됨
-            </span>
-            <Button
-              color="danger"
-              size="sm"
-              onClick={handleBulkDelete}
-              leftIcon={<Trash2 className="size-4" />}
-            >
-              삭제
-            </Button>
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <IconButton
+            plain
+            color="secondary"
+            onClick={() => navigate(`/trips/${tripId}`)}
+            aria-label="뒤로 가기"
+          >
+            <ArrowLeft className="size-5" />
+          </IconButton>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-xl font-bold text-[var(--foreground)]">여행 기록</h1>
+            <p className="text-sm text-zinc-500 truncate">{trip.title}</p>
           </div>
-        ) : (
-          <div className="flex items-center gap-3">
-            <IconButton
-              plain
-              color="secondary"
-              onClick={() => navigate(`/trips/${tripId}`)}
-              aria-label="뒤로 가기"
-            >
-              <ArrowLeft className="size-5" />
-            </IconButton>
-            <div className="flex-1 min-w-0">
-              <h1 className="text-xl font-bold text-[var(--foreground)]">여행 기록</h1>
-              <p className="text-sm text-zinc-500 truncate">{trip.title}</p>
-            </div>
-          </div>
-        )}
+          <TripReport
+            logs={logs}
+            tripTitle={trip.title}
+            totalDays={totalDays}
+            startDate={trip.startDate}
+          />
+          <AITravelDiary logs={logs} tripTitle={trip.title} totalDays={totalDays} />
+          <ExportButton logs={logs} tripTitle={trip.title} />
+          <IconButton
+            plain
+            color="secondary"
+            onClick={() => navigate(`/trips/${tripId}/log/map`)}
+            aria-label="지도 보기"
+            title="지도 보기"
+          >
+            <Map className="size-5" />
+          </IconButton>
+        </div>
 
         {/* Expense Summary */}
-        <ExpenseSummary logs={logs} />
+        <ExpenseSummary
+          logs={logs}
+          totalTripDistance={totalTripDistance}
+          uniqueLocationCount={uniqueLocationCount}
+          dayCount={totalDays}
+        />
 
         {/* Sticky Day Tab Bar + Controls */}
         {sortedDays.length > 0 && (
@@ -511,6 +489,20 @@ export function TravelLog() {
                 <Search className="size-3" />
               </button>
 
+              {/* Grouping mode toggle: time vs location */}
+              <button
+                type="button"
+                onClick={() => setGroupMode((p) => (p === 'time' ? 'location' : 'time'))}
+                className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-lg transition-colors ${
+                  groupMode === 'location'
+                    ? 'bg-violet-500 text-white'
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                }`}
+                title={groupMode === 'time' ? '장소별 보기' : '시간순 보기'}
+              >
+                <LayoutGrid className="size-3" />
+              </button>
+
               {/* View mode toggle */}
               <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
             </div>
@@ -575,6 +567,17 @@ export function TravelLog() {
               </div>
             </div>
           </Card>
+        ) : groupMode === 'location' ? (
+          <LocationGroupView
+            logs={logs}
+            onEdit={(log) => setEditingLog(log)}
+            onDelete={handleDeleteLog}
+            onPhotoClick={handlePhotoClick}
+            isSelectionMode={bulk.isSelectionMode}
+            isSelected={bulk.isSelected}
+            onToggleSelect={bulk.toggle}
+            onLongPress={handleLongPress}
+          />
         ) : (
           <div className="space-y-3">
             {visibleDays.map((day) => {
@@ -604,6 +607,7 @@ export function TravelLog() {
                   onToggleSelect={bulk.toggle}
                   onLongPress={handleLongPress}
                   viewMode={viewMode}
+                  distanceKm={dayDistances.get(day) ? dayDistances.get(day)! / 1000 : undefined}
                 />
               )
             })}

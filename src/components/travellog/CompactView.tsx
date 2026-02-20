@@ -8,17 +8,13 @@ import type { ExpenseCategory, TravelLog } from '@/types'
 import { CURRENCY_SYMBOLS, EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import { clsx } from 'clsx'
 import { Camera, Edit3, FileText, Receipt, Trash2 } from 'lucide-react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback } from 'react'
 
 interface CompactViewProps {
   logs: TravelLog[]
   onEdit: (log: TravelLog) => void
   onDelete: (id: number) => void
   onPhotoClick: (photo: string) => void
-  isSelectionMode: boolean
-  isSelected: (id: number) => boolean
-  onToggleSelect: (id: number) => void
-  onLongPress: (id: number) => void
 }
 
 const typeIcons = {
@@ -63,90 +59,33 @@ function CompactRow({
   onEdit,
   onDelete,
   onPhotoClick,
-  isSelectionMode,
-  isSelected,
-  onToggleSelect,
-  onLongPress,
 }: {
   log: TravelLog
   onEdit: (log: TravelLog) => void
   onDelete: (id: number) => void
   onPhotoClick: (photo: string) => void
-  isSelectionMode: boolean
-  isSelected: (id: number) => boolean
-  onToggleSelect: (id: number) => void
-  onLongPress: (id: number) => void
 }) {
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { icon: Icon, color } = typeIcons[log.type]
   const time = formatTime(log.timestamp)
   const summary = getSummaryText(log)
   const amount = getAmountText(log)
-  const selected = log.id ? isSelected(log.id) : false
-
-  const handleTouchStart = useCallback(() => {
-    if (!log.id) return
-    longPressTimer.current = setTimeout(() => onLongPress(log.id!), 500)
-  }, [onLongPress, log.id])
-
-  const handleTouchEnd = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) clearTimeout(longPressTimer.current)
-    }
-  }, [])
 
   const handleClick = useCallback(() => {
-    if (isSelectionMode && log.id) {
-      onToggleSelect(log.id)
-    } else if (log.type === 'photo' && log.photo) {
+    if (log.type === 'photo' && log.photo) {
       onPhotoClick(log.photo)
     }
-  }, [isSelectionMode, log, onToggleSelect, onPhotoClick])
+  }, [log, onPhotoClick])
 
   return (
     <div
-      role={isSelectionMode ? 'button' : undefined}
-      tabIndex={isSelectionMode ? 0 : undefined}
       className={clsx(
         'group flex items-center gap-2 py-2 px-2 rounded-lg transition-colors',
         'hover:bg-zinc-50 dark:hover:bg-zinc-800/50',
-        isSelectionMode && 'cursor-pointer',
-        selected && 'bg-primary-50 dark:bg-primary-900/20',
       )}
       onClick={handleClick}
-      onKeyDown={
-        isSelectionMode
-          ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') handleClick()
-            }
-          : undefined
-      }
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
     >
-      {/* Selection or type icon */}
-      {isSelectionMode ? (
-        <div
-          className={clsx(
-            'size-6 rounded-full flex items-center justify-center border-2 flex-shrink-0',
-            selected
-              ? 'bg-primary-500 border-primary-500 text-white'
-              : 'border-zinc-300 dark:border-zinc-600',
-          )}
-        >
-          {selected && <span className="text-[10px] font-bold">✓</span>}
-        </div>
-      ) : (
-        <Icon className={clsx('size-4 flex-shrink-0', color)} />
-      )}
+      {/* Type icon */}
+      <Icon className={clsx('size-4 flex-shrink-0', color)} />
 
       {/* Time */}
       <span className="text-xs text-zinc-400 dark:text-zinc-500 flex-shrink-0 w-11 tabular-nums">
@@ -164,7 +103,7 @@ function CompactRow({
       )}
 
       {/* Action buttons (hover reveal) */}
-      {!isSelectionMode && (
+      {(
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <IconButton
             plain
@@ -201,10 +140,6 @@ export function CompactView({
   onEdit,
   onDelete,
   onPhotoClick,
-  isSelectionMode,
-  isSelected,
-  onToggleSelect,
-  onLongPress,
 }: CompactViewProps) {
   return (
     <div className="divide-y divide-[var(--border)]">
@@ -215,10 +150,6 @@ export function CompactView({
           onEdit={onEdit}
           onDelete={onDelete}
           onPhotoClick={onPhotoClick}
-          isSelectionMode={isSelectionMode}
-          isSelected={isSelected}
-          onToggleSelect={onToggleSelect}
-          onLongPress={onLongPress}
         />
       ))}
     </div>

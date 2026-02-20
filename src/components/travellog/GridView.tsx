@@ -8,16 +8,12 @@ import type { ExpenseCategory, TravelLog } from '@/types'
 import { CURRENCY_SYMBOLS, EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import { clsx } from 'clsx'
 import { Clock, FileText, MapPin, Receipt } from 'lucide-react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback } from 'react'
 
 interface GridViewProps {
   logs: TravelLog[]
   onPhotoClick: (photo: string) => void
   onEdit: (log: TravelLog) => void
-  isSelectionMode: boolean
-  isSelected: (id: number) => boolean
-  onToggleSelect: (id: number) => void
-  onLongPress: (id: number) => void
 }
 
 const categoryColors: Record<
@@ -48,51 +44,20 @@ function GridCell({
   log,
   onPhotoClick,
   onEdit,
-  isSelectionMode,
-  isSelected,
-  onToggleSelect,
-  onLongPress,
 }: {
   log: TravelLog
   onPhotoClick: (photo: string) => void
   onEdit: (log: TravelLog) => void
-  isSelectionMode: boolean
-  isSelected: (id: number) => boolean
-  onToggleSelect: (id: number) => void
-  onLongPress: (id: number) => void
 }) {
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const time = formatTime(log.timestamp)
 
-  const handleTouchStart = useCallback(() => {
-    if (!log.id) return
-    longPressTimer.current = setTimeout(() => onLongPress(log.id!), 500)
-  }, [onLongPress, log.id])
-
-  const handleTouchEnd = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) clearTimeout(longPressTimer.current)
-    }
-  }, [])
-
   const handleClick = useCallback(() => {
-    if (isSelectionMode && log.id) {
-      onToggleSelect(log.id)
-    } else if (log.type === 'photo' && log.photo) {
+    if (log.type === 'photo' && log.photo) {
       onPhotoClick(log.photo)
     } else {
       onEdit(log)
     }
-  }, [isSelectionMode, log, onToggleSelect, onPhotoClick, onEdit])
-
-  const selected = log.id ? isSelected(log.id) : false
+  }, [log, onPhotoClick, onEdit])
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: complex cell content requires div
@@ -102,29 +67,12 @@ function GridCell({
       className={clsx(
         'relative rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--card)]',
         'cursor-pointer active:scale-[0.98] transition-transform',
-        selected && 'ring-2 ring-primary-500',
       )}
       onClick={handleClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') handleClick()
       }}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
     >
-      {/* Selection checkbox */}
-      {isSelectionMode && (
-        <div
-          className={clsx(
-            'absolute top-1.5 left-1.5 z-10 size-5 rounded-full flex items-center justify-center border-2',
-            selected
-              ? 'bg-primary-500 border-primary-500 text-white'
-              : 'border-white/80 bg-black/20',
-          )}
-        >
-          {selected && <span className="text-[10px] font-bold">✓</span>}
-        </div>
-      )}
 
       {/* Photo type */}
       {log.type === 'photo' && (log.photo || log.thumbnailPhoto) ? (
@@ -195,10 +143,6 @@ export function GridView({
   logs,
   onPhotoClick,
   onEdit,
-  isSelectionMode,
-  isSelected,
-  onToggleSelect,
-  onLongPress,
 }: GridViewProps) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -208,10 +152,6 @@ export function GridView({
           log={log}
           onPhotoClick={onPhotoClick}
           onEdit={onEdit}
-          isSelectionMode={isSelectionMode}
-          isSelected={isSelected}
-          onToggleSelect={onToggleSelect}
-          onLongPress={onLongPress}
         />
       ))}
     </div>

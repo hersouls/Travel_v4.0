@@ -120,3 +120,32 @@ export const MARKER_COLORS = {
 export function getMarkerColor(type: string): string {
   return MARKER_COLORS[type as keyof typeof MARKER_COLORS] || MARKER_COLORS.other
 }
+
+// TravelLog marker colors by log type
+export const LOG_MARKER_COLORS = {
+  photo: '#8b5cf6', // violet
+  receipt: '#f97316', // orange
+  memo: '#3b82f6', // blue
+} as const
+
+// Day track line palette (cyclic)
+export const DAY_TRACK_COLORS = [
+  '#3b82f6', // blue
+  '#22c55e', // green
+  '#f97316', // orange
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#14b8a6', // teal
+  '#eab308', // yellow
+  '#ef4444', // red
+] as const
+
+/** Get track line color for a given day */
+export function getDayTrackColor(day: number): string {
+  return DAY_TRACK_COLORS[(day - 1) % DAY_TRACK_COLORS.length]
+}
+
+/** Get log marker color for a travel log type */
+export function getLogMarkerColor(type: string): string {
+  return LOG_MARKER_COLORS[type as keyof typeof LOG_MARKER_COLORS] || LOG_MARKER_COLORS.memo
+}

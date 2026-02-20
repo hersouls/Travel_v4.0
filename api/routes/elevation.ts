@@ -12,8 +12,9 @@ interface ElevationPoint {
 }
 
 interface ElevationRequestBody {
-  encodedPolyline: string
+  encodedPolyline?: string
   samples?: number
+  locations?: Array<{ lat: number; lng: number }>
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -36,21 +37,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'API key not configured' })
   }
 
-  const { encodedPolyline, samples = 100 } = req.body as ElevationRequestBody
+  const { encodedPolyline, samples = 100, locations } = req.body as ElevationRequestBody
 
-  if (!encodedPolyline || typeof encodedPolyline !== 'string') {
-    return res.status(400).json({ error: 'encodedPolyline parameter is required' })
+  // Support both encodedPolyline (path sampling) and locations (individual points)
+  let apiUrl: string
+
+  if (locations && Array.isArray(locations) && locations.length > 0) {
+    // Individual point elevation lookup
+    const locationStr = locations
+      .slice(0, 50) // limit to 50 points
+      .map((loc) => `${loc.lat},${loc.lng}`)
+      .join('|')
+    apiUrl = `https://maps.googleapis.com/maps/api/elevation/json?locations=${encodeURIComponent(locationStr)}&key=${apiKey}`
+  } else if (encodedPolyline && typeof encodedPolyline === 'string') {
+    // Path sampling elevation lookup
+    const sampleCount = Math.min(Math.max(parseInt(String(samples), 10) || 100, 2), 512)
+    apiUrl = `https://maps.googleapis.com/maps/api/elevation/json?path=enc:${encodeURIComponent(encodedPolyline)}&samples=${sampleCount}&key=${apiKey}`
+  } else {
+    return res.status(400).json({ error: 'Either encodedPolyline or locations parameter is required' })
   }
 
-  const sampleCount = Math.min(Math.max(parseInt(String(samples), 10) || 100, 2), 512)
-
   try {
-    const response = await fetch(
-      `https://maps.googleapis.com/maps/api/elevation/json?path=enc:${encodeURIComponent(encodedPolyline)}&samples=${sampleCount}&key=${apiKey}`,
-      {
-        method: 'GET',
-      }
-    )
+    const response = await fetch(apiUrl, { method: 'GET' })
 
     if (!response.ok) {
       const errorText = await response.text()
@@ -77,7 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }))
 
     res.setHeader('Cache-Control', 'public, max-age=604800')
-    res.status(200).json({ elevations })
+    res.status(200).json({ elevations, results: data.results })
   } catch (err) {
     console.error('[Elevation] Error:', err)
     res.status(500).json({ error: 'Elevation proxy error' })

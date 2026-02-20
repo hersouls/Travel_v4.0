@@ -6,6 +6,7 @@
 
 import type { ExpenseCategory, TravelLog, TravelLogType } from '@/types'
 import { useMemo } from 'react'
+import { calculateTripDistance, countUniqueLocations } from '@/utils/distanceCalculation'
 
 export type SortOrder = 'newest' | 'oldest'
 
@@ -35,6 +36,9 @@ interface UseTravelLogViewReturn {
   daySummaries: Record<number, DaySummary>
   hasMoreDays: boolean
   totalFilteredCount: number
+  dayDistances: Map<number, number>
+  totalTripDistance: number
+  uniqueLocationCount: number
 }
 
 export function useTravelLogView({
@@ -153,6 +157,17 @@ export function useTravelLogView({
     return count
   }, [filteredLogsByDay])
 
+  // Distance calculations
+  const { dayDistances, totalTripDistance } = useMemo(() => {
+    const result = calculateTripDistance(logs)
+    return {
+      dayDistances: result.dayDistances,
+      totalTripDistance: result.totalMeters,
+    }
+  }, [logs])
+
+  const uniqueLocationCount = useMemo(() => countUniqueLocations(logs), [logs])
+
   return {
     sortedDays,
     visibleDays,
@@ -162,5 +177,8 @@ export function useTravelLogView({
     daySummaries,
     hasMoreDays,
     totalFilteredCount,
+    dayDistances,
+    totalTripDistance,
+    uniqueLocationCount,
   }
 }

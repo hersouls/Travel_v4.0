@@ -3,13 +3,16 @@
 // Renders a single travel log entry in timeline
 // ============================================
 
-import { useState, useRef, useCallback, useEffect } from 'react'
-import { Camera, Receipt, FileText, MapPin, Clock, Trash2, Edit3, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { Camera, Receipt, FileText, MapPin, Clock, Trash2, Edit3, ChevronDown, ChevronUp, Navigation, Mountain, History } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
 import { Badge } from '@/components/ui/Badge'
 import { IconButton } from '@/components/ui/Button'
 import { EXPENSE_CATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
+import { ElevationBadge } from '@/components/travellog/ElevationBadge'
+import { NearbyRecommendation } from '@/components/travellog/NearbyRecommendation'
+import { useVisitHistory } from '@/hooks/useVisitHistory'
 
 interface TimelineCardProps {
   log: TravelLog
@@ -17,11 +20,6 @@ interface TimelineCardProps {
   onDelete?: (id: number) => void
   onPhotoClick?: (photo: string) => void
   compact?: boolean
-  // Bulk selection
-  isSelectionMode?: boolean
-  isSelected?: boolean
-  onToggleSelect?: (id: number) => void
-  onLongPress?: (id: number) => void
 }
 
 const typeConfig = {
@@ -58,12 +56,10 @@ function formatCurrency(amount: number, currency: string): string {
 
 export function TimelineCard({
   log, onEdit, onDelete, onPhotoClick, compact = false,
-  isSelectionMode, isSelected, onToggleSelect, onLongPress,
 }: TimelineCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [exifExpanded, setExifExpanded] = useState(false)
   const config = typeConfig[log.type]
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // hasExifDetails: camera info only (GPS moved to header)
   const hasExifDetails = Boolean(
@@ -72,58 +68,15 @@ export function TimelineCard({
   const hasLocation = Boolean(log.latitude && log.longitude)
   const Icon = config.icon
   const time = formatTime(log.timestamp)
-
-  // Long press handlers for bulk selection
-  const handleTouchStart = useCallback(() => {
-    if (!onLongPress || !log.id) return
-    longPressTimer.current = setTimeout(() => {
-      onLongPress(log.id!)
-    }, 500)
-  }, [onLongPress, log.id])
-
-  const handleTouchEnd = useCallback(() => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current)
-      longPressTimer.current = null
-    }
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) clearTimeout(longPressTimer.current)
-    }
-  }, [])
-
-  const handleCardClick = useCallback(() => {
-    if (isSelectionMode && onToggleSelect && log.id) {
-      onToggleSelect(log.id)
-    }
-  }, [isSelectionMode, onToggleSelect, log.id])
+  const visitHistory = useVisitHistory(log.latitude, log.longitude, log.tripId)
 
   return (
-    <div
-      className={clsx('flex gap-3 group', isSelectionMode && 'cursor-pointer')}
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={handleTouchEnd}
-      onClick={isSelectionMode ? handleCardClick : undefined}
-    >
+    <div className="flex gap-3 group">
       {/* Timeline connector */}
       <div className="flex flex-col items-center flex-shrink-0">
-        {isSelectionMode ? (
-          <div className={clsx(
-            'size-8 rounded-full flex items-center justify-center border-2 transition-colors',
-            isSelected
-              ? 'bg-primary-500 border-primary-500 text-white'
-              : 'border-zinc-300 dark:border-zinc-600 bg-[var(--card)]'
-          )}>
-            {isSelected && <span className="text-xs font-bold">✓</span>}
-          </div>
-        ) : (
-          <div className={clsx('size-8 rounded-full flex items-center justify-center text-white', config.bg)}>
-            <Icon className="size-4" />
-          </div>
-        )}
+        <div className={clsx('size-8 rounded-full flex items-center justify-center text-white', config.bg)}>
+          <Icon className="size-4" />
+        </div>
         <div className="w-0.5 flex-1 bg-[var(--border)] mt-1" />
       </div>
 
@@ -131,8 +84,7 @@ export function TimelineCard({
       <div className={clsx(
         'flex-1 mb-4 rounded-xl border border-[var(--border)] bg-[var(--card)]',
         'shadow-sm hover:shadow-md transition-shadow',
-        compact && 'mb-2',
-        isSelected && 'ring-2 ring-primary-500 border-primary-500'
+        compact && 'mb-2'
       )}>
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
@@ -160,8 +112,35 @@ export function TimelineCard({
               <span className="truncate">{log.placeName || log.address}</span>
             </span>
           ) : null}
+          {/* Elevation badge */}
+          {hasLocation && (
+            <ElevationBadge latitude={log.latitude!} longitude={log.longitude!} />
+          )}
+          {/* Navigation deep link */}
+          {hasLocation && !compact && (
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${log.latitude},${log.longitude}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-shrink-0 p-1 text-zinc-400 hover:text-primary-500 transition-colors"
+              onClick={(e) => e.stopPropagation()}
+              title="길찾기"
+            >
+              <Navigation className="size-3" />
+            </a>
+          )}
+          {/* Visit history badge */}
+          {visitHistory.visitCount > 1 && (
+            <span
+              className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
+              title={visitHistory.previousVisits.map((v) => v.tripTitle).join(', ')}
+            >
+              <History className="size-2.5" />
+              {visitHistory.visitCount}번째
+            </span>
+          )}
           <div className="flex-1" />
-          {!compact && !isSelectionMode && (
+          {!compact && (
             <div className="flex items-center gap-0.5 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
               {onEdit && (
                 <IconButton plain color="secondary" onClick={() => onEdit(log)} aria-label="수정">
@@ -290,6 +269,11 @@ export function TimelineCard({
                 </div>
               )}
             </div>
+          )}
+
+          {/* Nearby recommendations — shown for logs with coordinates */}
+          {hasLocation && !compact && (
+            <NearbyRecommendation latitude={log.latitude!} longitude={log.longitude!} />
           )}
         </div>
       </div>

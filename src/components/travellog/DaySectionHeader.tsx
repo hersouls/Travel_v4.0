@@ -5,7 +5,7 @@
 
 import type { DaySummary } from '@/hooks/useTravelLogView'
 import { clsx } from 'clsx'
-import { Camera, ChevronDown, ChevronUp, FileText, Receipt } from 'lucide-react'
+import { Camera, ChevronDown, ChevronUp, FileText, MapPin, Receipt } from 'lucide-react'
 
 interface DaySectionHeaderProps {
   day: number
@@ -14,6 +14,7 @@ interface DaySectionHeaderProps {
   onToggle: () => void
   summary?: DaySummary
   expenses?: Record<string, number>
+  distanceKm?: number
 }
 
 function formatCurrencyShort(amount: number, currency: string): string {
@@ -32,6 +33,7 @@ export function DaySectionHeader({
   onToggle,
   summary,
   expenses,
+  distanceKm,
 }: DaySectionHeaderProps) {
   const dateStr = date.toLocaleDateString('ko-KR', {
     month: 'long',
@@ -82,6 +84,12 @@ export function DaySectionHeader({
                 <span className="flex items-center gap-0.5">
                   <FileText className="size-3 text-success-500" />
                   {summary.memoCount}
+                </span>
+              )}
+              {distanceKm != null && distanceKm > 0.01 && (
+                <span className="flex items-center gap-0.5">
+                  <MapPin className="size-3 text-zinc-400" />
+                  {distanceKm.toFixed(1)}km
                 </span>
               )}
             </div>
