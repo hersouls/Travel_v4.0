@@ -545,27 +545,28 @@ class SyncManager {
         this.notifySyncStatus({ status: 'syncing', step: '여행 동기화 중...' })
       }
 
-      try { await this.syncTripsInitial() } catch (e) { console.error('[Sync] Trips sync failed:', e) }
+      // Phase 1: Independent entities in parallel (Trips + Places + Settings)
+      this.notifySyncStatus({ status: 'syncing', step: '기본 데이터 동기화 중...' })
+      const phase1 = await Promise.allSettled([
+        this.syncTripsInitial(),
+        this.syncPlacesInitial(),
+        this.syncSettingsInitial(),
+      ])
+      for (const r of phase1) {
+        if (r.status === 'rejected') console.error('[Sync] Phase 1 partial failure:', r.reason)
+      }
       if (this.syncGeneration !== generation) return
 
-      this.notifySyncStatus({ status: 'syncing', step: '일정 동기화 중...' })
-      try { await this.syncPlansInitial() } catch (e) { console.error('[Sync] Plans sync failed:', e) }
-      if (this.syncGeneration !== generation) return
-
-      this.notifySyncStatus({ status: 'syncing', step: '장소 동기화 중...' })
-      try { await this.syncPlacesInitial() } catch (e) { console.error('[Sync] Places sync failed:', e) }
-      if (this.syncGeneration !== generation) return
-
-      this.notifySyncStatus({ status: 'syncing', step: '설정 동기화 중...' })
-      try { await this.syncSettingsInitial() } catch (e) { console.error('[Sync] Settings sync failed:', e) }
-      if (this.syncGeneration !== generation) return
-
-      this.notifySyncStatus({ status: 'syncing', step: '경로 동기화 중...' })
-      try { await this.syncRouteSegmentsInitial() } catch (e) { console.error('[Sync] RouteSegments sync failed:', e) }
-      if (this.syncGeneration !== generation) return
-
-      this.notifySyncStatus({ status: 'syncing', step: '여행 기록 동기화 중...' })
-      try { await this.syncTravelLogsInitial() } catch (e) { console.error('[Sync] TravelLogs sync failed:', e) }
+      // Phase 2: Dependent entities in parallel (Plans + RouteSegments + TravelLogs need tripFirebaseId)
+      this.notifySyncStatus({ status: 'syncing', step: '일정 및 기록 동기화 중...' })
+      const phase2 = await Promise.allSettled([
+        this.syncPlansInitial(),
+        this.syncRouteSegmentsInitial(),
+        this.syncTravelLogsInitial(),
+      ])
+      for (const r of phase2) {
+        if (r.status === 'rejected') console.error('[Sync] Phase 2 partial failure:', r.reason)
+      }
       if (this.syncGeneration !== generation) return
 
       // Image sync (background, non-blocking for metadata)
@@ -1678,11 +1679,12 @@ class SyncManager {
     const tripsRef = collection(firestore, 'users', this.userId, 'trips')
 
     if (trip.firebaseId) {
-      this.markPushed(`trip:${trip.firebaseId}`)
-      await setDoc(doc(tripsRef, trip.firebaseId), tripToFirestore(trip))
+      // Existing doc → batch queue for efficiency
+      this.queueWrite(doc(tripsRef, trip.firebaseId), tripToFirestore(trip), `trip:${trip.firebaseId}`)
       return trip.firebaseId
     }
 
+    // New doc → immediate write (caller needs the firebaseId)
     const newDocRef = doc(tripsRef)
     this.markPushed(`trip:${newDocRef.id}`)
     await setDoc(newDocRef, tripToFirestore(trip))
@@ -1702,11 +1704,12 @@ class SyncManager {
     const planWithTripFbId = { ...plan, tripFirebaseId: tripFbId }
 
     if (plan.firebaseId) {
-      this.markPushed(`plan:${plan.firebaseId}`)
-      await setDoc(doc(plansRef, plan.firebaseId), planToFirestore(planWithTripFbId))
+      // Existing doc → batch queue for efficiency
+      this.queueWrite(doc(plansRef, plan.firebaseId), planToFirestore(planWithTripFbId), `plan:${plan.firebaseId}`)
       return plan.firebaseId
     }
 
+    // New doc → immediate write (caller needs the firebaseId)
     const newDocRef = doc(plansRef)
     this.markPushed(`plan:${newDocRef.id}`)
     await setDoc(newDocRef, planToFirestore(planWithTripFbId))
@@ -1719,11 +1722,12 @@ class SyncManager {
     const placesRef = collection(firestore, 'users', this.userId, 'places')
 
     if (place.firebaseId) {
-      this.markPushed(`place:${place.firebaseId}`)
-      await setDoc(doc(placesRef, place.firebaseId), placeToFirestore(place))
+      // Existing doc → batch queue for efficiency
+      this.queueWrite(doc(placesRef, place.firebaseId), placeToFirestore(place), `place:${place.firebaseId}`)
       return place.firebaseId
     }
 
+    // New doc → immediate write (caller needs the firebaseId)
     const newDocRef = doc(placesRef)
     this.markPushed(`place:${newDocRef.id}`)
     await setDoc(newDocRef, placeToFirestore(place))
@@ -1734,8 +1738,8 @@ class SyncManager {
     if (!this.userId) return
     const firestore = getFirebaseDb()
     const settingsDocRef = doc(firestore, 'users', this.userId, 'settings', 'main')
-    this.markPushed('settings')
-    await setDoc(settingsDocRef, settingsToFirestore(settings))
+    // Settings update → batch queue for efficiency
+    this.queueWrite(settingsDocRef, settingsToFirestore(settings), 'settings')
   }
 
   async deleteRemoteTrip(firebaseId: string): Promise<void> {
@@ -1861,11 +1865,12 @@ class SyncManager {
     const segmentsRef = collection(firestore, 'users', this.userId, 'routeSegments')
 
     if (segment.firebaseId) {
-      this.markPushed(`routeSegment:${segment.firebaseId}`)
-      await setDoc(doc(segmentsRef, segment.firebaseId), routeSegmentToFirestore(segment))
+      // Existing doc → batch queue for efficiency
+      this.queueWrite(doc(segmentsRef, segment.firebaseId), routeSegmentToFirestore(segment), `routeSegment:${segment.firebaseId}`)
       return segment.firebaseId
     }
 
+    // New doc → immediate write (caller needs the firebaseId)
     const newDocRef = doc(segmentsRef)
     this.markPushed(`routeSegment:${newDocRef.id}`)
     await setDoc(newDocRef, routeSegmentToFirestore(segment))
@@ -1892,11 +1897,12 @@ class SyncManager {
     const logWithTripFbId = { ...log, tripFirebaseId: tripFbId }
 
     if (log.firebaseId) {
-      this.markPushed(`travelLog:${log.firebaseId}`)
-      await setDoc(doc(logsRef, log.firebaseId), travelLogToFirestore(logWithTripFbId))
+      // Existing doc → batch queue for efficiency
+      this.queueWrite(doc(logsRef, log.firebaseId), travelLogToFirestore(logWithTripFbId), `travelLog:${log.firebaseId}`)
       return log.firebaseId
     }
 
+    // New doc → immediate write (caller needs the firebaseId)
     const newDocRef = doc(logsRef)
     this.markPushed(`travelLog:${newDocRef.id}`)
     await setDoc(newDocRef, travelLogToFirestore(logWithTripFbId))
