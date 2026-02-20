@@ -114,8 +114,13 @@ export const usePlaceStore = create<PlaceState>()(
             }
           }
 
-          const places = await db.getAllPlaces()
-          set({ places, isLoading: false })
+          // Partial update: prepend new place instead of full reload
+          const newPlace = await db.getPlace(id)
+          if (newPlace) {
+            set(state => ({ places: [newPlace, ...state.places], isLoading: false }))
+          } else {
+            set({ isLoading: false })
+          }
           sendBroadcast('PLACE_CREATED', { id })
           return id
         } catch (error) {
@@ -154,8 +159,14 @@ export const usePlaceStore = create<PlaceState>()(
             }
           }
 
-          const places = await db.getAllPlaces()
-          set({ places, isLoading: false })
+          // Partial update: replace single place in-place
+          const updatedPlace = await db.getPlace(id)
+          set(state => ({
+            places: updatedPlace
+              ? state.places.map(p => p.id === id ? updatedPlace : p)
+              : state.places.filter(p => p.id !== id),
+            isLoading: false,
+          }))
           sendBroadcast('PLACE_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message, isLoading: false })
@@ -179,8 +190,11 @@ export const usePlaceStore = create<PlaceState>()(
           // Immediately delete from local DB
           await db.deletePlace(id)
 
-          const places = await db.getAllPlaces()
-          set({ places, isLoading: false })
+          // Partial update: filter out deleted place
+          set(state => ({
+            places: state.places.filter(p => p.id !== id),
+            isLoading: false,
+          }))
           sendBroadcast('PLACE_DELETED', { id })
 
           // Deferred Firestore deletion with undo
@@ -205,9 +219,12 @@ export const usePlaceStore = create<PlaceState>()(
                 undone = true
                 clearTimeout(timer)
                 if (firebaseId) syncManager.removePendingDelete(firebaseId)
-                await db.addPlace({ ...placeSnapshot, id: undefined } as Omit<Place, 'id'>)
-                const restoredPlaces = await db.getAllPlaces()
-                set({ places: restoredPlaces })
+                const newId = await db.addPlace({ ...placeSnapshot, id: undefined } as Omit<Place, 'id'>)
+                // Partial update: re-insert restored place
+                const restoredPlace = await db.getPlace(newId)
+                if (restoredPlace) {
+                  set(state => ({ places: [restoredPlace, ...state.places] }))
+                }
                 sendBroadcast('PLACE_CREATED', {})
                 useUIStore.getState().showToast({
                   type: 'success',
@@ -233,8 +250,12 @@ export const usePlaceStore = create<PlaceState>()(
               syncManager.deleteRemotePlace(place.firebaseId).catch(console.error)
             }
           }
-          const places = await db.getAllPlaces()
-          set({ places, isLoading: false })
+          // Partial update: filter out deleted places
+          const deletedSet = new Set(ids)
+          set(state => ({
+            places: state.places.filter(p => !deletedSet.has(p.id!)),
+            isLoading: false,
+          }))
           sendBroadcast('PLACE_DELETED', { ids })
         } catch (error) {
           set({ error: (error as Error).message, isLoading: false })
@@ -251,8 +272,10 @@ export const usePlaceStore = create<PlaceState>()(
             if (updatedPlace) syncManager.uploadPlace(updatedPlace).catch(console.error)
           }
 
-          const places = await db.getAllPlaces()
-          set({ places })
+          // Partial update: toggle in-place
+          set(state => ({
+            places: state.places.map(p => p.id === id ? { ...p, isFavorite: !p.isFavorite } : p),
+          }))
           sendBroadcast('PLACE_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message })
@@ -269,8 +292,10 @@ export const usePlaceStore = create<PlaceState>()(
             if (updatedPlace) syncManager.uploadPlace(updatedPlace).catch(console.error)
           }
 
-          const places = await db.getAllPlaces()
-          set({ places })
+          // Partial update: increment in-place
+          set(state => ({
+            places: state.places.map(p => p.id === id ? { ...p, usageCount: (p.usageCount || 0) + 1 } : p),
+          }))
           sendBroadcast('PLACE_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message })

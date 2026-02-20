@@ -95,9 +95,15 @@ export const useTravelLogStore = create<TravelLogState>()(
             }
           }
 
-          // Reload logs
-          const logs = await db.getTravelLogsForTrip(logData.tripId)
-          set({ logs })
+          // Partial update: append new log and re-sort instead of full reload
+          const newLog = await db.getTravelLog(id)
+          if (newLog) {
+            set(state => {
+              const updated = [...state.logs, newLog]
+              updated.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+              return { logs: updated }
+            })
+          }
           sendBroadcast('LOG_CREATED', { id, tripId: logData.tripId })
           return id
         } catch (error) {
@@ -133,8 +139,10 @@ export const useTravelLogStore = create<TravelLogState>()(
               }
             }
 
-            const logs = await db.getTravelLogsForTrip(log.tripId)
-            set({ logs })
+            // Partial update: replace single log in-place
+            set(state => ({
+              logs: state.logs.map(l => l.id === id ? log : l),
+            }))
             sendBroadcast('LOG_UPDATED', { id, tripId: log.tripId })
           }
         } catch (error) {
@@ -157,8 +165,8 @@ export const useTravelLogStore = create<TravelLogState>()(
           // Delete locally
           await db.deleteTravelLog(id)
 
-          const logs = await db.getTravelLogsForTrip(tripId)
-          set({ logs })
+          // Partial update: filter out deleted log
+          set(state => ({ logs: state.logs.filter(l => l.id !== id) }))
           sendBroadcast('LOG_DELETED', { id, tripId })
 
           // Deferred remote delete with undo
@@ -189,8 +197,12 @@ export const useTravelLogStore = create<TravelLogState>()(
                 // Restore from snapshot
                 const { id: _id, ...rest } = snapshot
                 await db.addTravelLog(rest as Omit<TravelLog, 'id'>)
-                const restoredLogs = await db.getTravelLogsForTrip(tripId)
-                set({ logs: restoredLogs })
+                // Partial update: re-insert restored log and re-sort
+                set(state => {
+                  const updated = [...state.logs, snapshot as TravelLog]
+                  updated.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                  return { logs: updated }
+                })
                 useUIStore.getState().showToast({
                   type: 'success',
                   title: '기록이 복원되었습니다',

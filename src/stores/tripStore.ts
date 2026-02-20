@@ -140,8 +140,13 @@ export const useTripStore = create<TripState>()(
             }
           }
 
-          const trips = await db.getAllTrips()
-          set({ trips, isLoading: false })
+          // Partial update: prepend new trip to list instead of full reload
+          const newTrip = await db.getTrip(id)
+          if (newTrip) {
+            set(state => ({ trips: [newTrip, ...state.trips], isLoading: false }))
+          } else {
+            set({ isLoading: false })
+          }
           sendBroadcast('TRIP_CREATED', { id })
           return id
         } catch (error) {
@@ -191,12 +196,15 @@ export const useTripStore = create<TripState>()(
             }
           }
 
-          const [trips, currentTrip] = await Promise.all([db.getAllTrips(), db.getTrip(id)])
-          set({
-            trips,
-            currentTrip: get().currentTrip?.id === id ? currentTrip || null : get().currentTrip,
+          // Partial update: replace single trip in list instead of full reload
+          const updatedTrip = await db.getTrip(id)
+          set(state => ({
+            trips: updatedTrip
+              ? state.trips.map(t => t.id === id ? updatedTrip : t)
+              : state.trips.filter(t => t.id !== id),
+            currentTrip: state.currentTrip?.id === id ? updatedTrip || null : state.currentTrip,
             isLoading: false,
-          })
+          }))
           sendBroadcast('TRIP_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message, isLoading: false })
@@ -226,13 +234,13 @@ export const useTripStore = create<TripState>()(
           // Immediately delete from local DB
           await db.deleteTrip(id)
 
-          const trips = await db.getAllTrips()
-          set({
-            trips,
-            currentTrip: get().currentTrip?.id === id ? null : get().currentTrip,
-            currentPlans: get().currentTrip?.id === id ? [] : get().currentPlans,
+          // Partial update: remove from list instead of full reload
+          set(state => ({
+            trips: state.trips.filter(t => t.id !== id),
+            currentTrip: state.currentTrip?.id === id ? null : state.currentTrip,
+            currentPlans: state.currentTrip?.id === id ? [] : state.currentPlans,
             isLoading: false,
-          })
+          }))
           sendBroadcast('TRIP_DELETED', { id })
 
           // Deferred Firestore deletion with undo
@@ -274,8 +282,11 @@ export const useTripStore = create<TripState>()(
                 for (const plan of plansSnapshot) {
                   await db.addPlan({ ...plan, tripId: restoredId, id: undefined } as Omit<Plan, 'id'>)
                 }
-                const restoredTrips = await db.getAllTrips()
-                set({ trips: restoredTrips })
+                // Partial update: prepend restored trip
+                const restoredTrip = await db.getTrip(restoredId)
+                if (restoredTrip) {
+                  set(state => ({ trips: [restoredTrip, ...state.trips] }))
+                }
                 sendBroadcast('TRIP_CREATED', { id: restoredId })
                 useUIStore.getState().showToast({
                   type: 'success',
@@ -300,15 +311,14 @@ export const useTripStore = create<TripState>()(
             if (updatedTrip) syncManager.uploadTrip(updatedTrip).catch(console.error)
           }
 
-          const trips = await db.getAllTrips()
-          const currentTrip = get().currentTrip
-          set({
-            trips,
+          // Partial update: toggle in-place instead of full reload
+          set(state => ({
+            trips: state.trips.map(t => t.id === id ? { ...t, isFavorite: !t.isFavorite } : t),
             currentTrip:
-              currentTrip?.id === id
-                ? { ...currentTrip, isFavorite: !currentTrip.isFavorite }
-                : currentTrip,
-          })
+              state.currentTrip?.id === id
+                ? { ...state.currentTrip, isFavorite: !state.currentTrip.isFavorite }
+                : state.currentTrip,
+          }))
           sendBroadcast('TRIP_UPDATED', { id })
         } catch (error) {
           set({ error: (error as Error).message })
@@ -357,11 +367,14 @@ export const useTripStore = create<TripState>()(
             }
           }
 
-          const [plans, trips] = await Promise.all([
-            db.getPlansForTrip(planData.tripId),
-            db.getAllTrips(),
-          ])
-          set({ currentPlans: plans, trips, isLoading: false })
+          // Reload plans for current trip; update plansCount in-place
+          const plans = await db.getPlansForTrip(planData.tripId)
+          set(state => ({
+            currentPlans: plans,
+            trips: state.trips.map(t => t.id === planData.tripId ? { ...t, plansCount: plans.length } : t),
+            currentTrip: state.currentTrip?.id === planData.tripId ? { ...state.currentTrip, plansCount: plans.length } : state.currentTrip,
+            isLoading: false,
+          }))
           sendBroadcast('PLAN_CREATED', { id, tripId: planData.tripId })
           return id
         } catch (error) {
@@ -438,11 +451,14 @@ export const useTripStore = create<TripState>()(
           await db.deletePlan(id)
           await db.deleteRouteSegmentsForPlan(id)
 
-          const [plans, trips] = await Promise.all([
-            db.getPlansForTrip(tripId),
-            db.getAllTrips(),
-          ])
-          set({ currentPlans: plans, trips, isLoading: false })
+          // Reload plans for current trip; update plansCount in-place
+          const plans = await db.getPlansForTrip(tripId)
+          set(state => ({
+            currentPlans: plans,
+            trips: state.trips.map(t => t.id === tripId ? { ...t, plansCount: plans.length } : t),
+            currentTrip: state.currentTrip?.id === tripId ? { ...state.currentTrip, plansCount: plans.length } : state.currentTrip,
+            isLoading: false,
+          }))
           sendBroadcast('PLAN_DELETED', { id, tripId })
 
           // Deferred Firestore deletion with undo
@@ -485,8 +501,10 @@ export const useTripStore = create<TripState>()(
                 }
                 await db.addPlan({ ...planSnapshot, id: undefined } as Omit<Plan, 'id'>)
                 const restoredPlans = await db.getPlansForTrip(tripId)
-                const restoredTrips = await db.getAllTrips()
-                set({ currentPlans: restoredPlans, trips: restoredTrips })
+                set(state => ({
+                  currentPlans: restoredPlans,
+                  trips: state.trips.map(t => t.id === tripId ? { ...t, plansCount: restoredPlans.length } : t),
+                }))
                 sendBroadcast('PLAN_CREATED', { tripId })
                 useUIStore.getState().showToast({
                   type: 'success',
@@ -599,8 +617,13 @@ export const useTripStore = create<TripState>()(
             }
           }
 
-          const trips = await db.getAllTrips()
-          set({ trips, isLoading: false })
+          // Partial update: prepend duplicated trip
+          const savedNewTrip = await db.getTrip(newTripId)
+          if (savedNewTrip) {
+            set(state => ({ trips: [savedNewTrip, ...state.trips], isLoading: false }))
+          } else {
+            set({ isLoading: false })
+          }
           sendBroadcast('TRIP_CREATED', { id: newTripId })
           return newTripId
         } catch (error) {
@@ -631,8 +654,12 @@ export const useTripStore = create<TripState>()(
             }
           }
 
-          const trips = await db.getAllTrips()
-          set({ trips, isLoading: false })
+          // Partial update: filter out deleted trips
+          const deletedSet = new Set(ids)
+          set(state => ({
+            trips: state.trips.filter(t => !deletedSet.has(t.id!)),
+            isLoading: false,
+          }))
           sendBroadcast('TRIP_DELETED', { ids })
         } catch (error) {
           set({ error: (error as Error).message, isLoading: false })
