@@ -573,10 +573,6 @@ export function TravelLog() {
             onEdit={(log) => setEditingLog(log)}
             onDelete={handleDeleteLog}
             onPhotoClick={handlePhotoClick}
-            isSelectionMode={bulk.isSelectionMode}
-            isSelected={bulk.isSelected}
-            onToggleSelect={bulk.toggle}
-            onLongPress={handleLongPress}
           />
         ) : (
           <div className="space-y-3">
@@ -602,10 +598,6 @@ export function TravelLog() {
                   onEdit={(log) => setEditingLog(log)}
                   onDelete={handleDeleteLog}
                   onPhotoClick={handlePhotoClick}
-                  isSelectionMode={bulk.isSelectionMode}
-                  isSelected={bulk.isSelected}
-                  onToggleSelect={bulk.toggle}
-                  onLongPress={handleLongPress}
                   viewMode={viewMode}
                   distanceKm={dayDistances.get(day) ? dayDistances.get(day)! / 1000 : undefined}
                 />
@@ -633,10 +625,10 @@ export function TravelLog() {
       </div>
 
       {/* Speed Dial FAB */}
-      {!bulk.isSelectionMode && <SpeedDialFAB actions={fabActions} />}
+      <SpeedDialFAB actions={fabActions} />
 
       {/* Scroll to Top FAB */}
-      {!bulk.isSelectionMode && <ScrollToTopFAB />}
+      <ScrollToTopFAB />
 
       {/* Day Minimap (desktop only) */}
       <DayMinimap
