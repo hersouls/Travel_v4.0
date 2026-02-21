@@ -126,6 +126,7 @@ export function TravelLog() {
     logsByDay,
     filteredLogsByDay,
     dayExpenses,
+    dayCategoryExpenses,
     daySummaries,
     hasMoreDays,
     totalFilteredCount,
@@ -142,14 +143,34 @@ export function TravelLog() {
     loadedDayCount,
   })
 
-  // Initialize expandedDays when logs first load (one-time initialization)
+  // Initialize to the day with the most recently created log (one-time)
   const initializedRef = useRef(false)
   useEffect(() => {
     if (logs.length > 0 && !initializedRef.current) {
       initializedRef.current = true
-      const firstDay = sortOrder === 'newest' ? totalDays : 1
-      setExpandedDays(new Set([firstDay]))
-      setActiveDay(firstDay)
+
+      // Find the day that has the most recently created log
+      const mostRecentLog = logs.reduce((prev, curr) =>
+        new Date(curr.createdAt).getTime() > new Date(prev.createdAt).getTime() ? curr : prev,
+      )
+      const targetDay = mostRecentLog.day
+
+      setExpandedDays(new Set([targetDay]))
+      setActiveDay(targetDay)
+
+      // Ensure targetDay is within the lazy-loaded range
+      const sortedDaysList = sortOrder === 'newest'
+        ? Array.from({ length: totalDays }, (_, i) => totalDays - i)
+        : Array.from({ length: totalDays }, (_, i) => i + 1)
+      const dayIndex = sortedDaysList.indexOf(targetDay)
+      if (dayIndex >= INITIAL_LOAD_COUNT) {
+        setLoadedDayCount(dayIndex + 1)
+      }
+
+      // Scroll to the target day section
+      requestAnimationFrame(() => {
+        document.getElementById(`log-day-${targetDay}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     }
   }, [logs.length, sortOrder, totalDays])
 
@@ -592,6 +613,7 @@ export function TravelLog() {
                   logs={dayLogs}
                   allDayLogs={allDayLogs}
                   expenses={dayExpenses[day]}
+                  categoryExpenses={dayCategoryExpenses[day]}
                   isExpanded={expandedDays.has(day)}
                   onToggleExpand={() => toggleDay(day)}
                   summary={daySummaries[day]}

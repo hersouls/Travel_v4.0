@@ -5,6 +5,8 @@
 // ============================================
 
 import type { ExpenseCategory, TravelLog, TravelLogType } from '@/types'
+
+export type DayCategoryExpenses = Record<ExpenseCategory, Record<string, number>>
 import { useMemo } from 'react'
 import { calculateTripDistance, countUniqueLocations } from '@/utils/distanceCalculation'
 
@@ -33,6 +35,7 @@ interface UseTravelLogViewReturn {
   logsByDay: Record<number, TravelLog[]>
   filteredLogsByDay: Record<number, TravelLog[]>
   dayExpenses: Record<number, Record<string, number>>
+  dayCategoryExpenses: Record<number, DayCategoryExpenses>
   daySummaries: Record<number, DaySummary>
   hasMoreDays: boolean
   totalFilteredCount: number
@@ -96,6 +99,19 @@ export function useTravelLogView({
       if (!result[log.day]) result[log.day] = {}
       const { currency, totalAmount } = log.expense
       result[log.day][currency] = (result[log.day][currency] || 0) + totalAmount
+    }
+    return result
+  }, [logs])
+
+  // Day expense by category
+  const dayCategoryExpenses = useMemo(() => {
+    const result: Record<number, DayCategoryExpenses> = {}
+    for (const log of logs) {
+      if (!log.expense) continue
+      if (!result[log.day]) result[log.day] = {} as DayCategoryExpenses
+      const { category, currency, totalAmount } = log.expense
+      if (!result[log.day][category]) result[log.day][category] = {}
+      result[log.day][category][currency] = (result[log.day][category][currency] || 0) + totalAmount
     }
     return result
   }, [logs])
@@ -174,6 +190,7 @@ export function useTravelLogView({
     logsByDay,
     filteredLogsByDay,
     dayExpenses,
+    dayCategoryExpenses,
     daySummaries,
     hasMoreDays,
     totalFilteredCount,
