@@ -4,6 +4,7 @@
 // ============================================
 
 import type { DayCategoryExpenses, DaySummary } from '@/hooks/useTravelLogView'
+import { convertToKRW } from '@/services/exchangeRateService'
 import type { TravelLog } from '@/types'
 import type { ExpenseCategory } from '@/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
@@ -32,6 +33,8 @@ interface DaySectionProps {
   onPhotoClick: (photo: string) => void
   viewMode: 'timeline' | 'grid' | 'compact'
   distanceKm?: number
+  exchangeRates?: Record<string, number> | null
+  showKRW?: boolean
 }
 
 const categoryIcons: Record<ExpenseCategory, typeof Utensils> = {
@@ -58,12 +61,37 @@ function formatCurrencyShort(amount: number, currency: string): string {
   return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
 }
 
+function sumToKRW(
+  currencyAmounts: Record<string, number>,
+  rates: Record<string, number>,
+): number | null {
+  let total = 0
+  for (const [currency, amount] of Object.entries(currencyAmounts)) {
+    const krw = convertToKRW(amount, currency, rates)
+    if (krw == null) return null
+    total += krw
+  }
+  return total
+}
+
+function KRWBadge({ amounts, rates }: { amounts: Record<string, number>; rates: Record<string, number> }) {
+  const hasNonKRW = Object.keys(amounts).some((c) => c !== 'KRW')
+  if (!hasNonKRW) return null
+  const krw = sumToKRW(amounts, rates)
+  if (krw == null) return null
+  return <span className="text-[10px] text-zinc-400 dark:text-zinc-500 ml-1">(≈₩{krw.toLocaleString()})</span>
+}
+
 function DayExpenseBreakdown({
   expenses,
   categoryExpenses,
+  exchangeRates,
+  showKRW,
 }: {
   expenses: Record<string, number>
   categoryExpenses?: DayCategoryExpenses
+  exchangeRates?: Record<string, number> | null
+  showKRW?: boolean
 }) {
   const categories = categoryExpenses
     ? (Object.entries(categoryExpenses) as [ExpenseCategory, Record<string, number>][])
@@ -79,12 +107,15 @@ function DayExpenseBreakdown({
       {/* Total */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">경비 합계</span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {Object.entries(expenses).map(([currency, amount]) => (
             <span key={currency} className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
               {formatCurrencyShort(amount, currency)}
             </span>
           ))}
+          {showKRW && exchangeRates && (
+            <KRWBadge amounts={expenses} rates={exchangeRates} />
+          )}
         </div>
       </div>
 
@@ -99,12 +130,15 @@ function DayExpenseBreakdown({
                   <Icon className="size-3" />
                   {EXPENSE_CATEGORY_LABELS[category]}
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
                   {Object.entries(totals).map(([currency, amount]) => (
                     <span key={currency} className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
                       {formatCurrencyShort(amount, currency)}
                     </span>
                   ))}
+                  {showKRW && exchangeRates && (
+                    <KRWBadge amounts={totals} rates={exchangeRates} />
+                  )}
                 </div>
               </div>
             )
@@ -130,6 +164,8 @@ export function DaySection({
   onPhotoClick,
   viewMode,
   distanceKm,
+  exchangeRates,
+  showKRW,
 }: DaySectionProps) {
   const handleEdit = useCallback((log: TravelLog) => onEdit(log), [onEdit])
   const handleDelete = useCallback((id: number) => onDelete(id), [onDelete])
@@ -147,6 +183,8 @@ export function DaySection({
         summary={summary}
         expenses={expenses}
         distanceKm={distanceKm}
+        exchangeRates={exchangeRates}
+        showKRW={showKRW}
       />
 
       <AnimatePresence initial={false}>
@@ -167,7 +205,7 @@ export function DaySection({
             >
               {/* Expanded header with expenses: total + category breakdown */}
               {expenses && (
-                <DayExpenseBreakdown expenses={expenses} categoryExpenses={categoryExpenses} />
+                <DayExpenseBreakdown expenses={expenses} categoryExpenses={categoryExpenses} exchangeRates={exchangeRates} showKRW={showKRW} />
               )}
 
               {logs.length === 0 ? (

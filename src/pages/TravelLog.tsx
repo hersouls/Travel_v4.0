@@ -29,6 +29,8 @@ import { Card } from '@/components/ui/Card'
 import { Lightbox } from '@/components/ui/Lightbox'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { SpeedDialFAB } from '@/components/ui/SpeedDialFAB'
+import { clsx } from 'clsx'
+import { useExchangeRates } from '@/hooks/useExchangeRates'
 import { useTravelLogView } from '@/hooks/useTravelLogView'
 import type { SortOrder } from '@/hooks/useTravelLogView'
 import { reverseGeocode } from '@/services/geocodingService'
@@ -97,6 +99,10 @@ export function TravelLog() {
   const [viewMode, setViewMode] = useState<ViewMode>('timeline')
   const [showSearch, setShowSearch] = useState(false)
   const [groupMode, setGroupMode] = useState<'time' | 'location'>('time')
+  const [showKRW, setShowKRW] = useState(false)
+
+  // Exchange rates
+  const { rates: exchangeRates, lastUpdated: ratesUpdatedAt } = useExchangeRates()
 
   // Lightbox state
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -369,7 +375,7 @@ export function TravelLog() {
     <PageContainer>
       <div className="space-y-4 animate-fade-in">
         {/* Header */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <IconButton
             plain
             color="secondary"
@@ -401,19 +407,42 @@ export function TravelLog() {
           </IconButton>
         </div>
 
-        {/* Expense Summary */}
+        {/* Expense Summary + KRW Toggle */}
+        {exchangeRates && (
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setShowKRW(!showKRW)}
+              className={clsx(
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors',
+                showKRW
+                  ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700',
+              )}
+            >
+              ₩ 원화 환산
+            </button>
+            {showKRW && ratesUpdatedAt && (
+              <span className="text-[10px] text-zinc-400">
+                {new Date(ratesUpdatedAt).toLocaleDateString('ko-KR')} 기준
+              </span>
+            )}
+          </div>
+        )}
         <ExpenseSummary
           logs={logs}
           totalTripDistance={totalTripDistance}
           uniqueLocationCount={uniqueLocationCount}
           dayCount={totalDays}
+          exchangeRates={exchangeRates}
+          showKRW={showKRW}
         />
 
         {/* Sticky Day Tab Bar + Controls */}
         {sortedDays.length > 0 && (
           <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-[var(--background)] border-b border-zinc-200 dark:border-zinc-800">
             {/* Day tabs */}
-            <div className="flex gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div className="flex gap-1 sm:gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
               {sortedDays.map((day) => {
                 const dayLogs = logsByDay[day] || []
                 const dayDate = getTripDayDate(trip.startDate, day)
@@ -454,7 +483,7 @@ export function TravelLog() {
             </div>
 
             {/* Controls row: filters + sort + accordion + view mode */}
-            <div className="flex items-center gap-1.5 mt-2">
+            <div className="flex items-center gap-1 sm:gap-1.5 mt-2 flex-wrap">
               {/* Type filter chips */}
               {FILTER_OPTIONS.map((opt) => (
                 <button
@@ -622,6 +651,8 @@ export function TravelLog() {
                   onPhotoClick={handlePhotoClick}
                   viewMode={viewMode}
                   distanceKm={dayDistances.get(day) ? dayDistances.get(day)! / 1000 : undefined}
+                  exchangeRates={exchangeRates}
+                  showKRW={showKRW}
                 />
               )
             })}

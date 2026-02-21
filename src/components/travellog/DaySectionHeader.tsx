@@ -4,6 +4,7 @@
 // ============================================
 
 import type { DaySummary } from '@/hooks/useTravelLogView'
+import { convertToKRW } from '@/services/exchangeRateService'
 import { clsx } from 'clsx'
 import { Camera, ChevronDown, ChevronUp, FileText, MapPin, Receipt } from 'lucide-react'
 
@@ -15,6 +16,8 @@ interface DaySectionHeaderProps {
   summary?: DaySummary
   expenses?: Record<string, number>
   distanceKm?: number
+  exchangeRates?: Record<string, number> | null
+  showKRW?: boolean
 }
 
 function formatCurrencyShort(amount: number, currency: string): string {
@@ -34,6 +37,8 @@ export function DaySectionHeader({
   summary,
   expenses,
   distanceKm,
+  exchangeRates,
+  showKRW,
 }: DaySectionHeaderProps) {
   const dateStr = date.toLocaleDateString('ko-KR', {
     month: 'long',
@@ -105,6 +110,25 @@ export function DaySectionHeader({
               {formatCurrencyShort(amount, currency)}
             </p>
           ))}
+          {showKRW && exchangeRates && (
+            (() => {
+              const hasNonKRW = Object.keys(expenses).some((c) => c !== 'KRW')
+              if (!hasNonKRW) return null
+              let totalKRW = 0
+              let valid = true
+              for (const [currency, amount] of Object.entries(expenses)) {
+                const krw = convertToKRW(amount, currency, exchangeRates)
+                if (krw == null) { valid = false; break }
+                totalKRW += krw
+              }
+              if (!valid) return null
+              return (
+                <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                  ≈₩{totalKRW.toLocaleString()}
+                </p>
+              )
+            })()
+          )}
         </div>
       )}
 

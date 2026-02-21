@@ -8,6 +8,7 @@ import { ChevronDown, ChevronUp, Utensils, Bus, Bed, ShoppingBag, Camera, MoreHo
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
 import { EXPENSE_CATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
+import { convertToKRW } from '@/services/exchangeRateService'
 
 interface ExpenseSummaryProps {
   logs: TravelLog[]
@@ -16,6 +17,8 @@ interface ExpenseSummaryProps {
   totalTripDistance?: number
   uniqueLocationCount?: number
   dayCount?: number
+  exchangeRates?: Record<string, number> | null
+  showKRW?: boolean
 }
 
 const categoryIcons: Record<ExpenseCategory, typeof Utensils> = {
@@ -64,7 +67,7 @@ function formatAmount(amount: number, currency: string): string {
   return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export function ExpenseSummary({ logs, className, defaultOpen = false, totalTripDistance, uniqueLocationCount, dayCount }: ExpenseSummaryProps) {
+export function ExpenseSummary({ logs, className, defaultOpen = false, totalTripDistance, uniqueLocationCount, dayCount, exchangeRates, showKRW }: ExpenseSummaryProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   const { categoryTotals, currencyTotals, totalCount, maxCategoryAmount } = useMemo(() => {
@@ -126,9 +129,28 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
         <div className="flex items-center gap-3">
           {/* Show main currency total inline */}
           {currencyTotals.length > 0 && (
-            <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              {formatAmount(currencyTotals[0].total, currencyTotals[0].currency)}
-            </span>
+            <div className="text-right">
+              <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                {formatAmount(currencyTotals[0].total, currencyTotals[0].currency)}
+              </span>
+              {showKRW && exchangeRates && (() => {
+                const hasNonKRW = currencyTotals.some((c) => c.currency !== 'KRW')
+                if (!hasNonKRW) return null
+                let totalKRW = 0
+                let valid = true
+                for (const { currency, total } of currencyTotals) {
+                  const krw = convertToKRW(total, currency, exchangeRates)
+                  if (krw == null) { valid = false; break }
+                  totalKRW += krw
+                }
+                if (!valid) return null
+                return (
+                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                    ≈₩{totalKRW.toLocaleString()}
+                  </p>
+                )
+              })()}
+            </div>
           )}
           {isOpen ? <ChevronUp className="size-4 text-zinc-400" /> : <ChevronDown className="size-4 text-zinc-400" />}
         </div>
@@ -141,14 +163,25 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
           {currencyTotals.length > 1 && (
             <div className="pt-3 space-y-1.5">
               <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">통화별 합계</span>
-              {currencyTotals.map(({ currency, total }) => (
-                <div key={currency} className="flex justify-between">
-                  <span className="text-sm text-zinc-600 dark:text-zinc-300">{currency}</span>
-                  <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                    {formatAmount(total, currency)}
-                  </span>
-                </div>
-              ))}
+              {currencyTotals.map(({ currency, total }) => {
+                const krw = showKRW && exchangeRates && currency !== 'KRW'
+                  ? convertToKRW(total, currency, exchangeRates) : null
+                return (
+                  <div key={currency} className="flex justify-between items-center">
+                    <span className="text-sm text-zinc-600 dark:text-zinc-300">{currency}</span>
+                    <div className="text-right">
+                      <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                        {formatAmount(total, currency)}
+                      </span>
+                      {krw != null && (
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 ml-1">
+                          (≈₩{krw.toLocaleString()})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
 
