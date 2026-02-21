@@ -14,7 +14,9 @@ import { compressImage } from '@/services/imageStorage'
 import { detectPhotoLocationBatch, type DetectedLocation } from '@/services/photoLocationService'
 import { getCurrentPosition, reverseGeocode } from '@/services/geocodingService'
 import { useSettingsStore } from '@/stores/settingsStore'
-import type { TravelLog, ExifMetadata } from '@/types'
+import { getCurrencyFromCountry } from '@/utils/countryInfo'
+import { CURRENCY_SYMBOLS, EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
+import type { TravelLog, ExifMetadata, ExpenseCategory } from '@/types'
 
 const MAX_FILES = 20
 const MAX_FILE_SIZE_MB = 20
@@ -29,6 +31,8 @@ interface PhotoEntry {
   day: number
   memo: string
   detectedLocation?: DetectedLocation
+  expenseAmount: string
+  expenseCategory: ExpenseCategory | ''
 }
 
 interface PhotoLogUploaderProps {
@@ -38,7 +42,7 @@ interface PhotoLogUploaderProps {
   defaultDay: number
   totalDays: number
   tripCountry?: string
-  onComplete: (logs: Array<Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'>>) => void
+  onComplete: (logs: Array<Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'>>) => void | Promise<void>
   onClose: () => void
   open: boolean
 }
@@ -62,6 +66,12 @@ export function PhotoLogUploader({
 
   const claudeApiKey = useSettingsStore((s) => s.claudeApiKey)
   const claudeModel = useSettingsStore((s) => s.claudeModel) || 'sonnet'
+
+  const defaultCurrency = useMemo(
+    () => getCurrencyFromCountry(tripCountry || ''),
+    [tripCountry],
+  )
+  const currencySymbol = CURRENCY_SYMBOLS[defaultCurrency] || defaultCurrency
 
   // Count photos without GPS
   const noGpsCount = useMemo(
@@ -118,7 +128,7 @@ export function PhotoLogUploader({
             if (exifDay !== null) day = exifDay
           }
 
-          newEntries.push({ file, preview: base64Full, base64Full, thumbnailBase64, exif, day, memo: '' })
+          newEntries.push({ file, preview: base64Full, base64Full, thumbnailBase64, exif, day, memo: '', expenseAmount: '', expenseCategory: '' })
         } catch (err) {
           newWarnings.push(`"${file.name}" 처리 실패: ${err instanceof Error ? err.message : '알 수 없는 에러'}`)
         }
@@ -259,32 +269,13 @@ export function PhotoLogUploader({
     ))
   }, [])
 
-  const handleConfirm = useCallback(() => {
-    const logs: Array<Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'>> = entries.map((entry) => {
-      // Use EXIF GPS if available, otherwise use AI-detected location
-      const lat = entry.exif?.latitude ?? entry.detectedLocation?.latitude
-      const lng = entry.exif?.longitude ?? entry.detectedLocation?.longitude
-      const placeName = entry.detectedLocation?.placeName
-      const address = entry.detectedLocation?.address
+  const updateEntryExpenseAmount = useCallback((index: number, expenseAmount: string) => {
+    setEntries((prev) => prev.map((entry, i) => i === index ? { ...entry, expenseAmount } : entry))
+  }, [])
 
-      return {
-        tripId,
-        day: entry.day,
-        timestamp: entry.exif?.dateTime || new Date().toISOString(),
-        type: 'photo' as const,
-        photo: entry.base64Full,
-        thumbnailPhoto: entry.thumbnailBase64,
-        exif: entry.exif || undefined,
-        latitude: lat,
-        longitude: lng,
-        placeName,
-        address,
-        memo: entry.memo || undefined,
-      }
-    })
-    onComplete(logs)
-    handleClose()
-  }, [entries, tripId, onComplete])
+  const updateEntryExpenseCategory = useCallback((index: number, expenseCategory: string) => {
+    setEntries((prev) => prev.map((entry, i) => i === index ? { ...entry, expenseCategory: expenseCategory as ExpenseCategory | '' } : entry))
+  }, [])
 
   const handleClose = useCallback(() => {
     abortRef.current?.abort()
@@ -296,6 +287,49 @@ export function PhotoLogUploader({
     setIsDetecting(false)
     onClose()
   }, [onClose])
+
+  const handleConfirm = useCallback(async () => {
+    const logs: Array<Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'>> = entries.map((entry) => {
+      // Use EXIF GPS if valid, otherwise fall back to AI-detected or device GPS location
+      // NaN check is critical: exifr can return NaN for corrupted GPS tags,
+      // and NaN ?? fallback does NOT fall through (NaN is not null/undefined)
+      const exifLat = entry.exif?.latitude
+      const exifLng = entry.exif?.longitude
+      const hasValidExifGps = typeof exifLat === 'number' && typeof exifLng === 'number' &&
+        isFinite(exifLat) && isFinite(exifLng)
+
+      const lat = hasValidExifGps ? exifLat : entry.detectedLocation?.latitude
+      const lng = hasValidExifGps ? exifLng : entry.detectedLocation?.longitude
+      const placeName = entry.detectedLocation?.placeName
+      const address = entry.detectedLocation?.address
+
+      return {
+        tripId,
+        day: entry.day,
+        timestamp: entry.exif?.dateTime || new Date().toISOString(),
+        type: 'photo' as const,
+        photo: entry.base64Full,
+        thumbnailPhoto: entry.thumbnailBase64,
+        exif: entry.exif || undefined,
+        latitude: typeof lat === 'number' && isFinite(lat) ? lat : undefined,
+        longitude: typeof lng === 'number' && isFinite(lng) ? lng : undefined,
+        placeName,
+        address,
+        memo: entry.memo || undefined,
+        expense: entry.expenseAmount && entry.expenseCategory
+          ? {
+              storeName: placeName || '',
+              category: entry.expenseCategory as ExpenseCategory,
+              items: [],
+              totalAmount: Number(entry.expenseAmount) || 0,
+              currency: defaultCurrency,
+            }
+          : undefined,
+      }
+    })
+    await onComplete(logs)
+    handleClose()
+  }, [entries, tripId, defaultCurrency, onComplete, handleClose])
 
   return (
     <Dialog open={open} onClose={handleClose} size="lg">
@@ -517,6 +551,30 @@ export function PhotoLogUploader({
                         className="!mt-1"
                         resizable={false}
                       />
+
+                      {/* 간편 경비 입력 */}
+                      <div className="flex items-center gap-2 mt-1">
+                        <select
+                          value={entry.expenseCategory}
+                          onChange={(e) => updateEntryExpenseCategory(index, e.target.value)}
+                          className="text-xs px-2 py-1 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                        >
+                          <option value="">카테고리</option>
+                          {Object.entries(EXPENSE_CATEGORY_LABELS).map(([key, label]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-zinc-400">{currencySymbol}</span>
+                          <input
+                            type="number"
+                            placeholder="금액"
+                            value={entry.expenseAmount}
+                            onChange={(e) => updateEntryExpenseAmount(index, e.target.value)}
+                            className="w-20 text-xs px-2 py-1 rounded-md border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300"
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     {/* Remove button */}
@@ -542,7 +600,7 @@ export function PhotoLogUploader({
         <Button
           color="primary"
           onClick={handleConfirm}
-          disabled={entries.length === 0 || isProcessing || isDetecting}
+          disabled={entries.length === 0 || isProcessing || isDetecting || isGettingLocation}
         >
           {entries.length}장 등록
         </Button>

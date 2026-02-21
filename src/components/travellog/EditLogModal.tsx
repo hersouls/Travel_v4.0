@@ -14,7 +14,8 @@ import { compressImage } from '@/services/imageStorage'
 import { detectPhotoLocation } from '@/services/photoLocationService'
 import { getCurrentPosition, reverseGeocode } from '@/services/geocodingService'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
+import { EXPENSE_CATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
+import { getCurrencyFromCountry } from '@/utils/countryInfo'
 import type { TravelLog, ExpenseData, ExpenseCategory } from '@/types'
 import type { PlaceDetails } from '@/services/placesAutocomplete'
 
@@ -58,6 +59,10 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
   // Receipt-specific
   const [expense, setExpense] = useState<ExpenseData | null>(null)
 
+  // Simple expense (photo/memo types)
+  const [simpleExpenseAmount, setSimpleExpenseAmount] = useState('')
+  const [simpleExpenseCategory, setSimpleExpenseCategory] = useState<ExpenseCategory | ''>('')
+
   // AI detection & device location
   const [isDetectingLocation, setIsDetectingLocation] = useState(false)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
@@ -67,6 +72,9 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
 
   const claudeApiKey = useSettingsStore((s) => s.claudeApiKey)
   const claudeModel = useSettingsStore((s) => s.claudeModel) || 'sonnet'
+
+  const defaultCurrency = getCurrencyFromCountry(tripCountry || '')
+  const currencySymbol = CURRENCY_SYMBOLS[defaultCurrency] || defaultCurrency
 
   // Track original values for change detection
   const originalRef = useRef<{
@@ -91,6 +99,13 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
     setNewPhotoPreview(null)
     setNewThumbnailBase64(null)
     setExpense(log.expense ? { ...log.expense } : null)
+    if (log.expense && log.type !== 'receipt') {
+      setSimpleExpenseAmount(String(log.expense.totalAmount))
+      setSimpleExpenseCategory(log.expense.category)
+    } else {
+      setSimpleExpenseAmount('')
+      setSimpleExpenseCategory('')
+    }
     setError(null)
 
     originalRef.current = {
@@ -119,8 +134,9 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
     if (address !== orig.address) return true
     if (newPhotoPreview) return true
     if (expense && orig.expense && JSON.stringify(expense) !== orig.expense) return true
+    if (simpleExpenseAmount || simpleExpenseCategory) return true
     return false
-  }, [day, time, memo, placeName, latitude, longitude, address, newPhotoPreview, expense])
+  }, [day, time, memo, placeName, latitude, longitude, address, newPhotoPreview, expense, simpleExpenseAmount, simpleExpenseCategory])
 
   const handlePhotoChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -236,6 +252,21 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
         updates.placeName = expense.storeName || placeName.trim() || undefined
       }
 
+      // Simple expense for photo/memo types
+      if (log.type !== 'receipt') {
+        if (simpleExpenseAmount && simpleExpenseCategory) {
+          updates.expense = {
+            storeName: placeName.trim() || '',
+            category: simpleExpenseCategory as ExpenseCategory,
+            items: [],
+            totalAmount: Number(simpleExpenseAmount) || 0,
+            currency: defaultCurrency,
+          }
+        } else {
+          updates.expense = undefined
+        }
+      }
+
       await onSave(log.id, updates)
       onClose()
     } catch (err) {
@@ -243,7 +274,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
     } finally {
       setIsSaving(false)
     }
-  }, [log, day, time, memo, placeName, latitude, longitude, address, newPhotoPreview, newThumbnailBase64, expense, onSave, onClose])
+  }, [log, day, time, memo, placeName, latitude, longitude, address, newPhotoPreview, newThumbnailBase64, expense, simpleExpenseAmount, simpleExpenseCategory, defaultCurrency, onSave, onClose])
 
   const handleClose = useCallback(() => {
     if (hasChanges()) {
@@ -488,6 +519,35 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
                     {isDetectingLocation ? 'AI 분석 중...' : 'AI로 위치 감지'}
                   </Button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Simple expense input (photo/memo types) */}
+          {log.type !== 'receipt' && (
+            <div className="space-y-2">
+              <Label>간편 경비</Label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={simpleExpenseCategory}
+                  onChange={(e) => setSimpleExpenseCategory(e.target.value as ExpenseCategory | '')}
+                  className="text-sm px-3 py-2 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent dark:bg-white/5 text-zinc-950 dark:text-white"
+                >
+                  <option value="">카테고리</option>
+                  {CATEGORY_OPTIONS.map((cat) => (
+                    <option key={cat} value={cat}>{EXPENSE_CATEGORY_LABELS[cat]}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1 flex-1">
+                  <span className="text-sm text-zinc-400">{currencySymbol}</span>
+                  <input
+                    type="number"
+                    placeholder="금액"
+                    value={simpleExpenseAmount}
+                    onChange={(e) => setSimpleExpenseAmount(e.target.value)}
+                    className="w-full text-sm px-3 py-2 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent dark:bg-white/5 text-zinc-950 dark:text-white"
+                  />
+                </div>
               </div>
             </div>
           )}

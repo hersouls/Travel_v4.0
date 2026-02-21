@@ -73,7 +73,7 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
 
     let count = 0
     for (const log of logs) {
-      if (log.type !== 'receipt' || !log.expense) continue
+      if (!log.expense) continue
       count++
       const { category, totalAmount, currency } = log.expense
 

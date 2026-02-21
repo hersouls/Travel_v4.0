@@ -92,7 +92,7 @@ export function useTravelLogView({
   const dayExpenses = useMemo(() => {
     const result: Record<number, Record<string, number>> = {}
     for (const log of logs) {
-      if (log.type !== 'receipt' || !log.expense) continue
+      if (!log.expense) continue
       if (!result[log.day]) result[log.day] = {}
       const { currency, totalAmount } = log.expense
       result[log.day][currency] = (result[log.day][currency] || 0) + totalAmount
@@ -115,7 +115,7 @@ export function useTravelLogView({
 
       if (categoryFilter) {
         filtered = filtered.filter(
-          (l) => l.type === 'receipt' && l.expense?.category === categoryFilter,
+          (l) => l.expense?.category === categoryFilter,
         )
       }
 

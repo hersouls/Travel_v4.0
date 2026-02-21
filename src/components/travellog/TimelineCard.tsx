@@ -231,6 +231,17 @@ export function TimelineCard({
             </div>
           )}
 
+          {/* Expense badge (non-receipt types) */}
+          {log.type !== 'receipt' && log.expense && (
+            <div className="mt-2">
+              <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-md bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-300">
+                {EXPENSE_CATEGORY_LABELS[log.expense.category]}
+                {' '}
+                {formatCurrency(log.expense.totalAmount, log.expense.currency)}
+              </span>
+            </div>
+          )}
+
           {/* Memo */}
           {log.memo && (
             <p className={clsx(

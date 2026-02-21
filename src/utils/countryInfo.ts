@@ -105,3 +105,14 @@ export const COUNTRY_INFO: Record<string, CountryInfo> = {
 export function getCountryInfo(country: string): CountryInfo | null {
   return COUNTRY_INFO[country] || null
 }
+
+/**
+ * 국가명에서 기본 통화 ISO 코드를 추출
+ * 예: '일본' → 'JPY', '태국' → 'THB'
+ */
+export function getCurrencyFromCountry(country: string): string {
+  const info = COUNTRY_INFO[country]
+  if (!info) return 'KRW'
+  const match = info.currency.match(/^([A-Z]{3})/)
+  return match ? match[1] : 'KRW'
+}
