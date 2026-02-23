@@ -379,7 +379,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // API key: user-provided header or server env fallback
-  const apiKey = (req.headers['x-api-key'] as string) || process.env.CLAUDE_API_KEY
+  const userApiKey = req.headers['x-api-key'] as string
+  const apiKey = userApiKey || process.env.CLAUDE_API_KEY
   if (!apiKey || !apiKey.startsWith('sk-ant-')) {
     return res.status(401).json({ error: 'Valid Anthropic API key required (sk-ant-...)' })
   }
@@ -435,7 +436,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const response = client.messages.stream({
         model: resolvedModel,
-        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 2048 : 4096,
+        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 4096 : 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       })
@@ -455,7 +456,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Non-streaming structured response
       const response = await client.messages.create({
         model: resolvedModel,
-        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 2048 : 4096,
+        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 4096 : 4096,
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent }],
       })
@@ -465,6 +466,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         content: textBlock ? textBlock.text : '',
         model: response.model,
         usage: response.usage,
+        truncated: response.stop_reason === 'max_tokens',
       })
     }
   } catch (err: unknown) {

@@ -139,7 +139,7 @@ export function TripMap() {
       <div className="flex flex-col h-full p-4 space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
             <ArrowLeft className="size-5" />
           </IconButton>

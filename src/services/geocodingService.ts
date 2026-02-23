@@ -5,6 +5,16 @@
 // ============================================
 
 /**
+ * Tracks whether the Geocoding API has been denied (REQUEST_DENIED).
+ * Once denied, all subsequent calls return null immediately to avoid console spam.
+ */
+let geocodingDenied = false
+
+export function isGeocodingDenied(): boolean {
+  return geocodingDenied
+}
+
+/**
  * Get current device position using browser Geolocation API.
  * Requires user permission. High accuracy mode, 10s timeout.
  */
@@ -54,8 +64,7 @@ export async function reverseGeocode(
   latitude: number,
   longitude: number,
 ): Promise<string | null> {
-  if (!window.google?.maps?.Geocoder) {
-    console.warn('[Geocoding] Google Maps Geocoder not available')
+  if (geocodingDenied || !window.google?.maps?.Geocoder) {
     return null
   }
 
@@ -76,8 +85,14 @@ export async function reverseGeocode(
     }
 
     return null
-  } catch (error) {
-    console.error('[Geocoding] Reverse geocode failed:', error)
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (msg.includes('REQUEST_DENIED') || msg.includes('not activated')) {
+      geocodingDenied = true
+      console.warn('[Geocoding] API denied – Geocoding API가 Google Cloud Console에서 활성화되지 않았습니다. 이후 호출을 건너뜁니다.')
+    } else {
+      console.warn('[Geocoding] Reverse geocode failed:', error)
+    }
     return null
   }
 }
@@ -89,7 +104,7 @@ export async function reverseGeocode(
 export async function forwardGeocode(
   query: string,
 ): Promise<{ lat: number; lng: number; address: string } | null> {
-  if (!window.google?.maps?.Geocoder || !query.trim()) {
+  if (geocodingDenied || !window.google?.maps?.Geocoder || !query.trim()) {
     return null
   }
 
@@ -107,8 +122,14 @@ export async function forwardGeocode(
     }
 
     return null
-  } catch (error) {
-    console.error('[Geocoding] Forward geocode failed:', error)
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error)
+    if (msg.includes('REQUEST_DENIED') || msg.includes('not activated')) {
+      geocodingDenied = true
+      console.warn('[Geocoding] API denied – Geocoding API가 Google Cloud Console에서 활성화되지 않았습니다. 이후 호출을 건너뜁니다.')
+    } else {
+      console.warn('[Geocoding] Forward geocode failed:', error)
+    }
     return null
   }
 }

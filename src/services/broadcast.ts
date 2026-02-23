@@ -18,6 +18,9 @@ type MessageType =
   | 'LOG_CREATED'
   | 'LOG_UPDATED'
   | 'LOG_DELETED'
+  | 'EXPENSE_CREATED'
+  | 'EXPENSE_UPDATED'
+  | 'EXPENSE_DELETED'
   | 'DATA_IMPORTED'
   | 'DATA_CLEARED'
 

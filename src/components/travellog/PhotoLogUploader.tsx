@@ -13,6 +13,7 @@ import { extractExifBatch, calculateDayFromExif, formatExifTime } from '@/servic
 import { compressImage } from '@/services/imageStorage'
 import { detectPhotoLocationBatch, type DetectedLocation } from '@/services/photoLocationService'
 import { getCurrentPosition, reverseGeocode } from '@/services/geocodingService'
+import { LocationMissingPopup } from './LocationMissingPopup'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { getCurrencyFromCountry } from '@/utils/countryInfo'
 import { CURRENCY_SYMBOLS, EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
@@ -57,6 +58,7 @@ export function PhotoLogUploader({
   const [warnings, setWarnings] = useState<string[]>([])
   const [processProgress, setProcessProgress] = useState<{ current: number; total: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [showLocationPopup, setShowLocationPopup] = useState(false)
 
   // AI location detection state
   const [isDetecting, setIsDetecting] = useState(false)
@@ -135,6 +137,12 @@ export function PhotoLogUploader({
       }
 
       setEntries((prev) => [...prev, ...newEntries])
+
+      // Auto-show location popup if new photos lack GPS
+      const newNoGps = newEntries.filter(e => !e.exif?.latitude || !e.exif?.longitude).length
+      if (newNoGps > 0) {
+        setTimeout(() => setShowLocationPopup(true), 300)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '사진 처리에 실패했습니다.')
     } finally {
@@ -228,6 +236,27 @@ export function PhotoLogUploader({
     }
   }, [])
 
+  // Apply location from popup to all GPS-less photos
+  const handleLocationPopupApply = useCallback((location: {
+    latitude: number; longitude: number; address: string; placeName: string
+  }) => {
+    const detected: DetectedLocation = {
+      placeName: location.placeName,
+      address: location.address,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      confidence: 'high',
+      clues: '직접 등록',
+    }
+    setEntries(prev => prev.map(entry => {
+      if (!entry.exif?.latitude && !entry.exif?.longitude && !entry.detectedLocation) {
+        return { ...entry, detectedLocation: detected }
+      }
+      return entry
+    }))
+    setShowLocationPopup(false)
+  }, [])
+
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
     await processFiles(files)
@@ -285,6 +314,7 @@ export function PhotoLogUploader({
     setProcessProgress(null)
     setDetectProgress(null)
     setIsDetecting(false)
+    setShowLocationPopup(false)
     onClose()
   }, [onClose])
 
@@ -361,12 +391,12 @@ export function PhotoLogUploader({
           {/* AI Location Detection Banner */}
           {entries.length > 0 && noGpsCount > 0 && !isDetecting && (
             <div className="p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
                 <div className="flex items-center gap-2 text-sm text-primary-700 dark:text-primary-300">
                   <MapPin className="size-4 flex-shrink-0" />
                   <span>{noGpsCount}장의 사진에 위치 정보가 없습니다</span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                   <Button
                     color="secondary"
                     size="sm"
@@ -374,7 +404,7 @@ export function PhotoLogUploader({
                     leftIcon={isGettingLocation ? <Loader2 className="size-3.5 animate-spin" /> : <Navigation className="size-3.5" />}
                     disabled={isGettingLocation}
                   >
-                    {isGettingLocation ? '위치 확인 중...' : '현재 위치 적용'}
+                    <span className="hidden sm:inline">{isGettingLocation ? '위치 확인 중...' : '현재 위치 적용'}</span>
                   </Button>
                   <Button
                     color="primary"
@@ -383,7 +413,7 @@ export function PhotoLogUploader({
                     leftIcon={<Sparkles className="size-3.5" />}
                     disabled={!claudeApiKey}
                   >
-                    AI 위치 분석
+                    <span className="hidden sm:inline">AI 위치 분석</span>
                   </Button>
                 </div>
               </div>
@@ -396,7 +426,7 @@ export function PhotoLogUploader({
           {/* AI Detection Progress */}
           {isDetecting && detectProgress && (
             <div className="p-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-lg">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
                 <div className="flex items-center gap-2 text-sm text-primary-700 dark:text-primary-300">
                   <Loader2 className="size-4 animate-spin flex-shrink-0" />
                   <span>
@@ -421,7 +451,7 @@ export function PhotoLogUploader({
 
           {/* Upload area with drag & drop */}
           <label
-            className={`flex flex-col items-center gap-2 p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
+            className={`flex flex-col items-center gap-2 p-4 sm:p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
               isDragging
                 ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
                 : 'border-[var(--border)] hover:border-primary-500'
@@ -469,14 +499,14 @@ export function PhotoLogUploader({
                 return (
                   <div
                     key={index}
-                    className="flex gap-3 p-3 rounded-xl border border-[var(--border)] bg-[var(--card)]"
+                    className="flex gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl border border-[var(--border)] bg-[var(--card)]"
                   >
                     {/* Thumbnail */}
                     <div className="flex-shrink-0">
                       <img
                         src={entry.preview}
                         alt={`사진 ${index + 1}`}
-                        className="size-24 object-cover rounded-lg"
+                        className="size-20 sm:size-24 object-cover rounded-lg"
                       />
                     </div>
 
@@ -605,6 +635,14 @@ export function PhotoLogUploader({
           {entries.length}장 등록
         </Button>
       </DialogActions>
+
+      {/* Location missing popup - auto-triggered when GPS-less photos detected */}
+      <LocationMissingPopup
+        open={showLocationPopup}
+        onClose={() => setShowLocationPopup(false)}
+        noGpsCount={noGpsCount}
+        onApplyLocation={handleLocationPopupApply}
+      />
     </Dialog>
   )
 }

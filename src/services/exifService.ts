@@ -44,7 +44,9 @@ export async function extractExif(file: File): Promise<ExifMetadata | null> {
     }
 
     // GPS coordinates (exifr auto-resolves to decimal degrees with gps:true)
-    if (typeof data.latitude === 'number' && typeof data.longitude === 'number') {
+    // Guard against NaN from corrupted/partial GPS tags (typeof NaN === 'number')
+    if (typeof data.latitude === 'number' && typeof data.longitude === 'number' &&
+        isFinite(data.latitude) && isFinite(data.longitude)) {
       result.latitude = data.latitude
       result.longitude = data.longitude
     }

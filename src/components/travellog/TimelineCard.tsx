@@ -71,7 +71,7 @@ export function TimelineCard({
   const visitHistory = useVisitHistory(log.latitude, log.longitude, log.tripId)
 
   return (
-    <div className="flex gap-3 group">
+    <div className="flex gap-2 sm:gap-3 group">
       {/* Timeline connector */}
       <div className="flex flex-col items-center flex-shrink-0">
         <div className={clsx('size-8 rounded-full flex items-center justify-center text-white', config.bg)}>
@@ -87,7 +87,7 @@ export function TimelineCard({
         compact && 'mb-2'
       )}>
         {/* Header */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap px-3 py-2 border-b border-[var(--border)]">
           {time && (
             <span className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
               <Clock className="size-3" />
@@ -220,7 +220,7 @@ export function TimelineCard({
                     src={log.photo || log.thumbnailPhoto}
                     alt="영수증"
                     className={clsx(
-                      'w-32 h-40 object-cover rounded-lg border border-zinc-200 dark:border-zinc-600',
+                      'w-24 h-32 sm:w-32 sm:h-40 object-cover rounded-lg border border-zinc-200 dark:border-zinc-600',
                       onPhotoClick && 'cursor-pointer hover:opacity-90 transition-opacity'
                     )}
                     loading="lazy"

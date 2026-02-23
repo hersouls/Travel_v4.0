@@ -3,7 +3,7 @@
 // ============================================
 
 import Dexie, { type Table } from 'dexie'
-import type { Trip, Plan, Place, Settings, RouteSegment, TravelLog } from '@/types'
+import type { Trip, Plan, Place, Settings, RouteSegment, TravelLog, Expense } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 
 class TravelDatabase extends Dexie {
@@ -13,6 +13,7 @@ class TravelDatabase extends Dexie {
   settings!: Table<Settings, string>
   routeSegments!: Table<RouteSegment, number>
   travelLogs!: Table<TravelLog, number>
+  expenses!: Table<Expense, number>
 
   constructor() {
     super('MoonwaveTravel')
@@ -59,6 +60,28 @@ class TravelDatabase extends Dexie {
       routeSegments: '++id, tripId, [fromPlanId+toPlanId], firebaseId, tripFirebaseId',
       travelLogs: '++id, tripId, day, type, timestamp, [tripId+day], firebaseId, tripFirebaseId',
     })
+
+    // v6: Add expenses table for independent expense management
+    this.version(6).stores({
+      trips: '++id, title, country, startDate, isFavorite, updatedAt, firebaseId',
+      plans: '++id, tripId, day, type, [tripId+day], firebaseId, tripFirebaseId',
+      places: '++id, name, type, isFavorite, usageCount, firebaseId',
+      settings: 'id',
+      routeSegments: '++id, tripId, [fromPlanId+toPlanId], firebaseId, tripFirebaseId',
+      travelLogs: '++id, tripId, day, type, timestamp, [tripId+day], firebaseId, tripFirebaseId',
+      expenses: '++id, tripId, day, category, timestamp, [tripId+day], firebaseId, tripFirebaseId, sourceLogId',
+    })
+
+    // v7: Add sourceLogFirebaseId index for cross-device dedup
+    this.version(7).stores({
+      trips: '++id, title, country, startDate, isFavorite, updatedAt, firebaseId',
+      plans: '++id, tripId, day, type, [tripId+day], firebaseId, tripFirebaseId',
+      places: '++id, name, type, isFavorite, usageCount, firebaseId',
+      settings: 'id',
+      routeSegments: '++id, tripId, [fromPlanId+toPlanId], firebaseId, tripFirebaseId',
+      travelLogs: '++id, tripId, day, type, timestamp, [tripId+day], firebaseId, tripFirebaseId',
+      expenses: '++id, tripId, day, category, timestamp, [tripId+day], firebaseId, tripFirebaseId, sourceLogId, sourceLogFirebaseId',
+    })
   }
 }
 
@@ -89,10 +112,11 @@ export async function updateTrip(id: number, updates: Partial<Trip>): Promise<vo
 }
 
 export async function deleteTrip(id: number): Promise<void> {
-  await db.transaction('rw', [db.trips, db.plans, db.routeSegments, db.travelLogs], async () => {
+  await db.transaction('rw', [db.trips, db.plans, db.routeSegments, db.travelLogs, db.expenses], async () => {
     await db.plans.where('tripId').equals(id).delete()
     await db.routeSegments.where('tripId').equals(id).delete()
     await db.travelLogs.where('tripId').equals(id).delete()
+    await db.expenses.where('tripId').equals(id).delete()
     await db.trips.delete(id)
   })
 }
@@ -248,6 +272,54 @@ export async function getTravelLogCountForTrip(tripId: number): Promise<number> 
 }
 
 // ============================================
+// Expense CRUD Operations
+// ============================================
+
+export async function getExpensesForTrip(tripId: number): Promise<Expense[]> {
+  return db.expenses.where('tripId').equals(tripId).sortBy('timestamp')
+}
+
+export async function getExpensesForTripDay(tripId: number, day: number): Promise<Expense[]> {
+  return db.expenses.where({ tripId, day }).sortBy('timestamp')
+}
+
+export async function getExpense(id: number): Promise<Expense | undefined> {
+  return db.expenses.get(id)
+}
+
+export async function getExpenseByFirebaseId(firebaseId: string): Promise<Expense | undefined> {
+  return db.expenses.where('firebaseId').equals(firebaseId).first()
+}
+
+export async function getExpenseBySourceLogId(sourceLogId: number): Promise<Expense | undefined> {
+  return db.expenses.where('sourceLogId').equals(sourceLogId).first()
+}
+
+export async function getExpenseBySourceLogFirebaseId(sourceLogFirebaseId: string): Promise<Expense | undefined> {
+  return db.expenses.where('sourceLogFirebaseId').equals(sourceLogFirebaseId).first()
+}
+
+export async function addExpense(expense: Omit<Expense, 'id'>): Promise<number> {
+  return db.expenses.add(expense as Expense)
+}
+
+export async function updateExpense(id: number, updates: Partial<Expense>): Promise<void> {
+  await db.expenses.update(id, { ...updates, updatedAt: new Date() })
+}
+
+export async function deleteExpense(id: number): Promise<void> {
+  await db.expenses.delete(id)
+}
+
+export async function deleteExpensesForTrip(tripId: number): Promise<void> {
+  await db.expenses.where('tripId').equals(tripId).delete()
+}
+
+export async function getExpenseCountForTrip(tripId: number): Promise<number> {
+  return db.expenses.where('tripId').equals(tripId).count()
+}
+
+// ============================================
 // Place CRUD Operations
 // ============================================
 
@@ -335,6 +407,7 @@ export interface BackupData {
   settings: Settings
   routeSegments?: RouteSegment[]
   travelLogs?: TravelLog[]
+  expenses?: Expense[]
 }
 
 // Serialize Date objects to ISO strings
@@ -384,13 +457,14 @@ const DATE_FIELDS = [
 ]
 
 export async function exportAllData(): Promise<BackupData> {
-  const [trips, plans, places, settings, routeSegments, travelLogs] = await Promise.all([
+  const [trips, plans, places, settings, routeSegments, travelLogs, expenses] = await Promise.all([
     db.trips.toArray(),
     db.plans.toArray(),
     db.places.toArray(),
     getSettings(),
     db.routeSegments.toArray(),
     db.travelLogs.toArray(),
+    db.expenses.toArray(),
   ])
 
   return {
@@ -404,6 +478,7 @@ export async function exportAllData(): Promise<BackupData> {
     settings: serializeDates(settings),
     routeSegments: serializeDates(routeSegments),
     travelLogs: serializeDates(travelLogs),
+    expenses: serializeDates(expenses),
   }
 }
 
@@ -433,13 +508,19 @@ export async function importAllData(data: BackupData): Promise<void> {
     ? deserializeDates(data.travelLogs, LOG_DATE_FIELDS)
     : []
 
-  await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments, db.travelLogs], async () => {
+  const EXPENSE_DATE_FIELDS = ['createdAt', 'updatedAt']
+  const expenses = data.expenses
+    ? deserializeDates(data.expenses, EXPENSE_DATE_FIELDS)
+    : []
+
+  await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments, db.travelLogs, db.expenses], async () => {
     // Clear existing data
     await db.trips.clear()
     await db.plans.clear()
     await db.places.clear()
     await db.routeSegments.clear()
     await db.travelLogs.clear()
+    await db.expenses.clear()
 
     // Import new data
     if (trips.length > 0) await db.trips.bulkAdd(trips)
@@ -447,6 +528,7 @@ export async function importAllData(data: BackupData): Promise<void> {
     if (places.length > 0) await db.places.bulkAdd(places)
     if (routeSegments.length > 0) await db.routeSegments.bulkAdd(routeSegments)
     if (travelLogs.length > 0) await db.travelLogs.bulkAdd(travelLogs)
+    if (expenses.length > 0) await db.expenses.bulkAdd(expenses)
     if (settings) await db.settings.put(settings)
   })
 
@@ -454,12 +536,13 @@ export async function importAllData(data: BackupData): Promise<void> {
 }
 
 export async function clearAllData(): Promise<void> {
-  await db.transaction('rw', [db.trips, db.plans, db.places, db.routeSegments, db.travelLogs], async () => {
+  await db.transaction('rw', [db.trips, db.plans, db.places, db.routeSegments, db.travelLogs, db.expenses], async () => {
     await db.trips.clear()
     await db.plans.clear()
     await db.places.clear()
     await db.routeSegments.clear()
     await db.travelLogs.clear()
+    await db.expenses.clear()
   })
 
   sendBroadcast('DATA_CLEARED')

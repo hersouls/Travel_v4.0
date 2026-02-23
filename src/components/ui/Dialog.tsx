@@ -17,12 +17,12 @@ interface DialogProps {
 }
 
 const sizeStyles = {
-  sm: 'sm:max-w-sm',
-  md: 'sm:max-w-md',
-  lg: 'sm:max-w-lg',
-  xl: 'sm:max-w-xl',
-  '2xl': 'sm:max-w-2xl',
-  full: 'sm:max-w-[calc(100vw-2rem)]',
+  sm: 'max-w-[calc(100vw-2rem)] sm:max-w-sm',
+  md: 'max-w-[calc(100vw-2rem)] sm:max-w-md',
+  lg: 'max-w-[calc(100vw-2rem)] sm:max-w-lg',
+  xl: 'max-w-[calc(100vw-2rem)] sm:max-w-xl',
+  '2xl': 'max-w-[calc(100vw-2rem)] sm:max-w-2xl',
+  full: 'max-w-[calc(100vw-2rem)]',
 }
 
 export function Dialog({ open, onClose, size = 'md', children, className }: DialogProps) {
@@ -54,7 +54,7 @@ export function Dialog({ open, onClose, size = 'md', children, className }: Dial
             >
               <DialogPanel
                 className={clsx(
-                  'w-full rounded-2xl bg-white dark:bg-zinc-900 p-6 shadow-2xl',
+                  'w-full rounded-2xl bg-white dark:bg-zinc-900 p-4 sm:p-6 shadow-2xl',
                   'ring-1 ring-zinc-950/5 dark:ring-white/10',
                   sizeStyles[size],
                   className
@@ -113,5 +113,5 @@ interface DialogActionsProps {
 }
 
 export function DialogActions({ children, className }: DialogActionsProps) {
-  return <div className={clsx('mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end', className)}>{children}</div>
+  return <div className={clsx('mt-6 flex flex-col-reverse gap-2 sm:gap-3 sm:flex-row sm:justify-end', className)}>{children}</div>
 }

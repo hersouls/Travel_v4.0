@@ -1,5 +1,5 @@
 // Moonwave Travel Service Worker v4.0.0
-const CACHE_VERSION = 'travel-v4.3.0';
+const CACHE_VERSION = 'travel-v4.4.0';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const MAP_TILE_CACHE = `${CACHE_VERSION}-tiles`;
@@ -88,8 +88,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle static assets (cache-first)
-  if (isStaticAsset(url.pathname)) {
+  // Handle hashed assets (cache-first — safe because hash changes on rebuild)
+  // Non-hashed static assets use stale-while-revalidate (default below)
+  if (url.pathname.startsWith('/assets/') && isHashedAsset(url.pathname)) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));
     return;
   }
@@ -107,18 +108,9 @@ function isMapTileRequest(url) {
   );
 }
 
-// Check if request is for static asset
-function isStaticAsset(pathname) {
-  return (
-    pathname.startsWith('/assets/') ||
-    pathname.startsWith('/icons/') ||
-    pathname.endsWith('.js') ||
-    pathname.endsWith('.css') ||
-    pathname.endsWith('.woff2') ||
-    pathname.endsWith('.png') ||
-    pathname.endsWith('.svg') ||
-    pathname.endsWith('.ico')
-  );
+// Check if asset has a content hash in its filename (e.g., index-BgjaSCJb.js)
+function isHashedAsset(pathname) {
+  return /\-[a-zA-Z0-9_-]{6,}\.(js|css)$/.test(pathname);
 }
 
 // Check if response can be safely cached (only complete 200 responses)

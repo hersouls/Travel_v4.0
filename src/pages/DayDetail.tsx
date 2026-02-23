@@ -620,7 +620,7 @@ export function DayDetail() {
     <PageContainer>
       <div className="space-y-6 animate-fade-in" {...swipeHandlers}>
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4">
         <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
           <ArrowLeft className="size-5" />
         </IconButton>
@@ -637,9 +637,9 @@ export function DayDetail() {
               <ChevronLeft className="size-5" />
             </IconButton>
             <button onClick={() => setIsDayPickerOpen(true)} className="text-left">
-              <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              <h1 className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
                 Day {dayNumber}
-                <span className="text-sm font-normal text-zinc-500 ml-2">/ {totalDays} ▾</span>
+                <span className="text-sm font-normal text-zinc-500 ml-1 sm:ml-2">/ {totalDays} ▾</span>
               </h1>
             </button>
             <IconButton
@@ -653,7 +653,7 @@ export function DayDetail() {
             </IconButton>
           </div>
           {dayDate && (
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               <p className="text-sm text-zinc-500">
                 {dayDate.toLocaleDateString('ko-KR', {
                   year: 'numeric',
@@ -671,7 +671,7 @@ export function DayDetail() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
           {isAIAvailable && (
             <Button
               size="xs"
@@ -902,7 +902,7 @@ export function DayDetail() {
       <Dialog open={isDayPickerOpen} onClose={() => setIsDayPickerOpen(false)} size="sm">
         <DialogTitle onClose={() => setIsDayPickerOpen(false)}>Day 선택</DialogTitle>
         <DialogBody>
-          <div className={`grid gap-2 ${totalDays > 15 ? 'grid-cols-7' : 'grid-cols-5'}`}>
+          <div className={`grid gap-2 ${totalDays > 15 ? 'grid-cols-5 sm:grid-cols-7' : 'grid-cols-5'}`}>
             {Array.from({ length: totalDays }, (_, i) => i + 1).map((d) => {
               const dayPlanCount = plans.filter(p => p.day === d).length
               const dayDateObj = getTripDayDate(trip.startDate, d)

@@ -3,15 +3,15 @@
 // Photo capture → Claude Vision OCR → editable form
 // ============================================
 
-import { useState, useCallback } from 'react'
-import { Receipt, Camera, Loader2, Sparkles, Check, RotateCcw } from 'lucide-react'
+import { useState, useCallback, useRef } from 'react'
+import { Receipt, Camera, Loader2, Sparkles, Check, RotateCcw, X } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Input'
 import { Lightbox } from '@/components/ui/Lightbox'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { generateStructured, buildReceiptFoodContext, buildReceiptGeneralContext } from '@/services/claudeService'
+import { generateStructured, buildReceiptFoodContext, buildReceiptGeneralContext, isValidExpenseData } from '@/services/claudeService'
 import { compressImage, getImageFormat } from '@/services/imageStorage'
 import { extractExif } from '@/services/exifService'
 import { toast } from '@/stores/uiStore'
@@ -48,26 +48,36 @@ export function ReceiptScanner({
   const [memo, setMemo] = useState('')
   const [extractedExif, setExtractedExif] = useState<ExifMetadata | null>(null)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
+  const imageSelectIdRef = useRef(0)
 
   const handleImageSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
+    const selectId = ++imageSelectIdRef.current
+
     try {
       // 1. Extract EXIF BEFORE compression (canvas destroys EXIF)
       const exif = await extractExif(file)
+      if (imageSelectIdRef.current !== selectId) return
+
       setExtractedExif(exif)
 
       // 2. Compress images
       const full = await compressImage(file, { maxWidth: 1920, quality: 0.85 })
       const thumb = await compressImage(file, { maxWidth: 200, quality: 0.6 })
+
+      if (imageSelectIdRef.current !== selectId) return
+
       setImagePreview(full)
-      setImageBase64(full.split(',')[1])
+      setImageBase64(full.includes(',') ? full.split(',')[1] : full)
       setThumbnailBase64(thumb)
       setExpense(null)
       setError(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : '이미지 처리에 실패했습니다.')
+      if (imageSelectIdRef.current === selectId) {
+        setError(err instanceof Error ? err.message : '이미지 처리에 실패했습니다.')
+      }
     }
   }, [])
 
@@ -92,14 +102,15 @@ export function ReceiptScanner({
 
       const result = await generateStructured<ExpenseData>(request, claudeApiKey, claudeModel)
 
-      if (typeof result === 'string') {
-        try {
-          setExpense(JSON.parse(result))
-        } catch {
-          setError(AI_MESSAGES.PARSE_ERROR)
-        }
+      if (isValidExpenseData(result)) {
+        setExpense({
+          ...result,
+          items: Array.isArray(result.items) ? result.items.filter(
+            (item) => item && typeof item.name === 'string' && typeof item.amount === 'number'
+          ) : [],
+        })
       } else {
-        setExpense(result)
+        setError(AI_MESSAGES.PARSE_ERROR)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '영수증 분석에 실패했습니다.'
@@ -120,7 +131,12 @@ export function ReceiptScanner({
     return {
       tripId,
       day,
-      timestamp: expense.receiptDate ? new Date(expense.receiptDate).toISOString() : new Date().toISOString(),
+      timestamp: expense.receiptDate
+        ? (() => {
+            const [y, m, d] = expense.receiptDate.split('-').map(Number)
+            return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+          })()
+        : new Date().toISOString(),
       type: 'receipt',
       photo: imagePreview,
       thumbnailPhoto: thumbnailBase64 || undefined,
@@ -282,7 +298,12 @@ export function ReceiptScanner({
                     label="총 금액"
                     type="number"
                     value={String(expense.totalAmount)}
-                    onChange={(val) => updateExpense('totalAmount', Number(val))}
+                    onChange={(val) => {
+                      const num = Number(val)
+                      if (!isNaN(num) && isFinite(num)) {
+                        updateExpense('totalAmount', num)
+                      }
+                    }}
                   />
 
                   {/* Items */}
@@ -291,14 +312,41 @@ export function ReceiptScanner({
                       <Label>항목</Label>
                       <div className="mt-2 space-y-1.5">
                         {expense.items.map((item, i) => (
-                          <div key={i} className="flex items-center gap-2 text-sm">
-                            <span className="flex-1 text-zinc-700 dark:text-zinc-300 truncate">{item.name}</span>
+                          <div key={i} className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
+                                const newItems = [...expense.items]
+                                newItems[i] = { ...newItems[i], name: e.target.value }
+                                updateExpense('items', newItems)
+                              }}
+                              className="flex-1 text-sm px-2 py-1 rounded-md border border-zinc-950/10 dark:border-white/10 bg-transparent text-zinc-700 dark:text-zinc-300"
+                            />
                             {item.quantity && item.quantity > 1 && (
-                              <span className="text-zinc-400">x{item.quantity}</span>
+                              <span className="text-xs text-zinc-400 flex-shrink-0">x{item.quantity}</span>
                             )}
-                            <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                              {item.amount.toLocaleString()}
-                            </span>
+                            <input
+                              type="number"
+                              value={item.amount}
+                              onChange={(e) => {
+                                const newItems = [...expense.items]
+                                newItems[i] = { ...newItems[i], amount: Number(e.target.value) || 0 }
+                                updateExpense('items', newItems)
+                              }}
+                              className="w-24 text-sm text-right px-2 py-1 rounded-md border border-zinc-950/10 dark:border-white/10 bg-transparent font-medium text-zinc-900 dark:text-zinc-100"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newItems = expense.items.filter((_, idx) => idx !== i)
+                                updateExpense('items', newItems)
+                              }}
+                              className="text-zinc-400 hover:text-danger-500 flex-shrink-0"
+                              aria-label="항목 삭제"
+                            >
+                              <X className="size-3.5" />
+                            </button>
                           </div>
                         ))}
                       </div>

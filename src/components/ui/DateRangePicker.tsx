@@ -211,7 +211,7 @@ export function DateRangePicker({
                 disabled={!day}
                 onClick={() => day && handleDateClick(day)}
                 className={clsx(
-                  'h-9 rounded-lg text-sm transition-colors',
+                  'h-9 min-w-0 rounded-lg text-sm transition-colors',
                   !day && 'invisible',
                   day && 'hover:bg-zinc-100 dark:hover:bg-zinc-800',
                   isInRange(day!) && !isStart(day!) && !isEnd(day!) && 'bg-primary-100 dark:bg-primary-900/30',

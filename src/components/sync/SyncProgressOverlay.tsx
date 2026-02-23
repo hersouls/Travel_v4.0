@@ -83,7 +83,7 @@ export function SyncProgressOverlay() {
         fadingOut ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'
       }`}
     >
-      <div className="flex items-center gap-2.5 bg-white dark:bg-zinc-800 rounded-xl shadow-lg border border-[var(--border)] px-3.5 py-2.5 min-w-[200px]">
+      <div className="flex items-center gap-2.5 bg-white dark:bg-zinc-800 rounded-xl shadow-lg border border-[var(--border)] px-3.5 py-2.5 min-w-[180px] max-w-[calc(100vw-2rem)]">
         {syncProgress.status === 'error' ? (
           <CloudOff className="w-4 h-4 text-danger-500 shrink-0" />
         ) : syncProgress.status === 'done' ? (

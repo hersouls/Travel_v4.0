@@ -19,7 +19,7 @@ import {
 import { getFirebaseDb } from '@/services/firebase'
 import { db as dexieDb } from '@/services/database'
 import * as database from '@/services/database'
-import type { Trip, Plan, Place, Settings, RouteSegment, TravelLog, SyncProgress } from '@/types'
+import type { Trip, Plan, Place, Settings, RouteSegment, TravelLog, Expense, SyncProgress } from '@/types'
 import { detectConflicts, extractMergeableFields } from '@/utils/syncConflict'
 import { useSyncConflictStore } from '@/stores/syncConflictStore'
 
@@ -100,6 +100,11 @@ function tripToFirestore(trip: Trip): DocumentData {
     isFavorite: trip.isFavorite,
     shareId: trip.shareId || null,
     coverImagePath: trip.coverImagePath || null,
+    budget: trip.budget ? {
+      totalBudget: trip.budget.totalBudget,
+      budgetCurrency: trip.budget.budgetCurrency,
+      ...(trip.budget.categoryBudgets ? { categoryBudgets: trip.budget.categoryBudgets } : {}),
+    } : null,
     createdAt: toTimestamp(trip.createdAt),
     updatedAt: toTimestamp(trip.updatedAt),
   }
@@ -220,8 +225,8 @@ function travelLogToFirestore(log: TravelLog): DocumentData {
     photoPath: log.photoPath || null,
     thumbnailPhotoPath: log.thumbnailPhotoPath || null,
     exif: log.exif || null,
-    latitude: log.latitude ?? null,
-    longitude: log.longitude ?? null,
+    latitude: toFiniteNumber(log.latitude) ?? null,
+    longitude: toFiniteNumber(log.longitude) ?? null,
     address: log.address || null,
     placeName: log.placeName || null,
     memo: log.memo || null,
@@ -229,6 +234,16 @@ function travelLogToFirestore(log: TravelLog): DocumentData {
     createdAt: toTimestamp(log.createdAt),
     updatedAt: toTimestamp(log.updatedAt),
   } as Record<string, unknown>)
+}
+
+/** Parse a value that may be a number or numeric string into a finite number, or undefined. */
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return isFinite(value) ? value : undefined
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value)
+    return isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
 }
 
 function firestoreToTravelLogData(data: DocumentData): Omit<TravelLog, 'id' | 'tripId' | 'photo' | 'thumbnailPhoto'> {
@@ -240,12 +255,56 @@ function firestoreToTravelLogData(data: DocumentData): Omit<TravelLog, 'id' | 't
     photoPath: data.photoPath || undefined,
     thumbnailPhotoPath: data.thumbnailPhotoPath || undefined,
     exif: data.exif || undefined,
-    latitude: data.latitude ?? undefined,
-    longitude: data.longitude ?? undefined,
+    latitude: toFiniteNumber(data.latitude),
+    longitude: toFiniteNumber(data.longitude),
     address: data.address || undefined,
     placeName: data.placeName || undefined,
     memo: data.memo || undefined,
     expense: data.expense || undefined,
+    createdAt: fromTimestamp(data.createdAt),
+    updatedAt: fromTimestamp(data.updatedAt),
+  }
+}
+
+function expenseToFirestore(expense: Expense): DocumentData {
+  return stripUndefined({
+    tripFirebaseId: expense.tripFirebaseId || '',
+    day: expense.day,
+    timestamp: expense.timestamp,
+    category: expense.category,
+    subCategory: expense.subCategory || null,
+    storeName: expense.storeName,
+    memo: expense.memo || null,
+    items: expense.items || [],
+    totalAmount: expense.totalAmount,
+    currency: expense.currency,
+    receiptDate: expense.receiptDate || null,
+    sourceLogFirebaseId: expense.sourceLogFirebaseId || null,
+    latitude: toFiniteNumber(expense.latitude) ?? null,
+    longitude: toFiniteNumber(expense.longitude) ?? null,
+    address: expense.address || null,
+    createdAt: toTimestamp(expense.createdAt),
+    updatedAt: toTimestamp(expense.updatedAt),
+  } as Record<string, unknown>)
+}
+
+function firestoreToExpenseData(data: DocumentData): Omit<Expense, 'id' | 'tripId' | 'sourceLogId'> {
+  return {
+    tripFirebaseId: data.tripFirebaseId || '',
+    day: data.day || 1,
+    timestamp: data.timestamp || new Date().toISOString(),
+    category: data.category || 'other',
+    subCategory: data.subCategory || undefined,
+    storeName: data.storeName || '',
+    memo: data.memo || undefined,
+    items: data.items || [],
+    totalAmount: data.totalAmount || 0,
+    currency: data.currency || 'KRW',
+    receiptDate: data.receiptDate || undefined,
+    sourceLogFirebaseId: data.sourceLogFirebaseId || undefined,
+    latitude: toFiniteNumber(data.latitude),
+    longitude: toFiniteNumber(data.longitude),
+    address: data.address || undefined,
     createdAt: fromTimestamp(data.createdAt),
     updatedAt: fromTimestamp(data.updatedAt),
   }
@@ -266,6 +325,11 @@ function firestoreToTripData(data: DocumentData): Omit<Trip, 'id' | 'coverImage'
     isFavorite: data.isFavorite ?? false,
     shareId: data.shareId || undefined,
     coverImagePath: data.coverImagePath || undefined,
+    budget: data.budget ? {
+      totalBudget: data.budget.totalBudget || 0,
+      budgetCurrency: data.budget.budgetCurrency || 'KRW',
+      categoryBudgets: data.budget.categoryBudgets || undefined,
+    } : undefined,
     createdAt: fromTimestamp(data.createdAt),
     updatedAt: fromTimestamp(data.updatedAt),
   }
@@ -510,12 +574,14 @@ class SyncManager {
         dexieDb.places,
         dexieDb.routeSegments,
         dexieDb.travelLogs,
+        dexieDb.expenses,
       ], async () => {
         await dexieDb.trips.clear()
         await dexieDb.plans.clear()
         await dexieDb.places.clear()
         await dexieDb.routeSegments.clear()
         await dexieDb.travelLogs.clear()
+        await dexieDb.expenses.clear()
       })
       // Clear sync cooldown timestamps from sessionStorage
       try {
@@ -629,12 +695,13 @@ class SyncManager {
       }
       if (this.syncGeneration !== generation) return
 
-      // Phase 2: Dependent entities in parallel (Plans + RouteSegments + TravelLogs need tripFirebaseId)
+      // Phase 2: Dependent entities in parallel (Plans + RouteSegments + TravelLogs + Expenses need tripFirebaseId)
       this.notifySyncStatus({ status: 'syncing', step: '일정 및 기록 동기화 중...' })
       const phase2 = await Promise.allSettled([
         this.syncPlansInitial(),
         this.syncRouteSegmentsInitial(),
         this.syncTravelLogsInitial(),
+        this.syncExpensesInitial(),
       ])
       for (const r of phase2) {
         if (r.status === 'rejected') console.error('[Sync] Phase 2 partial failure:', r.reason)
@@ -1079,8 +1146,18 @@ class SyncManager {
     }
 
     // Remote-only → create locally
+    // Also fix Firestore data if coordinates are stored as strings
+    const remoteFixQueue: Array<{ fbId: string; lat: number; lng: number }> = []
+
     for (const [fbId, { data }] of remoteMap) {
       try {
+        // Detect and queue Firestore coordinate fix (string → number)
+        const remoteNeedsFix = (typeof data.latitude === 'string' || typeof data.longitude === 'string') &&
+          toFiniteNumber(data.latitude) !== undefined && toFiniteNumber(data.longitude) !== undefined
+        if (remoteNeedsFix) {
+          remoteFixQueue.push({ fbId, lat: toFiniteNumber(data.latitude)!, lng: toFiniteNumber(data.longitude)! })
+        }
+
         if (!localByFbId.has(fbId)) {
           const logData = firestoreToTravelLogData(data)
           const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
@@ -1113,10 +1190,36 @@ class SyncManager {
             const logWithTripFbId = { ...local, tripFirebaseId: tripFbId }
             this.markPushed(`travelLog:${fbId}`)
             await setDoc(doc(logsRef, fbId), travelLogToFirestore(logWithTripFbId))
+          } else {
+            // Same timestamp → repair missing coordinates from remote
+            const localHasCoords = typeof local.latitude === 'number' && isFinite(local.latitude) &&
+              typeof local.longitude === 'number' && isFinite(local.longitude)
+            if (!localHasCoords) {
+              const logData = firestoreToTravelLogData(data)
+              if (logData.latitude !== undefined && logData.longitude !== undefined) {
+                await dexieDb.travelLogs.update(local.id!, { latitude: logData.latitude, longitude: logData.longitude })
+              }
+            }
           }
         }
       } catch (e) {
         console.error('[Sync] Failed to sync travelLog:', fbId, e)
+      }
+    }
+
+    // Batch-fix Firestore documents with string coordinates → proper numbers
+    if (remoteFixQueue.length > 0) {
+      try {
+        const batch = writeBatch(firestore)
+        for (const { fbId, lat, lng } of remoteFixQueue) {
+          this.markPushed(`travelLog:${fbId}`)
+          const ref = doc(logsRef, fbId)
+          batch.update(ref, { latitude: lat, longitude: lng })
+        }
+        await batch.commit()
+        console.log(`[Sync] Fixed ${remoteFixQueue.length} travelLog coordinate types in Firestore (string → number)`)
+      } catch (e) {
+        console.error('[Sync] Failed to fix Firestore travelLog coordinates:', e)
       }
     }
 
@@ -1150,6 +1253,97 @@ class SyncManager {
           console.log('[Sync] Deleted locally (remotely deleted travelLog):', log.firebaseId)
         } catch (e) {
           console.error('[Sync] Failed to clean up orphaned travelLog:', log.firebaseId, e)
+        }
+      }
+    }
+  }
+
+  private async syncExpensesInitial(): Promise<void> {
+    if (!this.userId) return
+    const firestore = getFirebaseDb()
+    const expensesRef = collection(firestore, 'users', this.userId, 'expenses')
+
+    const [snapshot, localExpenses] = await Promise.all([
+      withRetry(() => getDocs(expensesRef), 'Expenses fetch'),
+      dexieDb.expenses.toArray(),
+    ])
+
+    const remoteMap = new Map<string, { docId: string; data: DocumentData }>()
+    for (const docSnap of snapshot.docs) {
+      remoteMap.set(docSnap.id, { docId: docSnap.id, data: docSnap.data() })
+    }
+
+    const localByFbId = new Map<string, Expense>()
+    for (const expense of localExpenses) {
+      if (expense.firebaseId) localByFbId.set(expense.firebaseId, expense)
+    }
+
+    // Remote-only → create locally
+    for (const [fbId, { data }] of remoteMap) {
+      try {
+        if (!localByFbId.has(fbId)) {
+          const expenseData = firestoreToExpenseData(data)
+          const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
+          if (localTripId === null) {
+            console.warn('[Sync] Skipping expense - trip not found:', data.tripFirebaseId)
+            continue
+          }
+          await dexieDb.expenses.add({
+            ...expenseData,
+            firebaseId: fbId,
+            tripId: localTripId,
+          } as Expense)
+        } else {
+          // Both exist → newer wins
+          const local = localByFbId.get(fbId)!
+          const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
+          const localMs = dateToMs(local.updatedAt)
+          if (remoteMs > localMs) {
+            const expenseData = firestoreToExpenseData(data)
+            await dexieDb.expenses.update(local.id!, { ...expenseData, firebaseId: fbId })
+          } else if (localMs > remoteMs) {
+            let tripFbId = local.tripFirebaseId
+            if (!tripFbId) tripFbId = (await this.resolveTripFirebaseId(local.tripId)) || ''
+            const expenseWithTripFbId = { ...local, tripFirebaseId: tripFbId }
+            this.markPushed(`expense:${fbId}`)
+            await setDoc(doc(expensesRef, fbId), expenseToFirestore(expenseWithTripFbId))
+          }
+        }
+      } catch (e) {
+        console.error('[Sync] Failed to sync expense:', fbId, e)
+      }
+    }
+
+    // Local-only (no firebaseId) → push to cloud
+    for (const expense of localExpenses) {
+      if (!expense.firebaseId && expense.id) {
+        try {
+          let tripFbId = expense.tripFirebaseId
+          if (!tripFbId) tripFbId = (await this.resolveTripFirebaseId(expense.tripId)) || ''
+          if (!tripFbId) {
+            console.warn('[Sync] Skipping local-only expense push — no tripFirebaseId:', expense.id)
+            continue
+          }
+          const expenseWithTripFbId = { ...expense, tripFirebaseId: tripFbId }
+          const newDocRef = doc(expensesRef)
+          this.markPushed(`expense:${newDocRef.id}`)
+          await setDoc(newDocRef, expenseToFirestore(expenseWithTripFbId))
+          await dexieDb.expenses.update(expense.id, { firebaseId: newDocRef.id })
+          console.log('[Sync] Pushed local-only expense to cloud:', expense.id, '→', newDocRef.id)
+        } catch (e) {
+          console.error('[Sync] Failed to push local-only expense:', expense.id, e)
+        }
+      }
+    }
+
+    // Local has firebaseId but remote doesn't → deleted remotely, clean up locally
+    for (const expense of localExpenses) {
+      if (expense.firebaseId && !remoteMap.has(expense.firebaseId) && expense.id) {
+        try {
+          await dexieDb.expenses.delete(expense.id)
+          console.log('[Sync] Deleted locally (remotely deleted expense):', expense.firebaseId)
+        } catch (e) {
+          console.error('[Sync] Failed to clean up orphaned expense:', expense.firebaseId, e)
         }
       }
     }
@@ -1265,6 +1459,7 @@ class SyncManager {
             await dexieDb.plans.where('tripId').equals(local.id).delete()
             await dexieDb.routeSegments.where('tripId').equals(local.id).delete()
             await dexieDb.travelLogs.where('tripId').equals(local.id).delete()
+            await dexieDb.expenses.where('tripId').equals(local.id).delete()
             await dexieDb.trips.delete(local.id)
             changed = true
           }
@@ -1647,6 +1842,50 @@ class SyncManager {
       if (changed) this.notifyUpdateDebounced()
     }, (error) => console.error('[Sync] TravelLog listener error:', error))
     this.unsubscribers.push(logUnsub)
+
+    // Expense listener
+    const expensesRef = collection(firestore, 'users', this.userId, 'expenses')
+    const expenseUnsub = onSnapshot(expensesRef, async (snapshot) => {
+      if (this.mergeInProgress) return
+      let changed = false
+      for (const change of snapshot.docChanges()) {
+        const docId = change.doc.id
+        if (this.isEcho(`expense:${docId}`)) continue
+        if (this.isPendingDelete(docId)) continue
+
+        if (change.type === 'added' || change.type === 'modified') {
+          const data = change.doc.data()
+          const local = await database.getExpenseByFirebaseId(docId)
+          if (!local) {
+            const expenseData = firestoreToExpenseData(data)
+            const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
+            if (localTripId === null) continue
+            await dexieDb.expenses.add({
+              ...expenseData,
+              firebaseId: docId,
+              tripId: localTripId,
+            } as Expense)
+            changed = true
+          } else {
+            const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
+            const localMs = dateToMs(local.updatedAt)
+            if (remoteMs > localMs) {
+              const expenseData = firestoreToExpenseData(data)
+              await dexieDb.expenses.update(local.id!, { ...expenseData, firebaseId: docId })
+              changed = true
+            }
+          }
+        } else if (change.type === 'removed') {
+          const local = await database.getExpenseByFirebaseId(docId)
+          if (local?.id) {
+            await dexieDb.expenses.delete(local.id)
+            changed = true
+          }
+        }
+      }
+      if (changed) this.notifyUpdateDebounced()
+    }, (error) => console.error('[Sync] Expense listener error:', error))
+    this.unsubscribers.push(expenseUnsub)
   }
 
   // ============================================
@@ -1837,6 +2076,10 @@ class SyncManager {
     const logsRef = collection(firestore, 'users', this.userId, 'travelLogs')
     const logsSnapshot = await getDocs(logsRef)
 
+    // Also delete associated expenses
+    const expensesRef = collection(firestore, 'users', this.userId, 'expenses')
+    const expensesSnapshot = await getDocs(expensesRef)
+
     const batch = writeBatch(firestore)
     let opCount = 0
 
@@ -1872,6 +2115,14 @@ class SyncManager {
       }
     }
 
+    for (const expDoc of expensesSnapshot.docs) {
+      if (expDoc.data().tripFirebaseId === firebaseId) {
+        this.markPushed(`expense:${expDoc.id}`)
+        batch.delete(expDoc.ref)
+        opCount++
+      }
+    }
+
     batch.delete(doc(firestore, 'users', this.userId, 'trips', firebaseId))
     opCount++
 
@@ -1889,6 +2140,9 @@ class SyncManager {
       }
       for (const logDoc of logsSnapshot.docs) {
         if (logDoc.data().tripFirebaseId === firebaseId) allRefs.push(logDoc.ref)
+      }
+      for (const expDoc of expensesSnapshot.docs) {
+        if (expDoc.data().tripFirebaseId === firebaseId) allRefs.push(expDoc.ref)
       }
       allRefs.push(doc(firestore, 'users', this.userId, 'trips', firebaseId))
 
@@ -2022,6 +2276,71 @@ class SyncManager {
         const allRefs: DocumentReference[] = []
         for (const logDoc of logsSnapshot.docs) {
           if (logDoc.data().tripFirebaseId === tripFirebaseId) allRefs.push(logDoc.ref)
+        }
+        for (let i = 0; i < allRefs.length; i += 450) {
+          const chunk = allRefs.slice(i, i + 450)
+          const b = writeBatch(firestore)
+          for (const ref of chunk) b.delete(ref)
+          await b.commit()
+        }
+      }
+    }
+  }
+
+  async uploadExpense(expense: Expense): Promise<string> {
+    if (!this.userId) return expense.firebaseId || ''
+    const firestore = getFirebaseDb()
+    const expensesRef = collection(firestore, 'users', this.userId, 'expenses')
+
+    // Ensure tripFirebaseId is set
+    let tripFbId = expense.tripFirebaseId
+    if (!tripFbId) {
+      tripFbId = await this.resolveTripFirebaseId(expense.tripId) || ''
+    }
+    const expenseWithTripFbId = { ...expense, tripFirebaseId: tripFbId }
+
+    if (expense.firebaseId) {
+      this.queueWrite(doc(expensesRef, expense.firebaseId), expenseToFirestore(expenseWithTripFbId), `expense:${expense.firebaseId}`)
+      return expense.firebaseId
+    }
+
+    const newDocRef = doc(expensesRef)
+    this.markPushed(`expense:${newDocRef.id}`)
+    await setDoc(newDocRef, expenseToFirestore(expenseWithTripFbId))
+    return newDocRef.id
+  }
+
+  async deleteRemoteExpense(firebaseId: string): Promise<void> {
+    if (!this.userId || !firebaseId) return
+    const firestore = getFirebaseDb()
+    this.markPushed(`expense:${firebaseId}`)
+    await deleteDoc(doc(firestore, 'users', this.userId, 'expenses', firebaseId))
+  }
+
+  async deleteRemoteExpensesForTrip(tripFirebaseId: string): Promise<void> {
+    if (!this.userId || !tripFirebaseId) return
+    const firestore = getFirebaseDb()
+    const expensesRef = collection(firestore, 'users', this.userId, 'expenses')
+    const expensesSnapshot = await getDocs(expensesRef)
+
+    const batch = writeBatch(firestore)
+    let opCount = 0
+
+    for (const expenseDoc of expensesSnapshot.docs) {
+      if (expenseDoc.data().tripFirebaseId === tripFirebaseId) {
+        this.markPushed(`expense:${expenseDoc.id}`)
+        batch.delete(expenseDoc.ref)
+        opCount++
+      }
+    }
+
+    if (opCount > 0) {
+      if (opCount <= 450) {
+        await batch.commit()
+      } else {
+        const allRefs: DocumentReference[] = []
+        for (const expenseDoc of expensesSnapshot.docs) {
+          if (expenseDoc.data().tripFirebaseId === tripFirebaseId) allRefs.push(expenseDoc.ref)
         }
         for (let i = 0; i < allRefs.length; i += 450) {
           const chunk = allRefs.slice(i, i + 450)

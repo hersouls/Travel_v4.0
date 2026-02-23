@@ -1,13 +1,18 @@
-import { pdf, DocumentProps } from '@react-pdf/renderer'
 import type { ReactElement } from 'react'
-import { createElement } from 'react'
-import { ItineraryPDF } from '@/components/trip/ItineraryPDF'
+import type { DocumentProps } from '@react-pdf/renderer'
 import type { Trip, Plan } from '@/types'
 
 /**
  * Generate and download a PDF itinerary for a trip.
+ * Uses dynamic imports to avoid bundling @react-pdf/renderer in the main chunk.
  */
 export async function downloadItineraryPDF(trip: Trip, plans: Plan[]): Promise<void> {
+  const [{ pdf }, { createElement }, { ItineraryPDF }] = await Promise.all([
+    import('@react-pdf/renderer'),
+    import('react'),
+    import('@/components/trip/ItineraryPDF'),
+  ])
+
   // Group plans by day, sorted by startTime
   const plansByDay: Record<number, Plan[]> = {}
   for (const plan of plans) {

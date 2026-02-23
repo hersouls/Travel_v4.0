@@ -317,7 +317,7 @@ export function PlaceLibrary() {
     <PageContainer>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
           <div>
             <h1 className="text-2xl font-bold text-[var(--foreground)]">장소 라이브러리</h1>
             <p className="text-sm text-zinc-500 mt-1">자주 가는 장소를 저장하고 관리하세요</p>
@@ -465,7 +465,7 @@ export function PlaceLibrary() {
             <h2 className="text-lg font-semibold text-zinc-950 dark:text-white">
               {editingPlaceId ? '장소 수정' : '새 장소 추가'}
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
               {editingPlaceId && (
                 <Button
                   type="button"
@@ -570,7 +570,7 @@ export function PlaceLibrary() {
               {/* 추출된 좌표 표시 */}
               {(formData.latitude && formData.longitude) && (
                 <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
                     <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
                       📍 추출된 좌표
                     </span>

@@ -16,7 +16,7 @@ export function loadGoogleMaps(): Promise<typeof google> {
   }
 
   if (!optionsSet) {
-    setOptions({ key: apiKey, v: 'weekly', libraries: ['geometry', 'marker'] })
+    setOptions({ key: apiKey, v: 'weekly', libraries: ['geometry', 'marker', 'geocoding'] })
     optionsSet = true
   }
 
@@ -24,10 +24,11 @@ export function loadGoogleMaps(): Promise<typeof google> {
     importLibrary('maps'),
     importLibrary('marker'),
     importLibrary('geometry'),
+    importLibrary('geocoding'),
   ]).then(() => google)
   return googleMapsPromise
 }
 
 export function isGoogleMapsLoaded(): boolean {
-  return typeof google !== 'undefined' && !!google.maps
+  return typeof google !== 'undefined' && typeof google.maps !== 'undefined' && typeof google.maps.Map !== 'undefined'
 }

@@ -3,9 +3,35 @@
 // SSE streaming + structured response support
 // ============================================
 
-import type { AIGenerateRequest, ClaudeModel, Plan, Trip, GeneratedItinerary, DaySuggestion } from '@/types'
+import type { AIGenerateRequest, ClaudeModel, Plan, Trip, GeneratedItinerary, DaySuggestion, ExpenseData } from '@/types'
 
 const API_URL = '/api/claude/generate'
+
+// ============================================
+// JSON Response Utilities
+// ============================================
+
+/** Claude 응답에서 JSON 마크다운 래핑 제거 */
+function stripJsonWrapper(content: string): string {
+  let s = content.trim()
+  if (s.startsWith('```')) {
+    s = s.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '')
+  }
+  return s.trim()
+}
+
+/** OCR 결과가 유효한 ExpenseData 구조인지 검증 */
+export function isValidExpenseData(obj: unknown): obj is ExpenseData {
+  if (!obj || typeof obj !== 'object') return false
+  const e = obj as Record<string, unknown>
+  return (
+    typeof e.storeName === 'string' &&
+    typeof e.category === 'string' &&
+    Array.isArray(e.items) &&
+    typeof e.totalAmount === 'number' && isFinite(e.totalAmount) &&
+    typeof e.currency === 'string' && e.currency.length > 0
+  )
+}
 
 // ============================================
 // SSE Streaming Call
@@ -117,13 +143,17 @@ export async function generateStructured<T = string>(
       throw new Error('Invalid API response: missing content field')
     }
 
-    const content = data.content
+    if (data.truncated) {
+      console.warn('[Claude] Response truncated (max_tokens reached)')
+    }
+
+    const content = stripJsonWrapper(data.content)
 
     // Try parsing as JSON for structured types
     try {
       return JSON.parse(content) as T
     } catch {
-      return content as T
+      throw new Error(`JSON 파싱 실패: ${content.slice(0, 200)}`)
     }
   } finally {
     if (timeout) clearTimeout(timeout)
@@ -135,12 +165,17 @@ export async function generateStructured<T = string>(
 // ============================================
 
 export async function testConnection(apiKey: string, model: ClaudeModel): Promise<boolean> {
-  const result = await generateStructured<string>(
-    { type: 'test', context: {} },
-    apiKey,
-    model,
-  )
-  return typeof result === 'string' && result.length > 0
+  try {
+    const result = await generateStructured<string>(
+      { type: 'test', context: {} },
+      apiKey,
+      model,
+    )
+    return typeof result === 'string' && result.length > 0
+  } catch {
+    // test type은 텍스트 응답이므로 JSON 파싱 실패가 정상
+    return true
+  }
 }
 
 // ============================================

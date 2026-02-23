@@ -37,6 +37,9 @@ npm-debug.log*
 # Playwright MCP artifacts
 .playwright-mcp/
 
+# Music files (hosted on Firebase Storage)
+public/music/
+
 # Build artifacts
 tsconfig.tsbuildinfo
 nul

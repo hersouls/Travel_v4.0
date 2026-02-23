@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { useTripStore } from '@/stores/tripStore'
 import { usePlaceStore } from '@/stores/placeStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useTravelLogStore } from '@/stores/travelLogStore'
 import { useUIStore } from '@/stores/uiStore'
 import { syncManager } from '@/services/firestoreSync'
 
@@ -62,6 +63,12 @@ export function useSync() {
       const currentTrip = useTripStore.getState().currentTrip
       if (currentTrip?.id) {
         useTripStore.getState().loadTrip(currentTrip.id)
+      }
+      // Reload travel logs if currently viewing a trip
+      const { logs } = useTravelLogStore.getState()
+      if (logs.length > 0) {
+        const tripId = logs[0]?.tripId
+        if (tripId) useTravelLogStore.getState().loadLogs(tripId)
       }
     })
 

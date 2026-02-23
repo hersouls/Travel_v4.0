@@ -180,12 +180,12 @@ export function NavigationView() {
     <PageContainer>
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
             <ArrowLeft className="size-5" />
           </IconButton>
           <div className="flex-1">
-            <h1 className="text-xl font-bold text-[var(--foreground)]">내비게이션</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--foreground)]">내비게이션</h1>
             <p className="text-sm text-zinc-500">{trip.title}</p>
           </div>
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-50 dark:bg-green-900/20">

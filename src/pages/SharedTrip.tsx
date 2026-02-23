@@ -240,7 +240,7 @@ export function SharedTrip() {
               {formatDateRange(trip.startDate, trip.endDate)}
             </p>
 
-            <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
+            <div className="flex flex-wrap gap-2 sm:gap-4 mt-4 pt-4 border-t border-zinc-100 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <MapPin className="size-4 text-zinc-400" />
                 <span className="text-sm text-[var(--foreground)]">{trip.country}</span>

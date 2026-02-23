@@ -27,6 +27,7 @@ const About = lazy(() => import('@/pages/About').then(m => ({ default: m.About }
 const NavigationView = lazy(() => import('@/pages/NavigationView').then(m => ({ default: m.NavigationView })))
 const TravelLogPage = lazy(() => import('@/pages/TravelLog').then(m => ({ default: m.TravelLog })))
 const TravelLogMapPage = lazy(() => import('@/pages/TravelLogMap').then(m => ({ default: m.TravelLogMap })))
+const TravelExpensePage = lazy(() => import('@/pages/TravelExpense').then(m => ({ default: m.TravelExpense })))
 const SharedTrip = lazy(() => import('@/pages/SharedTrip').then(m => ({ default: m.SharedTrip })))
 
 // Loading fallback component
@@ -150,6 +151,14 @@ const router = createBrowserRouter([
         ),
       },
       {
+        path: 'trips/:id/expenses',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <TravelExpensePage />
+          </Suspense>
+        ),
+      },
+      {
         path: 'places',
         element: (
           <Suspense fallback={<PageLoading />}>
@@ -265,6 +274,42 @@ if (typeof window !== 'undefined') {
     initCacheWarming()
   })
 }
+
+// Handle chunk load errors (stale cache after deployment)
+// When a dynamic import fails with 404, reload the page once to get fresh assets
+window.addEventListener('error', (event) => {
+  if (
+    event.message?.includes('Failed to fetch dynamically imported module') ||
+    event.message?.includes('Loading chunk') ||
+    event.message?.includes('Loading CSS chunk')
+  ) {
+    const reloadKey = 'chunk-reload'
+    const lastReload = sessionStorage.getItem(reloadKey)
+    const now = Date.now()
+    // Only auto-reload once per 30 seconds to avoid infinite loops
+    if (!lastReload || now - Number(lastReload) > 30000) {
+      sessionStorage.setItem(reloadKey, String(now))
+      window.location.reload()
+    }
+  }
+})
+
+window.addEventListener('unhandledrejection', (event) => {
+  const message = event.reason?.message || String(event.reason)
+  if (
+    message.includes('Failed to fetch dynamically imported module') ||
+    message.includes('Loading chunk') ||
+    message.includes('Loading CSS chunk')
+  ) {
+    const reloadKey = 'chunk-reload'
+    const lastReload = sessionStorage.getItem(reloadKey)
+    const now = Date.now()
+    if (!lastReload || now - Number(lastReload) > 30000) {
+      sessionStorage.setItem(reloadKey, String(now))
+      window.location.reload()
+    }
+  }
+})
 
 // Render app
 createRoot(document.getElementById('root')!).render(

@@ -3,7 +3,7 @@
 // Category-based and currency-based totals
 // ============================================
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, Utensils, Bus, Bed, ShoppingBag, Camera, MoreHorizontal, MapPin, Route } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
@@ -70,6 +70,13 @@ function formatAmount(amount: number, currency: string): string {
 export function ExpenseSummary({ logs, className, defaultOpen = false, totalTripDistance, uniqueLocationCount, dayCount, exchangeRates, showKRW }: ExpenseSummaryProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
+  // Sync isOpen when defaultOpen changes (e.g., navigation with ?tab=expense)
+  useEffect(() => {
+    if (defaultOpen) {
+      setIsOpen(true)
+    }
+  }, [defaultOpen])
+
   const { categoryTotals, currencyTotals, totalCount, maxCategoryAmount } = useMemo(() => {
     const catMap = new Map<ExpenseCategory, { totals: Record<string, number>; count: number }>()
     const curMap = new Map<string, number>()
@@ -126,7 +133,7 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
           <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">경비 요약</span>
           <span className="text-xs text-zinc-500 dark:text-zinc-400">{totalCount}건</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Show main currency total inline */}
           {currencyTotals.length > 0 && (
             <div className="text-right">
@@ -189,7 +196,7 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
           {hasMovementStats && (
             <div className={clsx(currencyTotals.length <= 1 && totalCount > 0 && 'pt-3', currencyTotals.length > 1 && '', totalCount === 0 && 'pt-3', 'space-y-1.5')}>
               <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">이동 통계</span>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-3">
                 <div className="text-center p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
                   <Route className="size-4 mx-auto text-primary-500 mb-1" />
                   <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
@@ -227,7 +234,7 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
               const catTotal = Object.values(totals).reduce((s, v) => s + v, 0)
               const pct = maxCategoryAmount > 0 ? (catTotal / maxCategoryAmount) * 100 : 0
               return (
-                <div key={category} className="flex items-center gap-3">
+                <div key={category} className="flex items-center gap-2 sm:gap-3">
                   <div className={clsx('size-8 rounded-lg flex items-center justify-center flex-shrink-0', categoryColorClasses[category])}>
                     <Icon className="size-4" />
                   </div>

@@ -134,7 +134,7 @@ export function Lightbox({ images, initialIndex, onClose, open }: LightboxProps)
 
                     {/* Image */}
                     <div
-                        className="w-full h-full flex items-center justify-center p-12 sm:p-16"
+                        className="w-full h-full flex items-center justify-center p-4 sm:p-12 md:p-16"
                         onClick={onClose}
                     >
                         <img

@@ -54,7 +54,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 type LogFilter = 'all' | 'photo' | 'receipt' | 'memo'
 
@@ -70,6 +70,9 @@ const INITIAL_LOAD_COUNT = 3
 export function TravelLog() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isExpenseTab = searchParams.get('tab') === 'expense'
+  const expenseSectionRef = useRef<HTMLDivElement>(null)
   const trip = useCurrentTrip()
   const isLoadingTrip = useTripLoading()
   const loadTrip = useTripStore((s) => s.loadTrip)
@@ -99,7 +102,7 @@ export function TravelLog() {
   const [viewMode, setViewMode] = useState<ViewMode>('timeline')
   const [showSearch, setShowSearch] = useState(false)
   const [groupMode, setGroupMode] = useState<'time' | 'location'>('time')
-  const [showKRW, setShowKRW] = useState(false)
+  const [showKRW, setShowKRW] = useState(true)
 
   // Exchange rates
   const { rates: exchangeRates, lastUpdated: ratesUpdatedAt } = useExchangeRates()
@@ -119,6 +122,15 @@ export function TravelLog() {
     }
     return () => clearLogs()
   }, [tripId, loadTrip, loadLogs, clearLogs])
+
+  // Auto-scroll to expense section when tab=expense
+  useEffect(() => {
+    if (isExpenseTab && !isLoadingTrip && trip) {
+      requestAnimationFrame(() => {
+        expenseSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+  }, [isExpenseTab, isLoadingTrip, trip])
 
   const totalDays = useMemo(() => {
     if (!trip) return 1
@@ -385,7 +397,7 @@ export function TravelLog() {
             <ArrowLeft className="size-5" />
           </IconButton>
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl font-bold text-[var(--foreground)]">여행 기록</h1>
+            <h1 className="text-lg sm:text-xl font-bold text-[var(--foreground)]">여행 기록</h1>
             <p className="text-sm text-zinc-500 truncate">{trip.title}</p>
           </div>
           <TripReport
@@ -429,14 +441,17 @@ export function TravelLog() {
             )}
           </div>
         )}
-        <ExpenseSummary
-          logs={logs}
-          totalTripDistance={totalTripDistance}
-          uniqueLocationCount={uniqueLocationCount}
-          dayCount={totalDays}
-          exchangeRates={exchangeRates}
-          showKRW={showKRW}
-        />
+        <div ref={expenseSectionRef}>
+          <ExpenseSummary
+            logs={logs}
+            totalTripDistance={totalTripDistance}
+            uniqueLocationCount={uniqueLocationCount}
+            dayCount={totalDays}
+            exchangeRates={exchangeRates}
+            showKRW={showKRW}
+            defaultOpen={isExpenseTab}
+          />
+        </div>
 
         {/* Sticky Day Tab Bar + Controls */}
         {sortedDays.length > 0 && (

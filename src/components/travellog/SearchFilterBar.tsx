@@ -87,7 +87,7 @@ export function SearchFilterBar({
       </div>
 
       {/* Category Filter Chips */}
-      <div className="flex items-center gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {CATEGORIES.map((cat) => (
           <button
             key={cat}

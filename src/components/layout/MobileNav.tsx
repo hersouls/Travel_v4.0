@@ -1,36 +1,24 @@
 // ============================================
 // Mobile Navigation Component
-// Slide-in menu bar (MCA v2.0 style)
+// Slide-in menu drawer + bottom nav bar
 // ============================================
 
 import { Fragment, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/react'
-import { LayoutDashboard, MapPin, Plus, Settings, Info, X, Star, Plane } from 'lucide-react'
+import { X, Star, Plane } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
 import { useTrips } from '@/stores/tripStore'
+import { useNavItems } from '@/hooks/useNavItems'
 import { APP_NAME, APP_VERSION } from '@/utils/constants'
-
-const mainNavItems = [
-  { path: '/dashboard', label: '대시보드', icon: LayoutDashboard },
-  { path: '/places', label: '장소 라이브러리', icon: MapPin },
-  { path: '/settings', label: '설정', icon: Settings },
-  { path: '/about', label: '정보', icon: Info },
-]
-
-const bottomNavItems = [
-  { path: '/dashboard', label: '홈', icon: LayoutDashboard },
-  { path: '/places', label: '장소', icon: MapPin },
-  { path: '/trips/new', label: '추가', icon: Plus, highlight: true },
-  { path: '/settings', label: '설정', icon: Settings },
-]
 
 export function MobileNav() {
   const location = useLocation()
   const isMobileMenuOpen = useUIStore((state) => state.isMobileMenuOpen)
   const setMobileMenuOpen = useUIStore((state) => state.setMobileMenuOpen)
   const trips = useTrips()
+  const { sideNavItems, bottomNavItems, handleNoTripFallback } = useNavItems()
 
   const favoriteTrips = useMemo(() => trips.filter((t) => t.isFavorite).slice(0, 5), [trips])
   const recentTrips = useMemo(() => trips.filter((t) => !t.isFavorite).slice(0, 5), [trips])
@@ -91,17 +79,34 @@ export function MobileNav() {
                 {/* Main Navigation */}
                 <nav className="px-2" aria-label="모바일 메인 메뉴">
                   <ul className="space-y-1">
-                    {mainNavItems.map((item) => {
-                      const isActive = location.pathname === item.path
+                    {sideNavItems.map((item) => {
+                      if (item.isDynamic && !item.path) {
+                        return (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                closeMobileMenu()
+                                handleNoTripFallback()
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors min-h-[44px] text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                            >
+                              <item.icon className="size-5" />
+                              <span className="font-medium">{item.label}</span>
+                            </button>
+                          </li>
+                        )
+                      }
+
                       return (
-                        <li key={item.path}>
+                        <li key={item.id}>
                           <Link
-                            to={item.path}
+                            to={item.path!}
                             onClick={closeMobileMenu}
-                            aria-current={isActive ? 'page' : undefined}
+                            aria-current={item.isActive ? 'page' : undefined}
                             className={clsx(
                               'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors min-h-[44px]',
-                              isActive
+                              item.isActive
                                 ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
                                 : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                             )}
@@ -114,18 +119,6 @@ export function MobileNav() {
                     })}
                   </ul>
                 </nav>
-
-                {/* Add Trip Button */}
-                <div className="px-2 mt-4">
-                  <Link
-                    to="/trips/new"
-                    onClick={closeMobileMenu}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors min-h-[44px]"
-                  >
-                    <Plus className="size-5" />
-                    <span className="font-medium">새 여행 만들기</span>
-                  </Link>
-                </div>
 
                 {/* Favorites */}
                 {favoriteTrips.length > 0 && (
@@ -201,36 +194,34 @@ export function MobileNav() {
         aria-label="하단 메인 네비게이션"
       >
         <ul className="flex items-center justify-around h-16">
-          {bottomNavItems.map((item) => {
-            const isActive = location.pathname === item.path
-            return (
-              <li key={item.path} className="flex-1">
+          {bottomNavItems.map((item) => (
+            <li key={item.id} className="flex-1">
+              {item.isDynamic && !item.path ? (
+                <button
+                  type="button"
+                  onClick={handleNoTripFallback}
+                  className="w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px] text-zinc-400 dark:text-zinc-500"
+                >
+                  <item.icon className="size-5" />
+                  <span className="text-[10px] font-medium">{item.label}</span>
+                </button>
+              ) : (
                 <Link
-                  to={item.path}
+                  to={item.path!}
                   className={clsx(
                     'w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px]',
-                    item.highlight
-                      ? 'text-white'
-                      : isActive
-                        ? 'text-primary-600 dark:text-primary-400'
-                        : 'text-zinc-400 dark:text-zinc-500 hover:text-primary-600 dark:hover:text-primary-400'
+                    item.isActive
+                      ? 'text-primary-600 dark:text-primary-400'
+                      : 'text-zinc-400 dark:text-zinc-500 hover:text-primary-600 dark:hover:text-primary-400'
                   )}
-                  aria-current={isActive ? 'page' : undefined}
+                  aria-current={item.isActive ? 'page' : undefined}
                 >
-                  {item.highlight ? (
-                    <div className="size-12 rounded-full bg-primary-500 flex items-center justify-center -mt-4 shadow-lg">
-                      <item.icon className="size-6" />
-                    </div>
-                  ) : (
-                    <>
-                      <item.icon className="size-5" />
-                      <span className="text-[10px] font-medium">{item.label}</span>
-                    </>
-                  )}
+                  <item.icon className="size-5" />
+                  <span className="text-[10px] font-medium">{item.label}</span>
                 </Link>
-              </li>
-            )
-          })}
+              )}
+            </li>
+          ))}
         </ul>
       </nav>
     </>

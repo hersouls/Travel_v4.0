@@ -27,6 +27,7 @@ export interface Trip {
   plansCount?: number
   isFavorite: boolean
   shareId?: string // Public sharing ID for read-only link
+  budget?: TripBudget
   createdAt: Date
   updatedAt: Date
 }
@@ -137,6 +138,47 @@ export interface ExpenseData {
   totalAmount: number
   currency: string // ISO 4217 (KRW, JPY, USD...)
   receiptDate?: string // YYYY-MM-DD
+}
+
+// 세부 카테고리
+export type ExpenseSubCategory =
+  | 'restaurant' | 'cafe' | 'convenience' | 'delivery' | 'snack'        // food
+  | 'flight' | 'taxi' | 'subway' | 'bus' | 'rental_car'                 // transport
+  | 'hotel' | 'airbnb' | 'hostel' | 'guesthouse'                        // accommodation
+  | 'souvenir' | 'clothing' | 'dutyfree' | 'mart'                       // shopping
+  | 'admission' | 'experience' | 'tour'                                  // attraction
+  | 'telecom' | 'insurance' | 'exchange_fee' | 'laundry' | 'tip'        // other
+
+// 독립 경비 엔티티
+export interface Expense {
+  id?: number
+  firebaseId?: string
+  tripId: number
+  tripFirebaseId?: string
+  day: number
+  timestamp: string           // ISO datetime
+  category: ExpenseCategory
+  subCategory?: ExpenseSubCategory
+  storeName: string
+  memo?: string
+  items: ExpenseItem[]
+  totalAmount: number
+  currency: string            // ISO 4217
+  receiptDate?: string        // YYYY-MM-DD
+  sourceLogId?: number        // TravelLog.id FK (자동 import 시)
+  sourceLogFirebaseId?: string
+  latitude?: number
+  longitude?: number
+  address?: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+// 여행 예산
+export interface TripBudget {
+  totalBudget: number
+  budgetCurrency: string
+  categoryBudgets?: Partial<Record<ExpenseCategory, number>>
 }
 
 // 여행 기록 항목
@@ -353,7 +395,7 @@ export interface SyncProgress {
 }
 
 // Sync Conflict Types
-export type SyncEntityType = 'trip' | 'plan' | 'place' | 'travelLog'
+export type SyncEntityType = 'trip' | 'plan' | 'place' | 'travelLog' | 'expense'
 
 export interface ConflictField {
   field: string

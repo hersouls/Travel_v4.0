@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Sparkles, Download, FileDown, MessageSquare, Share2, Link2, WifiOff, ChevronDown, ChevronRight, BookOpen } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Sparkles, Download, FileDown, MessageSquare, Share2, Link2, WifiOff, ChevronDown, ChevronRight, BookOpen, Wallet } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
@@ -202,11 +202,11 @@ export function TripDetail() {
             <ArrowLeft className="size-5" />
           </IconButton>
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-bold text-[var(--foreground)] break-words">{trip.title}</h1>
+            <h1 className="text-lg sm:text-2xl font-bold text-[var(--foreground)] break-words">{trip.title}</h1>
             <p className="text-xs sm:text-sm text-zinc-500">{formatDateRange(trip.startDate, trip.endDate)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
           <IconButton
             plain
             color={trip.isFavorite ? 'warning' : 'secondary'}
@@ -285,7 +285,7 @@ export function TripDetail() {
           </div>
         )}
         <div className="p-4 sm:p-6">
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-2 sm:gap-4">
             <div className="flex items-center gap-2">
               <MapPin className="size-4 text-zinc-400" />
               <span className="text-sm">{trip.country}</span>
@@ -310,43 +310,50 @@ export function TripDetail() {
           </div>
 
           {/* Action Buttons - Mobile: icon grid / Desktop: inline flex */}
-          <div className="grid grid-cols-6 gap-1.5 mt-4 sm:hidden">
+          <div className="grid grid-cols-3 gap-2 mt-4 sm:hidden">
             <Link
               to={`/trips/${trip.id}/plans/new`}
-              className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 active:scale-95 transition-transform"
+              className="flex flex-col items-center justify-center min-h-[48px] p-2 rounded-xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-950/30 text-primary-600 dark:text-primary-400 active:scale-95 transition-transform"
             >
-              <Plus className="size-5 mb-0.5" />
-              <span className="text-[10px] font-medium leading-tight">추가</span>
+              <Plus className="size-4 mb-0.5" />
+              <span className="text-[11px] font-medium leading-tight">추가</span>
             </Link>
             <Link
               to={`/trips/${trip.id}/map`}
-              className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+              className="flex flex-col items-center justify-center min-h-[48px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
             >
-              <Map className="size-5 mb-0.5" />
-              <span className="text-[10px] font-medium leading-tight">지도</span>
+              <Map className="size-4 mb-0.5" />
+              <span className="text-[11px] font-medium leading-tight">지도</span>
             </Link>
             <Link
               to={`/trips/${trip.id}/navigate`}
-              className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+              className="flex flex-col items-center justify-center min-h-[48px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
             >
-              <Navigation className="size-5 mb-0.5" />
-              <span className="text-[10px] font-medium leading-tight">내비</span>
+              <Navigation className="size-4 mb-0.5" />
+              <span className="text-[11px] font-medium leading-tight">내비</span>
             </Link>
             <Link
               to={`/trips/${trip.id}/log`}
-              className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+              className="flex flex-col items-center justify-center min-h-[48px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
             >
-              <BookOpen className="size-5 mb-0.5" />
-              <span className="text-[10px] font-medium leading-tight">기록</span>
+              <BookOpen className="size-4 mb-0.5" />
+              <span className="text-[11px] font-medium leading-tight">기록</span>
+            </Link>
+            <Link
+              to={`/trips/${trip.id}/expenses`}
+              className="flex flex-col items-center justify-center min-h-[48px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+            >
+              <Wallet className="size-4 mb-0.5" />
+              <span className="text-[11px] font-medium leading-tight">경비</span>
             </Link>
             {claudeEnabled && (
               <button
                 type="button"
                 onClick={() => setIsAIItineraryOpen(true)}
-                className="flex flex-col items-center justify-center min-h-[56px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
+                className="flex flex-col items-center justify-center min-h-[48px] p-2 rounded-xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/50 text-zinc-600 dark:text-zinc-400 active:scale-95 transition-transform"
               >
-                <Sparkles className="size-5 mb-0.5" />
-                <span className="text-[10px] font-medium leading-tight">AI</span>
+                <Sparkles className="size-4 mb-0.5" />
+                <span className="text-[11px] font-medium leading-tight">AI</span>
               </button>
             )}
           </div>
@@ -385,6 +392,15 @@ export function TripDetail() {
               leftIcon={<BookOpen className="size-4" />}
             >
               여행 기록
+            </Button>
+            <Button
+              to={`/trips/${trip.id}/expenses`}
+              outline
+              color="secondary"
+              size="sm"
+              leftIcon={<Wallet className="size-4" />}
+            >
+              경비 관리
             </Button>
             {claudeEnabled && (
               <Button

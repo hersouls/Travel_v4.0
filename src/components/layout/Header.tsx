@@ -78,7 +78,7 @@ export function Header() {
     <header className="sticky top-0 z-40 h-16 border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-md">
       <div className="flex h-full items-center justify-between px-4 lg:px-6">
         {/* Left: Menu + Logo */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Mobile Menu Button */}
           <IconButton
             plain
@@ -120,7 +120,7 @@ export function Header() {
         </div>
 
         {/* Right: Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 xs:gap-2">
           {/* Mobile Search Toggle */}
           <IconButton
             plain

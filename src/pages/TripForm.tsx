@@ -107,7 +107,7 @@ export function TripForm() {
       if (isEditing && id) {
         await updateTrip(parseInt(id), formData)
         toast.success('여행이 수정되었습니다')
-        navigate(`/trips/${id}`)
+        navigate(-1)
       } else {
         const newId = await addTrip(formData)
         toast.success('여행이 생성되었습니다')
@@ -192,11 +192,11 @@ export function TripForm() {
       <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
             <ArrowLeft className="size-5" />
           </IconButton>
-          <h1 className="text-2xl font-bold text-[var(--foreground)]">
+          <h1 className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
             {isEditing ? '여행 편집' : '새 여행'}
           </h1>
         </div>
@@ -344,7 +344,7 @@ export function TripForm() {
             {/* Country Info Card */}
             {getCountryInfo(formData.country) && (
               <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700">
-                <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                   <div className="flex items-center gap-2">
                     <Clock className="size-4 text-zinc-400" />
                     <span className="text-zinc-600 dark:text-zinc-400">

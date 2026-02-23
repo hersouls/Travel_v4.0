@@ -63,6 +63,9 @@ export const useTravelLogStore = create<TravelLogState>()(
         try {
           const log: Omit<TravelLog, 'id'> = {
             ...logData,
+            // Ensure coordinates are valid finite numbers
+            latitude: typeof logData.latitude === 'number' && isFinite(logData.latitude) ? logData.latitude : undefined,
+            longitude: typeof logData.longitude === 'number' && isFinite(logData.longitude) ? logData.longitude : undefined,
             createdAt: new Date(),
             updatedAt: new Date(),
           }

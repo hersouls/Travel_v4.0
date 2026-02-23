@@ -311,7 +311,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
           )}
 
           {/* Common: Day + Time */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
             <div>
               <Label>일차</Label>
               <select
@@ -375,7 +375,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
                   <img
                     src={currentPhoto}
                     alt="영수증"
-                    className="w-24 h-32 object-cover rounded-lg border border-zinc-200 dark:border-zinc-600"
+                    className="w-20 h-28 sm:w-24 sm:h-32 object-cover rounded-lg border border-zinc-200 dark:border-zinc-600"
                   />
                   {newPhotoPreview && (
                     <button
@@ -410,7 +410,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
                 value={expense.storeName}
                 onChange={(val) => updateExpense('storeName', val)}
               />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                 <div>
                   <Label>카테고리</Label>
                   <select
@@ -434,21 +434,53 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
                 label="총 금액"
                 type="number"
                 value={String(expense.totalAmount)}
-                onChange={(val) => updateExpense('totalAmount', Number(val))}
+                onChange={(val) => {
+                  const num = Number(val)
+                  if (!isNaN(num) && isFinite(num)) {
+                    updateExpense('totalAmount', num)
+                  }
+                }}
               />
               {expense.items.length > 0 && (
                 <div>
                   <Label>항목</Label>
                   <div className="mt-2 space-y-1.5">
                     {expense.items.map((item, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
-                        <span className="flex-1 text-zinc-700 dark:text-zinc-300 truncate">{item.name}</span>
+                      <div key={i} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => {
+                            const newItems = [...expense.items]
+                            newItems[i] = { ...newItems[i], name: e.target.value }
+                            updateExpense('items', newItems)
+                          }}
+                          className="flex-1 text-sm px-2 py-1 rounded-md border border-zinc-950/10 dark:border-white/10 bg-transparent text-zinc-700 dark:text-zinc-300"
+                        />
                         {item.quantity && item.quantity > 1 && (
-                          <span className="text-zinc-400">x{item.quantity}</span>
+                          <span className="text-xs text-zinc-400 flex-shrink-0">x{item.quantity}</span>
                         )}
-                        <span className="font-medium text-zinc-900 dark:text-zinc-100">
-                          {item.amount.toLocaleString()}
-                        </span>
+                        <input
+                          type="number"
+                          value={item.amount}
+                          onChange={(e) => {
+                            const newItems = [...expense.items]
+                            newItems[i] = { ...newItems[i], amount: Number(e.target.value) || 0 }
+                            updateExpense('items', newItems)
+                          }}
+                          className="w-24 text-sm text-right px-2 py-1 rounded-md border border-zinc-950/10 dark:border-white/10 bg-transparent font-medium text-zinc-900 dark:text-zinc-100"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newItems = expense.items.filter((_, idx) => idx !== i)
+                            updateExpense('items', newItems)
+                          }}
+                          className="text-zinc-400 hover:text-danger-500 flex-shrink-0"
+                          aria-label="항목 삭제"
+                        >
+                          <X className="size-3.5" />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -498,7 +530,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
               )}
 
               {/* Location action buttons */}
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <Button
                   color="secondary"
                   size="sm"

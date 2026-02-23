@@ -1,23 +1,18 @@
 import { Link, useLocation } from 'react-router-dom'
-import { LayoutDashboard, MapPin, Settings, Info, ChevronLeft, ChevronRight, Star } from 'lucide-react'
+import { Star, ChevronLeft, ChevronRight } from 'lucide-react'
 import { clsx } from 'clsx'
 import { IconButton } from '@/components/ui/Button'
 import { useUIStore } from '@/stores/uiStore'
 import { useTrips } from '@/stores/tripStore'
+import { useNavItems } from '@/hooks/useNavItems'
 import { APP_VERSION } from '@/utils/constants'
-
-const navItems = [
-  { path: '/dashboard', label: '대시보드', icon: LayoutDashboard },
-  { path: '/places', label: '장소 라이브러리', icon: MapPin },
-  { path: '/settings', label: '설정', icon: Settings },
-  { path: '/about', label: '정보', icon: Info },
-]
 
 export function Sidebar() {
   const location = useLocation()
   const isSidebarCollapsed = useUIStore((state) => state.isSidebarCollapsed)
   const setSidebarCollapsed = useUIStore((state) => state.setSidebarCollapsed)
   const trips = useTrips()
+  const { sideNavItems, handleNoTripFallback } = useNavItems()
 
   // Get favorite trips (max 5)
   const favoriteTrips = trips.filter((t) => t.isFavorite).slice(0, 5)
@@ -33,16 +28,32 @@ export function Sidebar() {
     >
       {/* Navigation */}
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.path
+        {sideNavItems.map((item) => {
+          if (item.isDynamic && !item.path) {
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={handleNoTripFallback}
+                className={clsx(
+                  'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
+                  'text-[var(--muted-foreground)] hover:bg-[var(--muted)] dark:hover:bg-[var(--muted)]'
+                )}
+              >
+                <item.icon className="size-5 flex-shrink-0" />
+                {!isSidebarCollapsed && <span className="text-sm font-medium">{item.label}</span>}
+              </button>
+            )
+          }
+
           return (
             <Link
-              key={item.path}
-              to={item.path}
-              aria-current={isActive ? 'page' : undefined}
+              key={item.id}
+              to={item.path!}
+              aria-current={item.isActive ? 'page' : undefined}
               className={clsx(
                 'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
-                isActive
+                item.isActive
                   ? 'bg-primary-50 text-primary-600 dark:bg-primary-950/50 dark:text-primary-400'
                   : 'text-[var(--muted-foreground)] hover:bg-[var(--muted)] dark:hover:bg-[var(--muted)]'
               )}

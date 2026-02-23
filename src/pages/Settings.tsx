@@ -332,11 +332,11 @@ export function Settings() {
   return (
     <PageContainer maxWidth="md">
       <div className="space-y-6 animate-fade-in">
-        <h1 className="text-2xl font-bold text-[var(--foreground)]">설정</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">설정</h1>
 
         {/* Section Tab Bar */}
         <div className="sticky top-0 z-10 bg-[var(--background)] py-2 -mx-1 px-1">
-          <div className="flex gap-1 p-1 bg-[var(--muted)] rounded-lg">
+          <div className="flex gap-0.5 sm:gap-1 p-1 bg-[var(--muted)] rounded-lg">
             {SETTING_SECTIONS.map((section) => (
               <button
                 key={section.id}
@@ -405,12 +405,12 @@ export function Settings() {
           <Card padding="lg">
             <CardHeader title="테마" description="앱의 외관을 선택하세요" />
             <CardContent>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2">
                 {themeOptions.map((option) => (
                   <button
                     key={option.value}
                     onClick={() => setTheme(option.value)}
-                    className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${theme === option.value
+                    className={`flex flex-col items-center gap-2 p-3 sm:p-4 rounded-lg border-2 transition-colors ${theme === option.value
                       ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
                       : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
                       }`}
@@ -451,7 +451,7 @@ export function Settings() {
               icon={<Palette className="size-5" />}
             />
             <CardContent>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 sm:gap-2">
                 {Object.values(COLOR_PALETTES).map((palette) => (
                   <button
                     key={palette.id}
@@ -532,7 +532,7 @@ export function Settings() {
               {/* Map Provider */}
               <div>
                 <p className="text-sm font-medium text-[var(--foreground)] mb-2">지도 제공자</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2">
                   {[
                     { value: 'google' as MapProvider, label: 'Google Maps', desc: '실시간 경로, Street View' },
                     { value: 'leaflet' as MapProvider, label: 'Leaflet/OSM', desc: '오프라인 지원, 가벼움' },
@@ -560,7 +560,7 @@ export function Settings() {
               {/* Default Travel Mode */}
               <div>
                 <p className="text-sm font-medium text-[var(--foreground)] mb-2">기본 이동수단</p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2">
                   {(Object.entries(TRAVEL_MODE_LABELS) as [TravelMode, string][]).map(([mode, label]) => (
                     <button
                       key={mode}
@@ -654,7 +654,7 @@ export function Settings() {
                   {/* Model Selection */}
                   <div>
                     <p className="text-sm font-medium text-[var(--foreground)] mb-2">모델</p>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {([
                         { value: 'haiku' as ClaudeModel, label: 'Haiku', desc: '빠른 응답, 경제적' },
                         { value: 'sonnet' as ClaudeModel, label: 'Sonnet', desc: '균형 잡힌 성능 (추천)' },
@@ -663,7 +663,7 @@ export function Settings() {
                         <button
                           key={option.value}
                           onClick={() => setClaudeModel(option.value)}
-                          className={`p-3 rounded-lg border-2 text-left transition-colors ${claudeModel === option.value
+                          className={`p-2 sm:p-3 rounded-lg border-2 text-left transition-colors ${claudeModel === option.value
                               ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
                               : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
                             }`}
@@ -773,7 +773,7 @@ export function Settings() {
                   {/* Voice Selection */}
                   <div>
                     <p className="text-sm font-medium text-[var(--foreground)] mb-2">기본 음성</p>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
                       {[
                         { value: 'alloy', label: 'Alloy', desc: '중성적' },
                         { value: 'echo', label: 'Echo', desc: '남성적' },

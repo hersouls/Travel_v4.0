@@ -2,6 +2,7 @@ import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageContainer } from '@/components/layout'
 import { APP_NAME, APP_VERSION } from '@/utils/constants'
+import { ServiceFeatures } from '@/components/about/ServiceFeatures'
 
 export function About() {
   return (
@@ -30,36 +31,7 @@ export function About() {
       <Card padding="lg">
         <CardHeader title="주요 기능" />
         <CardContent>
-          <ul className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
-            <li className="flex items-start gap-2">
-              <span className="text-primary-500 mt-0.5">✓</span>
-              <span>여행 일정 관리 및 타임라인 보기</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary-500 mt-0.5">✓</span>
-              <span>장소별 사진, 메모, 링크 저장</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary-500 mt-0.5">✓</span>
-              <span>지도에서 일정 확인 (OpenStreetMap)</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary-500 mt-0.5">✓</span>
-              <span>장소 라이브러리 - 자주 가는 곳 저장</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary-500 mt-0.5">✓</span>
-              <span>오프라인 지원 (PWA)</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary-500 mt-0.5">✓</span>
-              <span>데이터 백업 및 복원</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary-500 mt-0.5">✓</span>
-              <span>다크 모드 지원</span>
-            </li>
-          </ul>
+          <ServiceFeatures />
         </CardContent>
       </Card>
 

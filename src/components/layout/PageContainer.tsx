@@ -39,7 +39,7 @@ export function PageContainer({
     <main
       className={clsx(
         'flex-1 overflow-y-auto',
-        !noPadding && 'p-4 lg:p-6',
+        !noPadding && 'p-3 sm:p-4 lg:p-6',
         'pb-[calc(5rem_+_env(safe-area-inset-bottom))] lg:pb-6', // Bottom nav spacing + safe area
         className
       )}

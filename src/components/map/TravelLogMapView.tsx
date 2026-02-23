@@ -41,15 +41,18 @@ export function TravelLogMapView({
   const onMarkerClickRef = useRef(onMarkerClick)
   onMarkerClickRef.current = onMarkerClick
 
-  // Filter logs with coordinates
-  const filteredLogs = useMemo(() =>
-    logs.filter((l) => {
-      if (!l.latitude || !l.longitude) return false
+  // Filter logs with valid finite coordinates
+  const filteredLogs = useMemo(() => {
+    const hasValidCoords = (l: TravelLog) =>
+      typeof l.latitude === 'number' && typeof l.longitude === 'number' &&
+      isFinite(l.latitude) && isFinite(l.longitude)
+
+    return logs.filter((l) => {
+      if (!hasValidCoords(l)) return false
       if (selectedDay != null && l.day !== selectedDay) return false
       return true
-    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
-    [logs, selectedDay],
-  )
+    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+  }, [logs, selectedDay])
 
   // Calculate center
   const mapCenter = useMemo(() => {

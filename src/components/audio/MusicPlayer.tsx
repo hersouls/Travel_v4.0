@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Pause, Play, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { useAudioStore } from '@/stores/audioStore'
 
+const MUSIC_BASE_URL = import.meta.env.VITE_MUSIC_CDN_URL || '/music'
+
 const TRACKS = [
   'Decode me slow  (Japanese Ver. Part2).wav',
   'Decode me slow (Chinese Ver.).wav',
@@ -32,7 +34,7 @@ const TRACKS = [
   'Wavecoded Part2 (1).wav',
   'Wavie Sync Part1 (2).wav',
   'Wavie Sync Part1 (1).wav',
-].map((name) => `/music/${name}`)
+].map((name) => `${MUSIC_BASE_URL}/${encodeURIComponent(name)}`)
 
 export function MusicPlayer() {
   const [isPlaying, setIsPlaying] = useState(false)

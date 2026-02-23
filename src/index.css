@@ -100,6 +100,9 @@
   --z-index-60: 60;
   --z-index-70: 70;
   --z-index-80: 80;
+
+  /* Custom Breakpoints — Galaxy S24 viewport is ~360px */
+  --breakpoint-xs: 360px;
 }
 
 /* CSS Variables for Light/Dark Mode */
@@ -490,7 +493,7 @@ input, button { touch-action: manipulation; }
 /* Photo Gallery */
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 0.5rem;
 }
 

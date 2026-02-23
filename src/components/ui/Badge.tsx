@@ -7,7 +7,7 @@ import type { ReactNode } from 'react'
 import type { PlanType } from '@/types'
 import { PLAN_TYPE_LABELS } from '@/utils/constants'
 
-type BadgeColor = 'zinc' | 'primary' | 'success' | 'warning' | 'danger' | 'blue' | 'purple' | 'pink' | 'orange' | 'cyan'
+export type BadgeColor = 'zinc' | 'primary' | 'success' | 'warning' | 'danger' | 'blue' | 'purple' | 'pink' | 'orange' | 'cyan'
 
 interface BadgeProps {
   color?: BadgeColor

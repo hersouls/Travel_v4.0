@@ -376,7 +376,7 @@ export function PlanForm() {
       }
 
       clearDraft()
-      navigate(`/trips/${tripId}`)
+      navigate(-1)
     } catch {
       toast.error(isEditing ? '일정 수정 실패' : '일정 추가 실패')
     } finally {
@@ -424,7 +424,7 @@ export function PlanForm() {
 
       const newPlanId = await db.importSinglePlan(data, parseInt(tripId), formData.day)
       toast.success('일정이 가져오기되었습니다')
-      navigate(`/trips/${tripId}/plans/${newPlanId}`)
+      navigate(-1)
     } catch (error) {
       if (error instanceof SyntaxError) {
         toast.error('파일 형식이 올바르지 않습니다 (JSON 파싱 오류)')
@@ -454,13 +454,13 @@ export function PlanForm() {
     <PageContainer maxWidth="md">
       <div className="space-y-6 animate-fade-in">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-4">
             <IconButton plain color="secondary" onClick={() => navigate(-1)} aria-label="뒤로 가기">
               <ArrowLeft className="size-5" />
             </IconButton>
             <div>
-              <h1 className="text-2xl font-bold text-[var(--foreground)]">
+              <h1 className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
                 {isEditing ? '일정 편집' : '새 일정'}
               </h1>
               {currentTrip && (
@@ -470,7 +470,7 @@ export function PlanForm() {
           </div>
 
           {/* Backup/Restore Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             {isEditing && (
               <Button
                 type="button"
@@ -601,7 +601,7 @@ export function PlanForm() {
               {/* 추출된 좌표 표시 */}
               {(formData.latitude && formData.longitude) && (
                 <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
                     <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
                       📍 추출된 좌표
                     </span>
@@ -639,7 +639,7 @@ export function PlanForm() {
               </button>
               {showManualCoords && (
                 <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                     <Input
                       label="위도 (Latitude)"
                       type="number"
@@ -851,7 +851,7 @@ export function PlanForm() {
 
             {/* Memo */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-1">
                 <div className="flex items-center gap-2">
                   <Label>메모</Label>
                   {claudeEnabled && formData.placeName && (
@@ -961,7 +961,7 @@ export function PlanForm() {
                   </Button>
                 )}
               </div>
-              <div className="mt-2 grid grid-cols-3 sm:grid-cols-4 gap-2">
+              <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {formData.photos.map((photo, index) => (
                   <div key={index} className="relative aspect-square rounded-lg overflow-hidden">
                     <img src={photo} alt="" className="w-full h-full object-cover" />

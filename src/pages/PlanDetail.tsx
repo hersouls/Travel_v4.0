@@ -164,7 +164,7 @@ export function PlanDetail() {
                         <ArrowLeft className="size-5" />
                     </IconButton>
                     <div className="min-w-0 flex-1">
-                        <h1 className="text-xl font-bold text-[var(--foreground)] truncate pr-2">
+                        <h1 className="text-lg sm:text-xl font-bold text-[var(--foreground)] truncate pr-2">
                             {plan.placeName}
                         </h1>
                         <p className="text-sm text-zinc-500 truncate">
@@ -197,7 +197,7 @@ export function PlanDetail() {
                     <div className="p-6 pt-4 space-y-6">
                         {/* Basic Info */}
                         <div className="space-y-3">
-                            <h2 className="text-2xl font-bold text-[var(--foreground)]">
+                            <h2 className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
                                 {plan.placeName}
                             </h2>
 
@@ -210,7 +210,7 @@ export function PlanDetail() {
 
                             {/* Google Info (Rating, Category, Phone) */}
                             {hasGoogleInfo && (
-                                <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                                <div className="flex flex-wrap gap-x-2 sm:gap-x-4 gap-y-2 text-sm">
                                     {plan.googleInfo?.rating && (
                                         <div className="flex items-center gap-1.5 text-amber-600 font-medium">
                                             <Star className="size-4 fill-current" />

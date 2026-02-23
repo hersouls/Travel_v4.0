@@ -5,7 +5,7 @@
 // photo map mode, and heatmap
 // ============================================
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Image, Map, Route, Flame } from 'lucide-react'
 import { IconButton, Button } from '@/components/ui/Button'
@@ -15,6 +15,7 @@ import { TravelLogMapView } from '@/components/map/TravelLogMapView'
 import { useCurrentTrip, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { useTravelLogs, useTravelLogLoading, useTravelLogStore } from '@/stores/travelLogStore'
 import { getTripDuration } from '@/utils/format'
+import { loadGoogleMaps } from '@/services/googleMapsLoader'
 
 export function TravelLogMap() {
   const { id } = useParams<{ id: string }>()
@@ -43,13 +44,117 @@ export function TravelLogMap() {
     return () => clearLogs()
   }, [tripId, loadTrip, loadLogs, clearLogs])
 
+  // Auto-repair past entries with NaN/missing coordinates by forward-geocoding address/placeName
+  const repairAttempted = useRef(new Set<number>())
+  useEffect(() => {
+    if (!tripId || isLoadingLogs) return
+
+    // Read logs from store imperatively (avoid reactive dependency on logs array)
+    const currentLogs = useTravelLogStore.getState().logs
+
+    // CRITICAL: Don't mark as attempted if logs haven't loaded yet.
+    // On first render, isLoadingLogs is false (initial state) but logs are empty.
+    // We must wait until loadLogs completes and populates the store.
+    if (currentLogs.length === 0) return
+
+    if (repairAttempted.current.has(tripId)) return
+    repairAttempted.current.add(tripId)
+
+    const needsRepair = currentLogs.filter((l) => {
+      const hasValidCoords =
+        typeof l.latitude === 'number' && typeof l.longitude === 'number' &&
+        isFinite(l.latitude) && isFinite(l.longitude)
+      return !hasValidCoords && !!(l.address || l.placeName)
+    })
+
+    console.log(`[TravelLogMap] Coordinate check: ${currentLogs.length} total, ${needsRepair.length} need repair`)
+
+    if (needsRepair.length === 0) return
+
+    const repair = async () => {
+      try {
+        const updateLog = useTravelLogStore.getState().updateLog
+        let count = 0
+        let failCount = 0
+
+        // Phase 1: Parse coordinate-like strings directly (no API needed)
+        const stillNeedsGeocode: typeof needsRepair = []
+        for (const log of needsRepair) {
+          const query = log.placeName || log.address
+          if (!query) continue
+
+          // Try parsing "lat, lng" patterns (e.g., "13.7420, 100.5518")
+          const coordMatch = query.match(/^(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)$/)
+          if (coordMatch) {
+            const lat = parseFloat(coordMatch[1])
+            const lng = parseFloat(coordMatch[2])
+            if (isFinite(lat) && isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+              await updateLog(log.id!, { latitude: lat, longitude: lng })
+              count++
+              continue
+            }
+          }
+          stillNeedsGeocode.push(log)
+        }
+
+        // Phase 2: Forward geocode remaining entries (requires API)
+        if (stillNeedsGeocode.length > 0) {
+          try {
+            const google = await loadGoogleMaps()
+            if (!google.maps.Geocoder) {
+              await google.maps.importLibrary('geocoding')
+            }
+            const { forwardGeocode, isGeocodingDenied } = await import('@/services/geocodingService')
+
+            for (const log of stillNeedsGeocode) {
+              if (isGeocodingDenied()) {
+                failCount += stillNeedsGeocode.length - (count - (needsRepair.length - stillNeedsGeocode.length)) - failCount
+                break
+              }
+
+              const query = log.placeName || log.address
+              if (!query) continue
+              try {
+                const result = await forwardGeocode(query)
+                if (result) {
+                  await updateLog(log.id!, { latitude: result.lat, longitude: result.lng })
+                  count++
+                } else {
+                  failCount++
+                }
+              } catch {
+                failCount++
+              }
+            }
+          } catch {
+            failCount += stillNeedsGeocode.length
+          }
+        }
+
+        if (count > 0) {
+          console.log(`[TravelLogMap] ${count}/${needsRepair.length}개 좌표 복구 완료`)
+        }
+        if (failCount > 0) {
+          console.warn(`[TravelLogMap] ${failCount}/${needsRepair.length}개 좌표 복구 실패 (Geocoding API 상태 확인 필요)`)
+        }
+      } catch (e) {
+        console.warn('[TravelLogMap] Coordinate repair skipped:', e)
+      }
+    }
+
+    repair()
+  }, [tripId, isLoadingLogs])
+
   const totalDays = useMemo(() => {
     if (!trip) return 0
     return getTripDuration(trip.startDate, trip.endDate)
   }, [trip])
 
   const logsWithCoords = useMemo(
-    () => logs.filter((l) => l.latitude && l.longitude),
+    () => logs.filter((l) =>
+      typeof l.latitude === 'number' && typeof l.longitude === 'number' &&
+      isFinite(l.latitude) && isFinite(l.longitude),
+    ),
     [logs],
   )
 
@@ -86,13 +191,13 @@ export function TravelLogMap() {
               <ArrowLeft className="size-5" />
             </IconButton>
             <div>
-              <h1 className="text-lg font-bold text-[var(--foreground)]">여행 기록 지도</h1>
+              <h1 className="text-base sm:text-lg font-bold text-[var(--foreground)]">여행 기록 지도</h1>
               <p className="text-xs text-zinc-500">
                 {trip.title} · {logsWithCoords.length}개 위치
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5">
             {/* Track line toggle */}
             <button
               type="button"
@@ -158,7 +263,7 @@ export function TravelLogMap() {
 
         {/* Day filter tabs */}
         {totalDays > 0 && (
-          <div className="flex gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="flex gap-1 sm:gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <button
               type="button"
               onClick={() => setSelectedDay(null)}

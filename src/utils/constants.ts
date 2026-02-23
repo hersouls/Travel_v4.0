@@ -5,7 +5,7 @@
 export const APP_NAME = 'Moonwave Travel'
 export const APP_VERSION = '4.0.0'
 export const APP_DESCRIPTION = '여행 일정 관리 및 추억 기록 도구'
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 6
 
 // Storage Keys
 export const STORAGE_KEYS = {
@@ -222,3 +222,86 @@ export const STYLE_OPTIONS = [
   { value: '알찬', label: '알찬' },
   { value: '균형', label: '균형' },
 ] as const
+
+// Expense Subcategory Labels (Korean)
+export const EXPENSE_SUBCATEGORY_LABELS: Record<string, string> = {
+  // food
+  restaurant: '식당',
+  cafe: '카페',
+  convenience: '편의점',
+  delivery: '배달',
+  snack: '간식',
+  // transport
+  flight: '항공',
+  taxi: '택시',
+  subway: '지하철',
+  bus: '버스',
+  rental_car: '렌트카',
+  // accommodation
+  hotel: '호텔',
+  airbnb: '에어비앤비',
+  hostel: '호스텔',
+  guesthouse: '게스트하우스',
+  // shopping
+  souvenir: '기념품',
+  clothing: '의류',
+  dutyfree: '면세점',
+  mart: '마트',
+  // attraction
+  admission: '입장료',
+  experience: '체험',
+  tour: '투어',
+  // other
+  telecom: '통신',
+  insurance: '보험',
+  exchange_fee: '환전수수료',
+  laundry: '세탁',
+  tip: '팁',
+} as const
+
+// Expense Subcategory Icons (Lucide icon names)
+export const EXPENSE_SUBCATEGORY_ICONS: Record<string, string> = {
+  restaurant: 'Utensils',
+  cafe: 'Coffee',
+  convenience: 'Store',
+  delivery: 'Truck',
+  snack: 'Cookie',
+  flight: 'Plane',
+  taxi: 'Car',
+  subway: 'TrainFront',
+  bus: 'Bus',
+  rental_car: 'CarFront',
+  hotel: 'Building2',
+  airbnb: 'Home',
+  hostel: 'BedDouble',
+  guesthouse: 'House',
+  souvenir: 'Gift',
+  clothing: 'Shirt',
+  dutyfree: 'ShoppingCart',
+  mart: 'Store',
+  admission: 'Ticket',
+  experience: 'Sparkles',
+  tour: 'Map',
+  telecom: 'Smartphone',
+  insurance: 'Shield',
+  exchange_fee: 'ArrowLeftRight',
+  laundry: 'Droplets',
+  tip: 'Heart',
+} as const
+
+// Parent → Subcategory mapping
+export const EXPENSE_SUBCATEGORIES: Record<string, string[]> = {
+  food: ['restaurant', 'cafe', 'convenience', 'delivery', 'snack'],
+  transport: ['flight', 'taxi', 'subway', 'bus', 'rental_car'],
+  accommodation: ['hotel', 'airbnb', 'hostel', 'guesthouse'],
+  shopping: ['souvenir', 'clothing', 'dutyfree', 'mart'],
+  attraction: ['admission', 'experience', 'tour'],
+  other: ['telecom', 'insurance', 'exchange_fee', 'laundry', 'tip'],
+} as const
+
+// Payment Method Labels
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: '현금',
+  card: '카드',
+  other: '기타',
+} as const
