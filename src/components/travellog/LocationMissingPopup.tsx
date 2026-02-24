@@ -138,8 +138,8 @@ export function LocationMissingPopup({
                   disabled={isGettingLocation}
                   className="w-full flex items-center gap-3 p-4 rounded-xl border border-[var(--border)] hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 cursor-pointer transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-lg bg-zinc-100 dark:bg-zinc-800">
-                    <MapPin className="size-5 text-zinc-600 dark:text-zinc-400" />
+                  <div className="flex-shrink-0 flex items-center justify-center size-10 rounded-lg bg-primary-50 dark:bg-primary-900/30">
+                    <MapPin className="size-5 text-primary-600 dark:text-primary-400" />
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-zinc-900 dark:text-white">직접 등록</p>
