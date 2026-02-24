@@ -33,7 +33,13 @@ function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   for (const [key, value] of Object.entries(obj)) {
     if (value === undefined) {
       result[key] = null
-    } else if (value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Timestamp) && !(value instanceof Date)) {
+    } else if (Array.isArray(value)) {
+      result[key] = value.map((item) =>
+        item !== null && typeof item === 'object' && !(item instanceof Timestamp) && !(item instanceof Date)
+          ? stripUndefined(item as Record<string, unknown>)
+          : item === undefined ? null : item,
+      )
+    } else if (value !== null && typeof value === 'object' && !(value instanceof Timestamp) && !(value instanceof Date)) {
       result[key] = stripUndefined(value as Record<string, unknown>)
     } else {
       result[key] = value
