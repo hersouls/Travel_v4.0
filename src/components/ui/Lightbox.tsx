@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Transition, TransitionChild } from '@headlessui/react'
 import { ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { lockBodyScroll, unlockBodyScroll } from '@/utils/scrollLock'
 
 interface LightboxProps {
     images: string[]
@@ -56,12 +57,12 @@ export function Lightbox({ images, initialIndex, onClose, open }: LightboxProps)
     // Prevent body scroll when lightbox is open
     useEffect(() => {
         if (open) {
-            document.body.style.overflow = 'hidden'
-        } else {
-            document.body.style.overflow = ''
+            lockBodyScroll()
         }
         return () => {
-            document.body.style.overflow = ''
+            if (open) {
+                unlockBodyScroll()
+            }
         }
     }, [open])
 

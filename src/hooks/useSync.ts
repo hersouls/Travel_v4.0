@@ -31,6 +31,8 @@ export function useSync() {
           // Reload stores to reflect the now-empty IndexedDB
           useTripStore.getState().loadTrips()
           usePlaceStore.getState().loadPlaces()
+        }).catch((err) => {
+          console.error('[Sync] Failed to stop with clearData:', err)
         })
       } else {
         // App initialized with no user (never logged in this session)
@@ -48,6 +50,8 @@ export function useSync() {
       syncManager.stop({ clearData: true }).then(() => {
         prevUserIdRef.current = user.uid
         syncManager.start(user.uid)
+      }).catch((err) => {
+        console.error('[Sync] Failed to stop during user switch:', err)
       })
     } else {
       // Same user or first login: start sync normally
@@ -56,19 +60,23 @@ export function useSync() {
     }
 
     const unsubUpdate = syncManager.onSyncUpdate(() => {
-      useTripStore.getState().loadTrips()
-      usePlaceStore.getState().loadPlaces()
-      useSettingsStore.getState().initialize()
-      // Reload current trip/plans to pick up downloaded images
-      const currentTrip = useTripStore.getState().currentTrip
-      if (currentTrip?.id) {
-        useTripStore.getState().loadTrip(currentTrip.id)
-      }
-      // Reload travel logs if currently viewing a trip
-      const { logs } = useTravelLogStore.getState()
-      if (logs.length > 0) {
-        const tripId = logs[0]?.tripId
-        if (tripId) useTravelLogStore.getState().loadLogs(tripId)
+      try {
+        useTripStore.getState().loadTrips()
+        usePlaceStore.getState().loadPlaces()
+        useSettingsStore.getState().initialize()
+        // Reload current trip/plans to pick up downloaded images
+        const currentTrip = useTripStore.getState().currentTrip
+        if (currentTrip?.id) {
+          useTripStore.getState().loadTrip(currentTrip.id)
+        }
+        // Reload travel logs if currently viewing a trip
+        const { logs } = useTravelLogStore.getState()
+        if (logs.length > 0) {
+          const tripId = logs[0]?.tripId
+          if (tripId) useTravelLogStore.getState().loadLogs(tripId)
+        }
+      } catch (err) {
+        console.error('[Sync] onSyncUpdate callback error:', err)
       }
     })
 

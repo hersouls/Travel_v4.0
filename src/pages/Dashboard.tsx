@@ -128,6 +128,7 @@ export function Dashboard() {
             <button
               onClick={bulk.clearSelection}
               className="p-1 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+              aria-label="선택 해제"
             >
               <X className="size-4" />
             </button>
@@ -149,6 +150,7 @@ export function Dashboard() {
               onClick={bulk.enterSelectionMode}
               className="p-2 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
               title="선택 모드"
+              aria-label="선택 모드"
             >
               <CheckSquare className="size-5" />
             </button>

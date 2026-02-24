@@ -19,7 +19,9 @@ interface ElevationRequestBody {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const ALLOWED_ORIGINS = ['https://travel1.moonwave.kr','https://moonwave-travel.vercel.app','http://localhost:5173','http://localhost:4173']
+  const origin = req.headers.origin || ''
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0])
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -43,6 +45,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let apiUrl: string
 
   if (locations && Array.isArray(locations) && locations.length > 0) {
+    // Validate location objects
+    for (const loc of locations) {
+      if (typeof loc.lat !== 'number' || typeof loc.lng !== 'number' ||
+          isNaN(loc.lat) || isNaN(loc.lng) ||
+          loc.lat < -90 || loc.lat > 90 || loc.lng < -180 || loc.lng > 180) {
+        return res.status(400).json({ error: 'Each location must have valid lat (-90..90) and lng (-180..180)' })
+      }
+    }
     // Individual point elevation lookup
     const locationStr = locations
       .slice(0, 50) // limit to 50 points

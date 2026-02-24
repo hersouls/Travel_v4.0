@@ -45,9 +45,12 @@ export function useVisitHistory(
       setResult((prev) => ({ ...prev, isLoading: true }))
 
       try {
-        // Get all travel logs with coordinates from OTHER trips
+        // Get travel logs with coordinates from OTHER trips (indexed + limited)
         const allLogs = await db.travelLogs
-          .filter((l) => l.tripId !== currentTripId && l.latitude != null && l.longitude != null)
+          .where('tripId')
+          .notEqual(currentTripId!)
+          .and((l) => l.latitude != null && l.longitude != null)
+          .limit(5000)
           .toArray()
 
         // Find logs within radius

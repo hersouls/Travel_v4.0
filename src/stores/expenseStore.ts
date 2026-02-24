@@ -12,6 +12,30 @@ import { useUIStore } from '@/stores/uiStore'
 
 const UNDO_TIMEOUT_MS = 30_000
 
+// Sync retry queue for failed uploads
+const _syncRetryQueue: number[] = []
+const MAX_RETRY_QUEUE = 50
+
+async function retrySyncQueue() {
+  if (_syncRetryQueue.length === 0 || !syncManager.isActive()) return
+  const idsToRetry = _syncRetryQueue.splice(0, 5)
+  for (const id of idsToRetry) {
+    try {
+      const expense = await db.getExpense(id)
+      if (expense) {
+        const firebaseId = await syncManager.uploadExpense(expense)
+        if (firebaseId && firebaseId !== expense.firebaseId) {
+          await db.updateExpense(id, { firebaseId })
+        }
+      }
+    } catch {
+      if (_syncRetryQueue.length < MAX_RETRY_QUEUE) {
+        _syncRetryQueue.push(id)
+      }
+    }
+  }
+}
+
 interface ExpenseState {
   // State
   expenses: Expense[]
@@ -68,6 +92,7 @@ export const useExpenseStore = create<ExpenseState>()(
                 }
               } catch (e) {
                 console.error('[ExpenseStore] Sync failed:', e)
+                if (_syncRetryQueue.length < MAX_RETRY_QUEUE) _syncRetryQueue.push(id)
                 useUIStore.getState().showToast({
                   type: 'warning',
                   title: '클라우드 동기화 실패',
@@ -88,6 +113,7 @@ export const useExpenseStore = create<ExpenseState>()(
             })
           }
           sendBroadcast('EXPENSE_CREATED', { id, tripId: expenseData.tripId })
+          retrySyncQueue().catch(console.error)
           return id
         } catch (error) {
           set({ error: (error as Error).message })
@@ -111,6 +137,7 @@ export const useExpenseStore = create<ExpenseState>()(
                 }
               } catch (e) {
                 console.error('[ExpenseStore] Sync update failed:', e)
+                if (_syncRetryQueue.length < MAX_RETRY_QUEUE) _syncRetryQueue.push(id)
                 useUIStore.getState().showToast({
                   type: 'warning',
                   title: '클라우드 동기화 실패',
@@ -125,6 +152,7 @@ export const useExpenseStore = create<ExpenseState>()(
               expenses: state.expenses.map(e => e.id === id ? expense : e),
             }))
             sendBroadcast('EXPENSE_UPDATED', { id, tripId: expense.tripId })
+            retrySyncQueue().catch(console.error)
           }
         } catch (error) {
           set({ error: (error as Error).message })

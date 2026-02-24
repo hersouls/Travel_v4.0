@@ -61,7 +61,7 @@ export function useDirections(
       return
     }
 
-    let cancelled = false
+    const controller = new AbortController()
 
     async function loadDirections() {
       setIsLoading(true)
@@ -83,17 +83,17 @@ export function useDirections(
           travelMode,
         )
 
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setSegments(result)
         }
       } catch (err) {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           const message = err instanceof Error ? err.message : 'Failed to fetch directions'
           setError(message)
           console.error('[useDirections] Error:', err)
         }
       } finally {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           setIsLoading(false)
         }
       }
@@ -102,7 +102,7 @@ export function useDirections(
     loadDirections()
 
     return () => {
-      cancelled = true
+      controller.abort()
     }
   }, [tripId, plansKey, travelMode, refreshKey])
 

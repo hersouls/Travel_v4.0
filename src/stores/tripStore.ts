@@ -244,13 +244,14 @@ export const useTripStore = create<TripState>()(
           sendBroadcast('TRIP_DELETED', { id })
 
           // Deferred Firestore deletion with undo
-          let undone = false
+          const undoController = new AbortController()
           const timer = setTimeout(async () => {
-            if (undone) return
+            if (undoController.signal.aborted) return
             if (syncManager.isActive() && firebaseId) {
               try {
                 await syncManager.deleteRemoteTrip(firebaseId)
               } catch (e) {
+                if (undoController.signal.aborted) return
                 console.error('[Sync] Failed to delete remote trip:', e)
               }
             }
@@ -269,7 +270,7 @@ export const useTripStore = create<TripState>()(
             action: {
               label: '되돌리기',
               onClick: async () => {
-                undone = true
+                undoController.abort()
                 clearTimeout(timer)
                 // Remove pending deletes on undo
                 if (firebaseId) syncManager.removePendingDelete(firebaseId)
@@ -462,13 +463,16 @@ export const useTripStore = create<TripState>()(
           sendBroadcast('PLAN_DELETED', { id, tripId })
 
           // Deferred Firestore deletion with undo
-          let undone = false
+          const planUndoController = new AbortController()
           const timer = setTimeout(async () => {
-            if (undone) return
+            if (planUndoController.signal.aborted) return
             if (syncManager.isActive()) {
               if (firebaseId) {
                 try { await syncManager.deleteRemotePlan(firebaseId) }
-                catch (e) { console.error('[Sync] Failed to delete remote plan:', e) }
+                catch (e) {
+                  if (planUndoController.signal.aborted) return
+                  console.error('[Sync] Failed to delete remote plan:', e)
+                }
               }
               for (const seg of affectedSegments) {
                 if (seg.firebaseId) {
@@ -492,7 +496,7 @@ export const useTripStore = create<TripState>()(
             action: {
               label: '되돌리기',
               onClick: async () => {
-                undone = true
+                planUndoController.abort()
                 clearTimeout(timer)
                 // Remove pending deletes on undo
                 if (firebaseId) syncManager.removePendingDelete(firebaseId)

@@ -19,6 +19,7 @@ export function usePullToRefresh({
   const [isRefreshing, setIsRefreshing] = useState(false)
   const touchStartY = useRef(0)
   const isPulling = useRef(false)
+  const mountedRef = useRef(true)
 
   // ref를 사용하여 stale closure 방지
   const onRefreshRef = useRef(onRefresh)
@@ -55,11 +56,13 @@ export function usePullToRefresh({
         try {
           await onRefreshRef.current()
         } finally {
-          setIsRefreshing(false)
-          setPullDistance(0)
+          if (mountedRef.current) {
+            setIsRefreshing(false)
+            setPullDistance(0)
+          }
         }
       } else {
-        setPullDistance(0)
+        if (mountedRef.current) setPullDistance(0)
       }
     }
 
@@ -68,6 +71,7 @@ export function usePullToRefresh({
     document.addEventListener('touchend', onTouchEnd)
 
     return () => {
+      mountedRef.current = false
       document.removeEventListener('touchstart', onTouchStart)
       document.removeEventListener('touchmove', onTouchMove)
       document.removeEventListener('touchend', onTouchEnd)

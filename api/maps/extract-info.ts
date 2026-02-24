@@ -154,7 +154,9 @@ function extractFromHtml(html: string): Partial<ExtractedInfo['data']> {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS 헤더
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  const ALLOWED_ORIGINS = ['https://travel1.moonwave.kr','https://moonwave-travel.vercel.app','http://localhost:5173','http://localhost:4173']
+  const origin = req.headers.origin || ''
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0])
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -163,13 +165,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' })
+    return res.status(405).json({ error: 'Method not allowed' })
   }
 
   const { mapUrl } = req.body as { mapUrl?: string }
 
   if (!mapUrl) {
-    return res.status(400).json({ success: false, error: 'mapUrl is required' })
+    return res.status(400).json({ error: 'mapUrl is required' })
   }
 
   // Google Maps URL 검증
@@ -181,7 +183,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!isGoogleMapsUrl) {
     return res.status(400).json({
-      success: false,
       error: 'Invalid URL. Please provide a Google Maps URL.',
     })
   }
@@ -229,7 +230,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (error) {
     console.error('Error extracting map info:', error)
     return res.status(500).json({
-      success: false,
       error: error instanceof Error ? error.message : 'Failed to extract map information',
     })
   }

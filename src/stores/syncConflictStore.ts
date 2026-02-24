@@ -138,6 +138,20 @@ async function applyResolution(
       if (place && syncManager.isActive()) await syncManager.uploadPlace(place)
       break
     }
+    case 'travelLog': {
+      await dexieDb.travelLogs.update(entityId, updates)
+      break
+    }
+    case 'expense': {
+      await dexieDb.expenses.update(entityId, updates)
+      const expense = await dexieDb.expenses.get(entityId)
+      if (expense && syncManager.isActive()) await syncManager.uploadExpense(expense)
+      break
+    }
+    default: {
+      const _exhaustive: never = entityType
+      throw new Error(`Unhandled entity type: ${_exhaustive}`)
+    }
   }
 }
 

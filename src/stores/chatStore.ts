@@ -27,6 +27,8 @@ interface ChatState {
 
 const CHAT_API_URL = '/api/claude/chat'
 
+let _activeAbortController: AbortController | null = null
+
 export const useChatStore = create<ChatState>()(
   devtools(
     (set, get) => ({
@@ -35,6 +37,12 @@ export const useChatStore = create<ChatState>()(
       tripContext: null,
 
       sendMessage: async (content: string) => {
+        if (get().isLoading) return
+
+        _activeAbortController?.abort()
+        const abortController = new AbortController()
+        _activeAbortController = abortController
+
         const { tripContext, messages } = get()
         const { claudeApiKey, claudeModel } = useSettingsStore.getState()
 
@@ -81,6 +89,7 @@ export const useChatStore = create<ChatState>()(
           messages: [...state.messages, assistantMessage],
         }))
 
+        let accumulated = ''
         try {
           const response = await fetch(CHAT_API_URL, {
             method: 'POST',
@@ -94,6 +103,7 @@ export const useChatStore = create<ChatState>()(
               history,
               model: claudeModel || 'sonnet',
             }),
+            signal: abortController.signal,
           })
 
           if (!response.ok) {
@@ -106,7 +116,6 @@ export const useChatStore = create<ChatState>()(
 
           const decoder = new TextDecoder()
           let buffer = ''
-          let accumulated = ''
 
           while (true) {
             const { done, value } = await reader.read()
@@ -148,6 +157,14 @@ export const useChatStore = create<ChatState>()(
             }))
           }
         } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            if (!accumulated) {
+              set((state) => ({
+                messages: state.messages.filter((m) => m.id !== assistantId),
+              }))
+            }
+            return
+          }
           const errorText =
             err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.'
           set((state) => ({
@@ -158,6 +175,9 @@ export const useChatStore = create<ChatState>()(
             ),
           }))
         } finally {
+          if (_activeAbortController === abortController) {
+            _activeAbortController = null
+          }
           set({ isLoading: false })
         }
       },
@@ -174,7 +194,11 @@ export const useChatStore = create<ChatState>()(
         }
       },
 
-      clearMessages: () => set({ messages: [] }),
+      clearMessages: () => {
+        _activeAbortController?.abort()
+        _activeAbortController = null
+        set({ messages: [], isLoading: false })
+      },
     }),
     { name: 'chat-store' }
   )

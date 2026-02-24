@@ -101,8 +101,7 @@ export function TravelExpense() {
         }
       }).catch(console.error)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripId, isLoadingExpenses])
+  }, [tripId, isLoadingExpenses, expenses.length, importFromTravelLogs])
 
   const totalDays = useMemo(() => {
     if (!trip) return 0
@@ -264,13 +263,15 @@ export function TravelExpense() {
         <div className="flex items-center justify-between gap-2">
           {/* Day tabs */}
           <div className="flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <div className="flex gap-1">
+            <div className="flex gap-1" role="tablist" aria-label="일자별 경비">
               {sortedDays.slice(0, loadedDayCount).map((day) => {
                 const hasExpenses = (expensesByDay[day]?.length || 0) > 0
                 return (
                   <button
                     key={day}
                     type="button"
+                    role="tab"
+                    aria-selected={activeDay === day}
                     onClick={() => {
                       setActiveDay(day)
                       const el = document.getElementById(`expense-day-${day}`)

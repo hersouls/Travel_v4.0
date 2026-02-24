@@ -340,6 +340,16 @@ export function PlanForm() {
       return
     }
 
+    // Coordinate range validation
+    if (formData.latitude !== undefined && (formData.latitude < -90 || formData.latitude > 90)) {
+      toast.error('위도는 -90 ~ 90 사이여야 합니다')
+      return
+    }
+    if (formData.longitude !== undefined && (formData.longitude < -180 || formData.longitude > 180)) {
+      toast.error('경도는 -180 ~ 180 사이여야 합니다')
+      return
+    }
+
     if (!tripId) return
 
     // Time conflict check (non-blocking warning)
@@ -632,13 +642,15 @@ export function PlanForm() {
               <button
                 type="button"
                 onClick={() => setShowManualCoords(!showManualCoords)}
+                aria-expanded={showManualCoords}
+                aria-controls="manual-coords-panel"
                 className="flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
               >
                 {showManualCoords ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
                 좌표 직접 입력
               </button>
               {showManualCoords && (
-                <div className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 space-y-3">
+                <div id="manual-coords-panel" className="p-3 bg-zinc-50 dark:bg-zinc-800/50 rounded-lg border border-zinc-200 dark:border-zinc-700 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                     <Input
                       label="위도 (Latitude)"

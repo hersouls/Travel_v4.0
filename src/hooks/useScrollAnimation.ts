@@ -68,13 +68,13 @@ export function useScrollAnimation<T extends HTMLElement = HTMLDivElement>(
 
   const ref = useRef<T>(null)
   const [isVisible, setIsVisible] = useState(false)
-  const [hasAnimated, setHasAnimated] = useState(false)
+  const hasAnimatedRef = useRef(false)
 
   useEffect(() => {
     const element = ref.current
     if (!element) return
 
-    if (once && hasAnimated) return
+    if (once && hasAnimatedRef.current) return
 
     let delayTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -84,11 +84,11 @@ export function useScrollAnimation<T extends HTMLElement = HTMLDivElement>(
           if (delay > 0) {
             delayTimer = setTimeout(() => {
               setIsVisible(true)
-              setHasAnimated(true)
+              hasAnimatedRef.current = true
             }, delay)
           } else {
             setIsVisible(true)
-            setHasAnimated(true)
+            hasAnimatedRef.current = true
           }
 
           if (once) {
@@ -107,7 +107,7 @@ export function useScrollAnimation<T extends HTMLElement = HTMLDivElement>(
       if (delayTimer) clearTimeout(delayTimer)
       observer.disconnect()
     }
-  }, [threshold, rootMargin, delay, once, hasAnimated])
+  }, [threshold, rootMargin, delay, once])
 
   const preset = animationPresets[animation]
 

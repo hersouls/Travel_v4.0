@@ -2,7 +2,7 @@
 // Nearby Places Hook
 // ============================================
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { NearbyPlace } from '@/types'
 import { searchNearby } from '@/services/nearbySearchService'
 
@@ -34,7 +34,7 @@ export function useNearbyPlaces({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const typesKey = JSON.stringify(types)
+  const typesKey = useMemo(() => JSON.stringify(types), [types])
 
   const fetchPlaces = useCallback(async () => {
     if (!enabled || !latitude || !longitude) return

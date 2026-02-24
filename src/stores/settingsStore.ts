@@ -10,6 +10,16 @@ import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
 import { syncManager } from '@/services/firestoreSync'
 
+// Debounced save to prevent rapid DB writes
+let _saveTimer: ReturnType<typeof setTimeout> | null = null
+function debouncedSave(saveFn: () => Promise<void>) {
+  if (_saveTimer) clearTimeout(_saveTimer)
+  _saveTimer = setTimeout(async () => {
+    _saveTimer = null
+    try { await saveFn() } catch (e) { console.error('[Settings] Save failed:', e) }
+  }, 300)
+}
+
 interface SettingsState extends Settings {
   // Actions
   initialize: () => Promise<void>
@@ -99,7 +109,7 @@ export const useSettingsStore = create<SettingsState>()(
         setTheme: (theme) => {
           set({ theme })
           applyTheme(theme)
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'theme', value: theme })
         },
 
@@ -107,56 +117,56 @@ export const useSettingsStore = create<SettingsState>()(
         setColorPalette: (colorPalette) => {
           set({ colorPalette })
           applyColorPalette(colorPalette)
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'colorPalette', value: colorPalette })
         },
 
         // Set language
         setLanguage: (language) => {
           set({ language })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'language', value: language })
         },
 
         // Toggle music player
         setMusicPlayerEnabled: (enabled) => {
           set({ isMusicPlayerEnabled: enabled })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'isMusicPlayerEnabled', value: enabled })
         },
 
         // Update last backup date
         updateLastBackupDate: () => {
           set({ lastBackupDate: new Date() })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'lastBackupDate' })
         },
 
         // Set timezone auto-detect
         setTimezoneAutoDetect: (enabled) => {
           set({ timezoneAutoDetect: enabled })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'timezoneAutoDetect', value: enabled })
         },
 
         // Update detected timezone
         updateDetectedTimezone: (timezone) => {
           set({ detectedTimezone: timezone })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'detectedTimezone', value: timezone })
         },
 
         // Set map provider
         setMapProvider: (mapProvider) => {
           set({ mapProvider })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'mapProvider', value: mapProvider })
         },
 
         // Set default travel mode
         setDefaultTravelMode: (defaultTravelMode) => {
           set({ defaultTravelMode })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
           sendBroadcast('SETTINGS_CHANGED', { field: 'defaultTravelMode', value: defaultTravelMode })
         },
 
@@ -169,13 +179,13 @@ export const useSettingsStore = create<SettingsState>()(
         // Claude AI: set model preference
         setClaudeModel: (claudeModel) => {
           set({ claudeModel })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
         },
 
         // Claude AI: toggle enabled
         setClaudeEnabled: (claudeEnabled) => {
           set({ claudeEnabled })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
         },
 
         // OpenAI TTS: set API key (localStorage only, NOT synced to DB/Firestore)
@@ -187,13 +197,13 @@ export const useSettingsStore = create<SettingsState>()(
         // OpenAI TTS: set model
         setOpenaiTtsModel: (openaiTtsModel) => {
           set({ openaiTtsModel })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
         },
 
         // OpenAI TTS: set voice
         setOpenaiTtsVoice: (openaiTtsVoice) => {
           set({ openaiTtsVoice })
-          get().saveToDatabase()
+          debouncedSave(() => get().saveToDatabase())
         },
 
         // Save to database

@@ -13,6 +13,7 @@ const _rlStore = new Map<string, { count: number; resetAt: number }>()
 function checkRateLimit(key: string, max = 30, windowMs = 60_000) {
   const now = Date.now()
   for (const [k, e] of _rlStore) { if (e.resetAt <= now) _rlStore.delete(k) }
+  if (_rlStore.size > 1000) _rlStore.clear()
   const entry = _rlStore.get(key)
   if (!entry || entry.resetAt <= now) {
     _rlStore.set(key, { count: 1, resetAt: now + windowMs })

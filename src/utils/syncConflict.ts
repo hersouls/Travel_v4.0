@@ -29,6 +29,12 @@ export const TRAVEL_LOG_MERGEABLE_FIELDS = [
   'address', 'placeName', 'memo',
 ] as const
 
+export const EXPENSE_MERGEABLE_FIELDS = [
+  'day', 'timestamp', 'category', 'subCategory', 'storeName',
+  'memo', 'totalAmount', 'currency', 'receiptDate',
+  'latitude', 'longitude', 'address',
+] as const
+
 // ---- Field label map (Korean) ----
 
 export const FIELD_LABELS_KO: Record<string, string> = {
@@ -59,6 +65,12 @@ export const FIELD_LABELS_KO: Record<string, string> = {
   rating: '평점',
   usageCount: '사용 횟수',
   timestamp: '시간',
+  category: '카테고리',
+  subCategory: '세부 카테고리',
+  storeName: '가게명',
+  totalAmount: '총 금액',
+  currency: '통화',
+  receiptDate: '영수증 날짜',
 }
 
 // ---- Helpers ----
@@ -69,6 +81,11 @@ function getMergeableFields(entityType: SyncEntityType): readonly string[] {
     case 'plan': return PLAN_MERGEABLE_FIELDS
     case 'place': return PLACE_MERGEABLE_FIELDS
     case 'travelLog': return TRAVEL_LOG_MERGEABLE_FIELDS
+    case 'expense': return EXPENSE_MERGEABLE_FIELDS
+    default: {
+      const _exhaustive: never = entityType
+      throw new Error(`Unknown entity type: ${_exhaustive}`)
+    }
   }
 }
 

@@ -35,7 +35,7 @@ export function useExchangeRates(): UseExchangeRatesReturn {
 
   useEffect(() => {
     if (!cached) load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cached, load])
 
   return { rates, isLoading, lastUpdated, refresh: load }
 }
