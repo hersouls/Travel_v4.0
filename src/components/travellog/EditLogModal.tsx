@@ -10,7 +10,7 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea, Label } from '@/components/ui/Input'
 import { PlacesAutocomplete } from '@/components/ui/PlacesAutocomplete'
-import { compressImage } from '@/services/imageStorage'
+import { fileToBase64, compressImage } from '@/services/imageStorage'
 import { detectPhotoLocation } from '@/services/photoLocationService'
 import { getCurrentPosition, reverseGeocode } from '@/services/geocodingService'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -142,7 +142,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
     const file = e.target.files?.[0]
     if (!file) return
     try {
-      const full = await compressImage(file, { maxWidth: 1920, quality: 0.85 })
+      const full = await fileToBase64(file)
       const thumb = await compressImage(file, { maxWidth: 200, quality: 0.6 })
       setNewPhotoPreview(full)
       setNewThumbnailBase64(thumb)

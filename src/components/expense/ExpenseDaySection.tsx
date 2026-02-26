@@ -83,6 +83,7 @@ export function ExpenseDaySection({
                       expense={expense}
                       onEdit={handleEdit}
                       onDelete={handleDelete}
+                      exchangeRates={exchangeRates}
                     />
                   ))}
                 </div>

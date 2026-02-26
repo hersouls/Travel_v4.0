@@ -207,21 +207,21 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
               <button
                 type="button"
                 onClick={handleAddItem}
-                className="flex items-center gap-1 text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                className="flex items-center gap-0.5 text-xs text-primary-600 dark:text-primary-400 hover:underline flex-shrink-0"
               >
-                <Plus className="size-3" /> 추가
+                <Plus className="size-3" />추가
               </button>
             </div>
             <div className="space-y-2">
               {items.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2">
+                <div key={idx} className="flex items-center gap-1.5">
                   <input
                     type="text"
                     value={item.name}
                     onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
                     placeholder="항목명"
                     className={clsx(
-                      'flex-1 px-3 py-1.5 text-sm rounded-lg',
+                      'flex-1 min-w-0 px-2.5 py-1.5 text-sm rounded-lg',
                       'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
                       'border border-transparent focus:border-primary-500 outline-none',
                     )}
@@ -232,7 +232,7 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
                     onChange={(e) => handleItemChange(idx, 'amount', e.target.value)}
                     placeholder="금액"
                     className={clsx(
-                      'w-24 px-3 py-1.5 text-sm rounded-lg text-right',
+                      'w-20 sm:w-24 flex-shrink-0 px-2 py-1.5 text-sm rounded-lg text-right',
                       'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
                       'border border-transparent focus:border-primary-500 outline-none',
                     )}
@@ -251,8 +251,7 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
           <div className="flex justify-between items-center px-1 pt-2 border-t border-zinc-200 dark:border-zinc-700">
             <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">합계</span>
             <span className="text-base font-bold text-[var(--foreground)]">
-              {CURRENCY_SYMBOLS[currency] || currency}
-              {totalAmount.toLocaleString()}
+              ₩{Math.round(totalAmount).toLocaleString()}
             </span>
           </div>
 

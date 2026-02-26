@@ -170,8 +170,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { mapUrl } = req.body as { mapUrl?: string }
 
-  if (!mapUrl) {
+  if (!mapUrl || typeof mapUrl !== 'string') {
     return res.status(400).json({ error: 'mapUrl is required' })
+  }
+
+  if (mapUrl.length > 2000) {
+    return res.status(400).json({ error: 'mapUrl must be under 2000 characters' })
+  }
+
+  try {
+    new URL(mapUrl)
+  } catch {
+    return res.status(400).json({ error: 'mapUrl must be a valid URL' })
   }
 
   // Google Maps URL 검증

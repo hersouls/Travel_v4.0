@@ -36,7 +36,9 @@ export function useSync() {
         })
       } else {
         // App initialized with no user (never logged in this session)
-        syncManager.stop()
+        syncManager.stop().catch((err) => {
+          console.error('[Sync] Stop failed:', err)
+        })
       }
       useUIStore.getState().setSyncProgress({ status: 'idle' })
       return
@@ -89,7 +91,9 @@ export function useSync() {
       unsubStatus()
       // Component unmount cleanup: stop sync but do NOT clear data
       // (This runs on HMR, tab close, or React StrictMode re-mount)
-      syncManager.stop()
+      syncManager.stop().catch((err) => {
+        console.error('[Sync] Stop on unmount failed:', err)
+      })
     }
   }, [user?.uid])
 }

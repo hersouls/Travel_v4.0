@@ -31,7 +31,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Text too long. Max 200 characters.' })
   }
 
-  const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${lang}&q=${encodeURIComponent(text)}`
+  // 언어 코드 검증
+  const ALLOWED_LANGS = ['ko', 'en', 'ja', 'zh', 'zh-CN', 'zh-TW', 'fr', 'de', 'es', 'it', 'pt', 'ru', 'th', 'vi', 'id', 'ar', 'hi', 'tr', 'nl', 'pl', 'sv']
+  const langStr = typeof lang === 'string' ? lang : 'ko'
+  if (!ALLOWED_LANGS.includes(langStr)) {
+    return res.status(400).json({ error: `Unsupported language: ${langStr}` })
+  }
+
+  const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${langStr}&q=${encodeURIComponent(text)}`
 
   try {
     const response = await fetch(googleTtsUrl, {

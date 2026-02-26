@@ -206,13 +206,12 @@ export function formatBytes(bytes: number): string {
  */
 export async function processImages(
   files: FileList | File[],
-  options: CompressOptions = {}
 ): Promise<string[]> {
   const fileArray = Array.from(files)
   const imageFiles = fileArray.filter((file) => file.type.startsWith('image/'))
 
   const results = await Promise.all(
-    imageFiles.map((file) => compressImage(file, options))
+    imageFiles.map((file) => fileToBase64(file))
   )
 
   return results

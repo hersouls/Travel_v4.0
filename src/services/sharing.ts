@@ -117,9 +117,14 @@ export async function shareTrip(tripId: number): Promise<string> {
   // Write to Firestore sharedTrips collection
   const firestore = getFirebaseDb()
   const sharedDocRef = doc(firestore, 'sharedTrips', shareId)
-  await setDoc(sharedDocRef, sharedData)
+  try {
+    await setDoc(sharedDocRef, sharedData)
+  } catch (error) {
+    console.error('[Sharing] Failed to write shared trip:', error)
+    throw new Error('공유 문서를 생성할 수 없습니다. 다시 시도해주세요.')
+  }
 
-  // Update local trip with the shareId
+  // Update local trip with the shareId (only after Firestore succeeds)
   await db.updateTrip(tripId, { shareId })
 
   return shareId
@@ -146,9 +151,14 @@ export async function unshareTrip(tripId: number): Promise<void> {
   // Delete the shared document from Firestore
   const firestore = getFirebaseDb()
   const sharedDocRef = doc(firestore, 'sharedTrips', shareId)
-  await deleteDoc(sharedDocRef)
+  try {
+    await deleteDoc(sharedDocRef)
+  } catch (error) {
+    console.error('[Sharing] Failed to delete shared trip:', error)
+    throw new Error('공유 해제에 실패했습니다. 다시 시도해주세요.')
+  }
 
-  // Remove shareId from local trip
+  // Remove shareId from local trip (only after Firestore succeeds)
   await db.updateTrip(tripId, { shareId: undefined })
 }
 

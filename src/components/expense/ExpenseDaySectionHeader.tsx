@@ -18,13 +18,8 @@ interface ExpenseDaySectionHeaderProps {
   showKRW?: boolean
 }
 
-function formatCurrencyShort(amount: number, currency: string): string {
-  const symbol =
-    currency === 'KRW' ? '₩' : currency === 'JPY' ? '¥' : currency === 'USD' ? '$' : currency
-  if (['KRW', 'JPY', 'VND'].includes(currency)) {
-    return `${symbol}${amount.toLocaleString()}`
-  }
-  return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+function formatCurrencyShort(amount: number): string {
+  return `₩${Math.round(amount).toLocaleString()}`
 }
 
 export function ExpenseDaySectionHeader({
@@ -73,25 +68,20 @@ export function ExpenseDaySectionHeader({
       {/* Totals */}
       {summary && !isExpanded && Object.keys(summary.totals).length > 0 && (
         <div className="flex-shrink-0 text-right">
-          {Object.entries(summary.totals).map(([currency, amount]) => (
-            <p key={currency} className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-              {formatCurrencyShort(amount, currency)}
-            </p>
-          ))}
-          {showKRW && exchangeRates && (() => {
-            const hasNonKRW = Object.keys(summary.totals).some((c) => c !== 'KRW')
-            if (!hasNonKRW) return null
+          {(() => {
             let totalKRW = 0
-            let valid = true
+            let allConverted = true
             for (const [currency, amount] of Object.entries(summary.totals)) {
-              const krw = convertToKRW(amount, currency, exchangeRates)
-              if (krw == null) { valid = false; break }
-              totalKRW += krw
+              if (exchangeRates) {
+                const krw = convertToKRW(amount, currency, exchangeRates)
+                if (krw != null) { totalKRW += krw; continue }
+              }
+              totalKRW += amount
+              if (currency !== 'KRW') allConverted = false
             }
-            if (!valid) return null
             return (
-              <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                ≈₩{totalKRW.toLocaleString()}
+              <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                {formatCurrencyShort(totalKRW)}
               </p>
             )
           })()}

@@ -9,7 +9,7 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
 import { Label } from '@/components/ui/Input'
-import { compressImage } from '@/services/imageStorage'
+import { fileToBase64, compressImage } from '@/services/imageStorage'
 import { getTripDayDate } from '@/utils/timezone'
 import { toast } from '@/stores/uiStore'
 import type { TravelLog } from '@/types'
@@ -60,7 +60,7 @@ export function MemoLogInput({
     if (!file) return
 
     try {
-      const full = await compressImage(file, { maxWidth: 1920, quality: 0.85 })
+      const full = await fileToBase64(file)
       const thumb = await compressImage(file, { maxWidth: 200, quality: 0.6 })
       setPhotoPreview(full)
       setThumbnailBase64(thumb)

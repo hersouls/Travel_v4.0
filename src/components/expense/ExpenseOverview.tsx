@@ -8,7 +8,7 @@ import { ChevronDown, ChevronUp, Utensils, Bus, Bed, ShoppingBag, Camera, MoreHo
 import { clsx } from 'clsx'
 import type { ExpenseCategory } from '@/types'
 import type { ExpenseTripTotals } from '@/hooks/useExpenseView'
-import { EXPENSE_CATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
+import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import { convertToKRW } from '@/services/exchangeRateService'
 
 interface ExpenseOverviewProps {
@@ -37,12 +37,8 @@ const categoryBarColors: Record<ExpenseCategory, string> = {
   shopping: 'bg-pink-500', attraction: 'bg-cyan-500', other: 'bg-zinc-400',
 }
 
-function formatAmount(amount: number, currency: string): string {
-  const symbol = CURRENCY_SYMBOLS[currency] || currency
-  if (['KRW', 'JPY', 'VND'].includes(currency)) {
-    return `${symbol}${amount.toLocaleString()}`
-  }
-  return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function formatAmount(amount: number): string {
+  return `₩${Math.round(amount).toLocaleString()}`
 }
 
 export function ExpenseOverview({ tripTotals, className, exchangeRates, showKRW }: ExpenseOverviewProps) {
@@ -79,25 +75,19 @@ export function ExpenseOverview({ tripTotals, className, exchangeRates, showKRW 
           {currencyTotals.length > 0 && (
             <div className="text-right">
               <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                {formatAmount(currencyTotals[0].total, currencyTotals[0].currency)}
+                {(() => {
+                  let totalKRW = 0
+                  for (const { currency, total } of currencyTotals) {
+                    if (exchangeRates) {
+                      const krw = convertToKRW(total, currency, exchangeRates)
+                      totalKRW += krw ?? total
+                    } else {
+                      totalKRW += total
+                    }
+                  }
+                  return formatAmount(totalKRW)
+                })()}
               </span>
-              {showKRW && exchangeRates && (() => {
-                const hasNonKRW = currencyTotals.some((c) => c.currency !== 'KRW')
-                if (!hasNonKRW) return null
-                let totalKRW = 0
-                let valid = true
-                for (const { currency, total } of currencyTotals) {
-                  const krw = convertToKRW(total, currency, exchangeRates)
-                  if (krw == null) { valid = false; break }
-                  totalKRW += krw
-                }
-                if (!valid) return null
-                return (
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                    ≈₩{totalKRW.toLocaleString()}
-                  </p>
-                )
-              })()}
             </div>
           )}
           {isOpen ? <ChevronUp className="size-4 text-zinc-400" /> : <ChevronDown className="size-4 text-zinc-400" />}
@@ -112,21 +102,13 @@ export function ExpenseOverview({ tripTotals, className, exchangeRates, showKRW 
             <div className="pt-3 space-y-1.5">
               <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">통화별 합계</span>
               {currencyTotals.map(({ currency, total }) => {
-                const krw = showKRW && exchangeRates && currency !== 'KRW'
-                  ? convertToKRW(total, currency, exchangeRates) : null
+                const krw = exchangeRates ? convertToKRW(total, currency, exchangeRates) : null
                 return (
                   <div key={currency} className="flex justify-between items-center">
                     <span className="text-sm text-zinc-600 dark:text-zinc-300">{currency}</span>
-                    <div className="text-right">
-                      <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                        {formatAmount(total, currency)}
-                      </span>
-                      {krw != null && (
-                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 ml-1">
-                          (≈₩{krw.toLocaleString()})
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                      {formatAmount(krw ?? total)}
+                    </span>
                   </div>
                 )
               })}
@@ -156,13 +138,9 @@ export function ExpenseOverview({ tripTotals, className, exchangeRates, showKRW 
                       </span>
                       <span className="text-xs text-zinc-400">{count}건</span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(totals).map(([cur, amt]) => (
-                        <span key={cur} className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                          {formatAmount(amt, cur)}
-                        </span>
-                      ))}
-                    </div>
+                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                      {formatAmount(catKRW)}
+                    </span>
                     <div className="mt-1 h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                       <div
                         className={clsx('h-full rounded-full transition-all', categoryBarColors[category])}

@@ -5,7 +5,6 @@
 
 import { clsx } from 'clsx'
 import type { TripBudget } from '@/types'
-import { CURRENCY_SYMBOLS } from '@/utils/constants'
 import { convertToKRW } from '@/services/exchangeRateService'
 
 interface ExpenseBudgetBarProps {
@@ -15,12 +14,8 @@ interface ExpenseBudgetBarProps {
   className?: string
 }
 
-function formatAmount(amount: number, currency: string): string {
-  const symbol = CURRENCY_SYMBOLS[currency] || currency
-  if (['KRW', 'JPY', 'VND'].includes(currency)) {
-    return `${symbol}${amount.toLocaleString()}`
-  }
-  return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function formatAmount(amount: number): string {
+  return `₩${Math.round(amount).toLocaleString()}`
 }
 
 export function ExpenseBudgetBar({ budget, currencyTotals, exchangeRates, className }: ExpenseBudgetBarProps) {
@@ -67,7 +62,7 @@ export function ExpenseBudgetBar({ budget, currencyTotals, exchangeRates, classN
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">예산</span>
         <span className="text-xs text-zinc-500">
-          {formatAmount(budget.totalBudget, budgetCur)}
+          {formatAmount(budget.totalBudget)}
         </span>
       </div>
 
@@ -82,12 +77,12 @@ export function ExpenseBudgetBar({ budget, currencyTotals, exchangeRates, classN
       {/* Stats */}
       <div className="flex items-center justify-between mt-2">
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
-          사용: {formatAmount(totalSpent, budgetCur)} ({percentage.toFixed(1)}%)
+          사용: {formatAmount(totalSpent)} ({percentage.toFixed(1)}%)
         </span>
         <span className={clsx('text-xs font-medium', textColor)}>
           {remaining >= 0
-            ? `남은 예산: ${formatAmount(remaining, budgetCur)}`
-            : `초과: ${formatAmount(Math.abs(remaining), budgetCur)}`}
+            ? `남은 예산: ${formatAmount(remaining)}`
+            : `초과: ${formatAmount(Math.abs(remaining))}`}
         </span>
       </div>
     </div>

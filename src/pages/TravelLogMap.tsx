@@ -31,7 +31,7 @@ export function TravelLogMap() {
 
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [showTrackLine, setShowTrackLine] = useState(true)
-  const [showPhotoMap, setShowPhotoMap] = useState(false)
+  const [showPhotoMap, setShowPhotoMap] = useState(true)
   const [showHeatmap, setShowHeatmap] = useState(false)
 
   const tripId = id ? Number.parseInt(id) : 0

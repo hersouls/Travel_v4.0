@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, Utensils, Bus, Bed, ShoppingBag, Camera, MoreHorizontal, MapPin, Route } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
-import { EXPENSE_CATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
+import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import { convertToKRW } from '@/services/exchangeRateService'
 
 interface ExpenseSummaryProps {
@@ -59,12 +59,8 @@ interface CurrencyTotal {
   total: number
 }
 
-function formatAmount(amount: number, currency: string): string {
-  const symbol = CURRENCY_SYMBOLS[currency] || currency
-  if (['KRW', 'JPY', 'VND'].includes(currency)) {
-    return `${symbol}${amount.toLocaleString()}`
-  }
-  return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function formatAmount(amount: number): string {
+  return `₩${Math.round(amount).toLocaleString()}`
 }
 
 export function ExpenseSummary({ logs, className, defaultOpen = false, totalTripDistance, uniqueLocationCount, dayCount, exchangeRates, showKRW }: ExpenseSummaryProps) {
@@ -134,29 +130,23 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
           <span className="text-xs text-zinc-500 dark:text-zinc-400">{totalCount}건</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Show main currency total inline */}
+          {/* Show total in KRW */}
           {currencyTotals.length > 0 && (
             <div className="text-right">
               <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-                {formatAmount(currencyTotals[0].total, currencyTotals[0].currency)}
+                {(() => {
+                  let totalKRW = 0
+                  for (const { currency, total } of currencyTotals) {
+                    if (exchangeRates) {
+                      const krw = convertToKRW(total, currency, exchangeRates)
+                      totalKRW += krw ?? total
+                    } else {
+                      totalKRW += total
+                    }
+                  }
+                  return formatAmount(totalKRW)
+                })()}
               </span>
-              {showKRW && exchangeRates && (() => {
-                const hasNonKRW = currencyTotals.some((c) => c.currency !== 'KRW')
-                if (!hasNonKRW) return null
-                let totalKRW = 0
-                let valid = true
-                for (const { currency, total } of currencyTotals) {
-                  const krw = convertToKRW(total, currency, exchangeRates)
-                  if (krw == null) { valid = false; break }
-                  totalKRW += krw
-                }
-                if (!valid) return null
-                return (
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                    ≈₩{totalKRW.toLocaleString()}
-                  </p>
-                )
-              })()}
             </div>
           )}
           {isOpen ? <ChevronUp className="size-4 text-zinc-400" /> : <ChevronDown className="size-4 text-zinc-400" />}
@@ -171,21 +161,13 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
             <div className="pt-3 space-y-1.5">
               <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">통화별 합계</span>
               {currencyTotals.map(({ currency, total }) => {
-                const krw = showKRW && exchangeRates && currency !== 'KRW'
-                  ? convertToKRW(total, currency, exchangeRates) : null
+                const krw = exchangeRates ? convertToKRW(total, currency, exchangeRates) : null
                 return (
                   <div key={currency} className="flex justify-between items-center">
                     <span className="text-sm text-zinc-600 dark:text-zinc-300">{currency}</span>
-                    <div className="text-right">
-                      <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                        {formatAmount(total, currency)}
-                      </span>
-                      {krw != null && (
-                        <span className="text-[10px] text-zinc-400 dark:text-zinc-500 ml-1">
-                          (≈₩{krw.toLocaleString()})
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+                      {formatAmount(krw ?? total)}
+                    </span>
                   </div>
                 )
               })}
@@ -245,13 +227,16 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
                       </span>
                       <span className="text-xs text-zinc-400">{count}건</span>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(totals).map(([cur, amt]) => (
-                        <span key={cur} className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                          {formatAmount(amt, cur)}
-                        </span>
-                      ))}
-                    </div>
+                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                      {(() => {
+                        let catKRW = 0
+                        for (const [cur, amt] of Object.entries(totals)) {
+                          const krw = exchangeRates ? convertToKRW(amt, cur, exchangeRates) : null
+                          catKRW += krw ?? amt
+                        }
+                        return formatAmount(catKRW)
+                      })()}
+                    </span>
                     {/* Bar chart */}
                     <div className="mt-1 h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
                       <div

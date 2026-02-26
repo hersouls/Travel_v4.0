@@ -8,7 +8,7 @@ import { Utensils, Bus, Bed, ShoppingBag, Camera, MoreHorizontal } from 'lucide-
 import { clsx } from 'clsx'
 import type { Expense, ExpenseCategory } from '@/types'
 import { Dialog, DialogTitle, DialogBody } from '@/components/ui/Dialog'
-import { EXPENSE_CATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
+import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import { convertToKRW } from '@/services/exchangeRateService'
 
 interface ExpenseAnalyticsProps {
@@ -29,12 +29,8 @@ const categoryColors: Record<ExpenseCategory, string> = {
   shopping: '#ec4899', attraction: '#06b6d4', other: '#a1a1aa',
 }
 
-function formatAmount(amount: number, currency: string): string {
-  const symbol = CURRENCY_SYMBOLS[currency] || currency
-  if (['KRW', 'JPY', 'VND'].includes(currency)) {
-    return `${symbol}${amount.toLocaleString()}`
-  }
-  return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
+function formatAmount(amount: number): string {
+  return `₩${Math.round(amount).toLocaleString()}`
 }
 
 export function ExpenseAnalytics({ isOpen, onClose, expenses, totalDays, exchangeRates }: ExpenseAnalyticsProps) {
@@ -151,13 +147,9 @@ export function ExpenseAnalytics({ isOpen, onClose, expenses, totalDays, exchang
                       <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
                         {percentage.toFixed(1)}%
                       </span>
-                      <div className="text-right">
-                        {Object.entries(currencies).map(([cur, amt]) => (
-                          <p key={cur} className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
-                            {formatAmount(amt, cur)}
-                          </p>
-                        ))}
-                      </div>
+                      <span className="text-xs font-medium text-zinc-900 dark:text-zinc-100">
+                        {formatAmount(categoryData.items.find(i => i.category === category)?.krwTotal ?? 0)}
+                      </span>
                     </div>
                   )
                 })}
@@ -169,7 +161,7 @@ export function ExpenseAnalytics({ isOpen, onClose, expenses, totalDays, exchang
           {dailyTrend.entries.length > 0 && (
             <div>
               <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-3">일별 지출 추이</h3>
-              <div className="flex items-end gap-1 h-32">
+              <div className="flex gap-1 h-32">
                 {Array.from({ length: totalDays }, (_, i) => i + 1).map((day) => {
                   const amount = dailyTrend.entries.find(([d]) => d === day)?.[1] || 0
                   const heightPct = dailyTrend.maxDaily > 0 ? (amount / dailyTrend.maxDaily) * 100 : 0
@@ -177,7 +169,7 @@ export function ExpenseAnalytics({ isOpen, onClose, expenses, totalDays, exchang
                     <div
                       key={day}
                       className="flex-1 flex flex-col items-center justify-end"
-                      title={`Day ${day}: ${amount.toLocaleString()}`}
+                      title={`Day ${day}: ${formatAmount(amount)}`}
                     >
                       <div
                         className={clsx(

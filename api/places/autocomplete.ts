@@ -48,6 +48,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'input must be at least 2 characters' })
   }
 
+  if (input.length > 200) {
+    return res.status(400).json({ error: 'input must be at most 200 characters' })
+  }
+
   try {
     // Google Places Autocomplete (New) API
     const response = await fetch(

@@ -30,17 +30,22 @@ service cloud.firestore {
       match /travelLogs/{logId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      match /expenses/{expenseId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Shared trips - 작성자만 수정/삭제 가능
     match /sharedTrips/{shareId} {
       allow read: if true;
       allow create: if request.auth != null
-        && request.resource.data.keys().hasAll(['userId', 'tripData', 'createdAt']);
+        && request.resource.data.keys().hasAll(['sharedBy', 'trip', 'sharedAt', 'plans'])
+        && request.resource.data.sharedBy == request.auth.uid;
       allow update: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+        && resource.data.sharedBy == request.auth.uid;
       allow delete: if request.auth != null
-        && resource.data.userId == request.auth.uid;
+        && resource.data.sharedBy == request.auth.uid;
     }
 
     // Deny all other access

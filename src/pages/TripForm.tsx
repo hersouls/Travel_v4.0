@@ -8,7 +8,7 @@ import { DateRangePicker } from '@/components/ui/DateRangePicker'
 import { PageContainer } from '@/components/layout'
 import { useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
-import { compressImage } from '@/services/imageStorage'
+import { fileToBase64 } from '@/services/imageStorage'
 import { useFormValidation } from '@/hooks/useFormValidation'
 import { useUnsavedChanges } from '@/hooks/useUnsavedChanges'
 import { useFormDraft } from '@/hooks/useFormDraft'
@@ -85,8 +85,8 @@ export function TripForm() {
     const file = e.target.files?.[0]
     if (file) {
       try {
-        const compressed = await compressImage(file)
-        setFormData((prev) => ({ ...prev, coverImage: compressed }))
+        const base64 = await fileToBase64(file)
+        setFormData((prev) => ({ ...prev, coverImage: base64 }))
       } catch {
         toast.error('이미지 업로드 실패')
       }

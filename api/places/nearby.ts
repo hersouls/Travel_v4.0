@@ -64,6 +64,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Valid latitude and longitude are required' })
   }
 
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ error: 'Coordinates out of range (lat: -90~90, lng: -180~180)' })
+  }
+
+  if (typeof radiusMeters !== 'number' || radiusMeters < 0 || radiusMeters > 50000) {
+    return res.status(400).json({ error: 'radiusMeters must be between 0 and 50000' })
+  }
+
+  if (typeof maxResults !== 'number' || maxResults < 1 || maxResults > 20) {
+    return res.status(400).json({ error: 'maxResults must be between 1 and 20' })
+  }
+
   try {
     const fieldMask = [
       'places.id',

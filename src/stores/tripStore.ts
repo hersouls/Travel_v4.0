@@ -249,7 +249,7 @@ export const useTripStore = create<TripState>()(
             if (undoController.signal.aborted) return
             if (syncManager.isActive() && firebaseId) {
               try {
-                await syncManager.deleteRemoteTrip(firebaseId)
+                await syncManager.deleteRemoteTrip(firebaseId, undoController.signal)
               } catch (e) {
                 if (undoController.signal.aborted) return
                 console.error('[Sync] Failed to delete remote trip:', e)

@@ -159,10 +159,10 @@ export function Dashboard() {
 
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card padding="md">
+          <Card padding="md" aria-label={`전체 여행 ${stats.total}개`}>
             <div className="flex items-center gap-3">
               <div className="size-10 rounded-lg bg-primary-50 dark:bg-primary-950/50 flex items-center justify-center">
-                <MapPin className="size-5 text-primary-600 dark:text-primary-400" />
+                <MapPin className="size-5 text-primary-600 dark:text-primary-400" aria-hidden="true" />
               </div>
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
@@ -172,10 +172,10 @@ export function Dashboard() {
               </div>
             </div>
           </Card>
-          <Card padding="md">
+          <Card padding="md" aria-label={`예정된 여행 ${stats.upcoming}개`}>
             <div className="flex items-center gap-3">
               <div className="size-10 rounded-lg bg-success-50 dark:bg-success-950/50 flex items-center justify-center">
-                <Calendar className="size-5 text-success-600 dark:text-success-400" />
+                <Calendar className="size-5 text-success-600 dark:text-success-400" aria-hidden="true" />
               </div>
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
@@ -185,10 +185,10 @@ export function Dashboard() {
               </div>
             </div>
           </Card>
-          <Card padding="md">
+          <Card padding="md" aria-label={`전체 일정 ${stats.totalPlans}개`}>
             <div className="flex items-center gap-3">
               <div className="size-10 rounded-lg bg-warning-50 dark:bg-warning-950/50 flex items-center justify-center">
-                <Star className="size-5 text-warning-600 dark:text-warning-400" />
+                <Star className="size-5 text-warning-600 dark:text-warning-400" aria-hidden="true" />
               </div>
               <div>
                 <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
@@ -241,11 +241,25 @@ export function Dashboard() {
                 padding="none"
                 className={`overflow-hidden group relative ${bulk.isSelectionMode && trip.id && bulk.isSelected(trip.id) ? 'ring-2 ring-primary-500' : ''}`}
                 style={{ viewTransitionName: `trip-card-${trip.id}` }}
+                role={bulk.isSelectionMode ? 'checkbox' : undefined}
+                aria-checked={bulk.isSelectionMode && trip.id ? bulk.isSelected(trip.id) : undefined}
+                aria-label={bulk.isSelectionMode ? `${trip.title} 선택` : undefined}
+                tabIndex={bulk.isSelectionMode ? 0 : undefined}
                 onClick={
                   bulk.isSelectionMode
                     ? (e: React.MouseEvent) => {
                         e.preventDefault()
                         if (trip.id) bulk.toggle(trip.id)
+                      }
+                    : undefined
+                }
+                onKeyDown={
+                  bulk.isSelectionMode
+                    ? (e: React.KeyboardEvent) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          if (trip.id) bulk.toggle(trip.id)
+                        }
                       }
                     : undefined
                 }

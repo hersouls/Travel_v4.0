@@ -8,6 +8,7 @@ import {
   ref,
   uploadBytes,
   getBlob,
+  getDownloadURL,
   deleteObject,
   listAll,
 } from 'firebase/storage'
@@ -37,8 +38,19 @@ async function uploadImageToStorage(storagePath: string, base64: string): Promis
 async function downloadImageFromStorage(storagePath: string): Promise<string> {
   const storage = getFirebaseStorage()
   const storageRef = ref(storage, storagePath)
-  // Use getBlob instead of getDownloadURL+fetch to avoid CORS issues
-  const blob = await getBlob(storageRef)
+
+  let blob: Blob
+  try {
+    blob = await getBlob(storageRef)
+  } catch (e) {
+    // Fallback: getDownloadURL + fetch (works if CORS is configured or same-origin)
+    console.warn('[ImageSync] getBlob failed, falling back to getDownloadURL:', storagePath, e)
+    const url = await getDownloadURL(storageRef)
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`)
+    blob = await response.blob()
+  }
+
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
@@ -96,22 +108,20 @@ export async function downloadTripCoverImage(trip: Trip): Promise<void> {
 export async function uploadPlanPhotos(userId: string, plan: Plan): Promise<void> {
   if (!plan.firebaseId || !plan.photos?.length) return
 
-  const paths: string[] = []
-
-  for (let i = 0; i < plan.photos.length; i++) {
-    const photo = plan.photos[i]
-    if (!photo) { paths.push(''); continue }
-    const ext = getImageFormat(photo)
-    const storagePath = `users/${userId}/plans/${plan.firebaseId}/photo_${i}.${ext}`
-
-    try {
+  const results = await Promise.allSettled(
+    plan.photos.map(async (photo, i) => {
+      if (!photo) return ''
+      const ext = getImageFormat(photo)
+      const storagePath = `users/${userId}/plans/${plan.firebaseId}/photo_${i}.${ext}`
       await uploadImageToStorage(storagePath, photo)
-      paths.push(storagePath)
-    } catch (error) {
-      console.error(`[ImageSync] Failed to upload plan photo ${i}:`, plan.firebaseId, error)
-      paths.push('')
-    }
-  }
+      return storagePath
+    })
+  )
+  const paths = results.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value
+    console.error(`[ImageSync] Failed to upload plan photo ${i}:`, plan.firebaseId, r.reason)
+    return ''
+  })
 
   const validCount = paths.filter((p) => p !== '').length
   if (validCount > 0) {
@@ -134,17 +144,17 @@ export async function downloadPlanPhotos(plan: Plan): Promise<void> {
   if (!plan.photoPaths?.length || !plan.id) return
   if (plan.photos?.length) return // Already have local photos
 
-  const photos: string[] = []
-
-  for (const path of plan.photoPaths) {
-    if (!path) continue
-    try {
-      const base64 = await downloadImageFromStorage(path)
-      photos.push(base64)
-    } catch (error) {
-      console.error('[ImageSync] Failed to download plan photo:', path, error)
-    }
-  }
+  const results = await Promise.allSettled(
+    plan.photoPaths
+      .filter((path): path is string => !!path)
+      .map(path => downloadImageFromStorage(path))
+  )
+  const photos = results
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+    .map(r => r.value)
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.error('[ImageSync] Failed to download plan photo:', plan.photoPaths![i], r.reason)
+  })
 
   if (photos.length > 0) {
     await dexieDb.plans.update(plan.id, { photos })
@@ -159,22 +169,20 @@ export async function downloadPlanPhotos(plan: Plan): Promise<void> {
 export async function uploadPlacePhotos(userId: string, place: Place): Promise<void> {
   if (!place.firebaseId || !place.photos?.length) return
 
-  const paths: string[] = []
-
-  for (let i = 0; i < place.photos.length; i++) {
-    const photo = place.photos[i]
-    if (!photo) { paths.push(''); continue }
-    const ext = getImageFormat(photo)
-    const storagePath = `users/${userId}/places/${place.firebaseId}/photo_${i}.${ext}`
-
-    try {
+  const results = await Promise.allSettled(
+    place.photos.map(async (photo, i) => {
+      if (!photo) return ''
+      const ext = getImageFormat(photo)
+      const storagePath = `users/${userId}/places/${place.firebaseId}/photo_${i}.${ext}`
       await uploadImageToStorage(storagePath, photo)
-      paths.push(storagePath)
-    } catch (error) {
-      console.error(`[ImageSync] Failed to upload place photo ${i}:`, place.firebaseId, error)
-      paths.push('')
-    }
-  }
+      return storagePath
+    })
+  )
+  const paths = results.map((r, i) => {
+    if (r.status === 'fulfilled') return r.value
+    console.error(`[ImageSync] Failed to upload place photo ${i}:`, place.firebaseId, r.reason)
+    return ''
+  })
 
   const validCount = paths.filter((p) => p !== '').length
   if (validCount > 0) {
@@ -197,17 +205,17 @@ export async function downloadPlacePhotos(place: Place): Promise<void> {
   if (!place.photoPaths?.length || !place.id) return
   if (place.photos?.length) return // Already have local photos
 
-  const photos: string[] = []
-
-  for (const path of place.photoPaths) {
-    if (!path) continue
-    try {
-      const base64 = await downloadImageFromStorage(path)
-      photos.push(base64)
-    } catch (error) {
-      console.error('[ImageSync] Failed to download place photo:', path, error)
-    }
-  }
+  const results = await Promise.allSettled(
+    place.photoPaths
+      .filter((path): path is string => !!path)
+      .map(path => downloadImageFromStorage(path))
+  )
+  const photos = results
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+    .map(r => r.value)
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.error('[ImageSync] Failed to download place photo:', place.photoPaths![i], r.reason)
+  })
 
   if (photos.length > 0) {
     await dexieDb.places.update(place.id, { photos })

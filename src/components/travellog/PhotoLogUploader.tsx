@@ -10,7 +10,7 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Button } from '@/components/ui/Button'
 import { Textarea } from '@/components/ui/Input'
 import { extractExifBatch, calculateDayFromExif, formatExifTime } from '@/services/exifService'
-import { compressImage } from '@/services/imageStorage'
+import { fileToBase64, compressImage } from '@/services/imageStorage'
 import { detectPhotoLocationBatch, type DetectedLocation } from '@/services/photoLocationService'
 import { getCurrentPosition, reverseGeocode } from '@/services/geocodingService'
 import { LocationMissingPopup } from './LocationMissingPopup'
@@ -120,7 +120,7 @@ export function PhotoLogUploader({
         const { file, exif } = exifResults[i]
         try {
           setProcessProgress({ current: i + 1, total: exifResults.length })
-          const base64Full = await compressImage(file, { maxWidth: 1920, quality: 0.85 })
+          const base64Full = await fileToBase64(file)
           const thumbnailBase64 = await compressImage(file, { maxWidth: 200, quality: 0.6 })
 
           // Calculate day from EXIF

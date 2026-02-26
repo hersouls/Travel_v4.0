@@ -3,17 +3,19 @@
 // Renders a single expense entry
 // ============================================
 
-import { Trash2, Edit3 } from 'lucide-react'
+import { Trash2, Edit3, MapPin } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { Expense, ExpenseCategory } from '@/types'
 import { Badge } from '@/components/ui/Badge'
 import { IconButton } from '@/components/ui/Button'
-import { EXPENSE_CATEGORY_LABELS, EXPENSE_SUBCATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
+import { EXPENSE_CATEGORY_LABELS, EXPENSE_SUBCATEGORY_LABELS } from '@/utils/constants'
+import { convertToKRW } from '@/services/exchangeRateService'
 
 interface ExpenseCardProps {
   expense: Expense
   onEdit?: (expense: Expense) => void
   onDelete?: (id: number) => void
+  exchangeRates?: Record<string, number> | null
 }
 
 const categoryColors: Record<ExpenseCategory, 'orange' | 'blue' | 'purple' | 'pink' | 'cyan' | 'zinc'> = {
@@ -43,15 +45,24 @@ function formatTime(timestamp: string): string {
   }
 }
 
-function formatAmount(amount: number, currency: string): string {
-  const symbol = CURRENCY_SYMBOLS[currency] || currency
-  if (['KRW', 'JPY', 'VND'].includes(currency)) {
-    return `${symbol}${amount.toLocaleString()}`
-  }
-  return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function formatAmount(amount: number): string {
+  return `₩${Math.round(amount).toLocaleString()}`
 }
 
-export function ExpenseCard({ expense, onEdit, onDelete }: ExpenseCardProps) {
+/** Check if a string looks like raw coordinates (e.g. "37.5665, 126.9780") */
+function isCoordinateString(str: string): boolean {
+  return /^-?\d+\.?\d*\s*,\s*-?\d+\.?\d*$/.test(str.trim())
+}
+
+function buildGoogleMapsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps?q=${lat},${lng}`
+}
+
+export function ExpenseCard({ expense, onEdit, onDelete, exchangeRates }: ExpenseCardProps) {
+  const toKRW = (amount: number, currency: string): number => {
+    if (!exchangeRates) return amount
+    return convertToKRW(amount, currency, exchangeRates) ?? amount
+  }
   const time = formatTime(expense.timestamp)
 
   return (
@@ -104,7 +115,7 @@ export function ExpenseCard({ expense, onEdit, onDelete }: ExpenseCardProps) {
               {expense.storeName}
             </p>
             <span className="text-sm font-bold text-[var(--foreground)] flex-shrink-0 ml-2">
-              {formatAmount(expense.totalAmount, expense.currency)}
+              {formatAmount(toKRW(expense.totalAmount, expense.currency))}
             </span>
           </div>
 
@@ -115,7 +126,7 @@ export function ExpenseCard({ expense, onEdit, onDelete }: ExpenseCardProps) {
                 <div key={idx} className="flex justify-between text-xs text-zinc-500 dark:text-zinc-400">
                   <span className="truncate">{item.name}</span>
                   <span className="flex-shrink-0 ml-2">
-                    {formatAmount(item.amount, expense.currency)}
+                    {formatAmount(toKRW(item.amount, expense.currency))}
                   </span>
                 </div>
               ))}
@@ -132,12 +143,48 @@ export function ExpenseCard({ expense, onEdit, onDelete }: ExpenseCardProps) {
             </p>
           )}
 
-          {/* Address */}
-          {expense.address && (
-            <p className="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500 truncate">
-              {expense.address}
-            </p>
-          )}
+          {/* Address / Location link */}
+          {(() => {
+            const hasCoords = typeof expense.latitude === 'number' && typeof expense.longitude === 'number'
+              && isFinite(expense.latitude) && isFinite(expense.longitude)
+            const addressIsCoords = expense.address && isCoordinateString(expense.address)
+
+            // Case 1: address is raw coordinates or no address but has lat/lng → show Google Maps link
+            if (hasCoords && (!expense.address || addressIsCoords)) {
+              return (
+                <a
+                  href={buildGoogleMapsUrl(expense.latitude!, expense.longitude!)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 flex items-center gap-0.5 text-[10px] text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300 truncate"
+                >
+                  <MapPin className="size-2.5 flex-shrink-0" />
+                  {expense.latitude!.toFixed(4)}, {expense.longitude!.toFixed(4)}
+                </a>
+              )
+            }
+
+            // Case 2: normal address text (with optional Maps link if coords available)
+            if (expense.address && !addressIsCoords) {
+              return hasCoords ? (
+                <a
+                  href={buildGoogleMapsUrl(expense.latitude!, expense.longitude!)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 flex items-center gap-0.5 text-[10px] text-zinc-400 dark:text-zinc-500 hover:text-primary-500 dark:hover:text-primary-400 truncate"
+                >
+                  <MapPin className="size-2.5 flex-shrink-0" />
+                  {expense.address}
+                </a>
+              ) : (
+                <p className="mt-1 text-[10px] text-zinc-400 dark:text-zinc-500 truncate">
+                  {expense.address}
+                </p>
+              )
+            }
+
+            return null
+          })()}
         </div>
       </div>
     </div>

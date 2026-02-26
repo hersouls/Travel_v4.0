@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/Input'
 import { Lightbox } from '@/components/ui/Lightbox'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateStructured, buildReceiptFoodContext, buildReceiptGeneralContext, isValidExpenseData } from '@/services/claudeService'
-import { compressImage, getImageFormat } from '@/services/imageStorage'
+import { fileToBase64, compressImage, getImageFormat } from '@/services/imageStorage'
 import { extractExif } from '@/services/exifService'
 import { toast } from '@/stores/uiStore'
 import { AI_MESSAGES, EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
@@ -63,8 +63,8 @@ export function ReceiptScanner({
 
       setExtractedExif(exif)
 
-      // 2. Compress images
-      const full = await compressImage(file, { maxWidth: 1920, quality: 0.85 })
+      // 2. Read original image + generate thumbnail
+      const full = await fileToBase64(file)
       const thumb = await compressImage(file, { maxWidth: 200, quality: 0.6 })
 
       if (imageSelectIdRef.current !== selectId) return

@@ -12,12 +12,28 @@ import { syncManager } from '@/services/firestoreSync'
 
 // Debounced save to prevent rapid DB writes
 let _saveTimer: ReturnType<typeof setTimeout> | null = null
+let _pendingSaveFn: (() => Promise<void>) | null = null
 function debouncedSave(saveFn: () => Promise<void>) {
+  _pendingSaveFn = saveFn
   if (_saveTimer) clearTimeout(_saveTimer)
   _saveTimer = setTimeout(async () => {
     _saveTimer = null
+    _pendingSaveFn = null
     try { await saveFn() } catch (e) { console.error('[Settings] Save failed:', e) }
   }, 300)
+}
+
+// Flush pending save on page unload to prevent settings loss
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (_saveTimer && _pendingSaveFn) {
+      clearTimeout(_saveTimer)
+      _saveTimer = null
+      const fn = _pendingSaveFn
+      _pendingSaveFn = null
+      try { fn() } catch { /* best effort */ }
+    }
+  })
 }
 
 interface SettingsState extends Settings {

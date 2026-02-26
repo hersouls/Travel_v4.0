@@ -46,6 +46,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'lat and lng must be valid numbers' })
   }
 
+  if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+    return res.status(400).json({ error: 'Coordinates out of range (lat: -90~90, lng: -180~180)' })
+  }
+
   const ts = timestamp && typeof timestamp === 'string'
     ? parseInt(timestamp, 10)
     : Math.floor(Date.now() / 1000)
