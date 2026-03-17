@@ -20,7 +20,7 @@ import {
   validateSinglePlaceBackup,
   getSinglePlaceTemplate,
 } from '@/services/database'
-import type { PlanType, Place } from '@/types'
+import type { PlanType, Place, GooglePlaceInfo } from '@/types'
 import type { PlaceDetails, PlacePrediction } from '@/services/placesAutocomplete'
 
 const planTypes: Array<PlanType | 'all'> = ['all', 'attraction', 'restaurant', 'hotel', 'transport', 'car', 'plane', 'airport', 'other']
@@ -52,7 +52,7 @@ export function PlaceLibrary() {
     googlePlaceId: undefined as string | undefined,
     audioScript: '',
     photos: [] as string[],
-    googleInfo: undefined as any,
+    googleInfo: undefined as GooglePlaceInfo | undefined,
   })
 
   const filteredPlaces = getFilteredPlaces()

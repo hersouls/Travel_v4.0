@@ -9,6 +9,7 @@ import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
 import { syncManager } from '@/services/firestoreSync'
 import { useUIStore } from '@/stores/uiStore'
+import { expenseSchema } from '@/lib/validations'
 
 const UNDO_TIMEOUT_MS = 30_000
 
@@ -74,6 +75,21 @@ export const useExpenseStore = create<ExpenseState>()(
       // Add a new expense
       addExpense: async (expenseData) => {
         try {
+          // BUG-06: Validate expense data before writing to DB
+          const validation = expenseSchema.safeParse({
+            category: expenseData.category,
+            storeName: expenseData.storeName,
+            totalAmount: expenseData.totalAmount,
+            currency: expenseData.currency,
+            items: expenseData.items,
+            receiptDate: expenseData.receiptDate,
+            paymentMethod: expenseData.paymentMethod,
+          })
+          if (!validation.success) {
+            const msg = validation.error.flatten().fieldErrors
+            throw new Error(`경비 데이터 검증 실패: ${JSON.stringify(msg)}`)
+          }
+
           const expense: Omit<Expense, 'id'> = {
             ...expenseData,
             createdAt: new Date(),
@@ -179,13 +195,14 @@ export const useExpenseStore = create<ExpenseState>()(
           sendBroadcast('EXPENSE_DELETED', { id, tripId })
 
           // Deferred remote delete with undo
-          let undone = false
+          const undoController = new AbortController()
           const timer = setTimeout(async () => {
-            if (undone) return
+            if (undoController.signal.aborted) return
             if (syncManager.isActive() && firebaseId) {
               try {
                 await syncManager.deleteRemoteExpense(firebaseId)
               } catch (e) {
+                if (undoController.signal.aborted) return
                 console.error('[ExpenseStore] Remote delete failed:', e)
               }
             }
@@ -200,7 +217,7 @@ export const useExpenseStore = create<ExpenseState>()(
             action: {
               label: '되돌리기',
               onClick: async () => {
-                undone = true
+                undoController.abort()
                 clearTimeout(timer)
                 if (firebaseId) syncManager.removePendingDelete(firebaseId)
                 // Restore from snapshot with new ID

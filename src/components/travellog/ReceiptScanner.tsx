@@ -4,7 +4,7 @@
 // ============================================
 
 import { useState, useCallback, useRef } from 'react'
-import { Receipt, Camera, Loader2, Sparkles, Check, RotateCcw, X } from 'lucide-react'
+import { Receipt, Camera, Sparkles, Check, RotateCcw, X } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { Input, Textarea } from '@/components/ui/Input'
@@ -34,8 +34,16 @@ const CATEGORY_OPTIONS: ExpenseCategory[] = ['food', 'transport', 'accommodation
 export function ReceiptScanner({
   tripId, defaultDay, totalDays, onComplete, onClose, open,
 }: ReceiptScannerProps) {
+  const aiProvider = useSettingsStore((state) => state.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((state) => state.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((state) => state.geminiApiKey)
+  const geminiModel = useSettingsStore((state) => state.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const [mode, setMode] = useState<ReceiptMode>('food')
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -82,7 +90,7 @@ export function ReceiptScanner({
   }, [])
 
   const handleAnalyze = useCallback(async () => {
-    if (!claudeApiKey) {
+    if (!isServerKey && !apiKey) {
       setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
@@ -100,7 +108,7 @@ export function ReceiptScanner({
         ? buildReceiptFoodContext(imageBase64, format)
         : buildReceiptGeneralContext(imageBase64, format)
 
-      const result = await generateStructured<ExpenseData>(request, claudeApiKey, claudeModel)
+      const result = await generateStructured<ExpenseData>(request, apiKey, model, undefined, aiProvider)
 
       if (isValidExpenseData(result)) {
         setExpense({
@@ -124,7 +132,7 @@ export function ReceiptScanner({
     } finally {
       setIsAnalyzing(false)
     }
-  }, [claudeApiKey, claudeModel, imageBase64, imagePreview, mode])
+  }, [apiKey, model, aiProvider, imageBase64, imagePreview, mode])
 
   const buildLog = useCallback((): Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'> | null => {
     if (!expense || !imagePreview) return null

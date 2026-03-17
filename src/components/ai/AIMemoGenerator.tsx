@@ -23,8 +23,16 @@ interface AIMemoGeneratorProps {
 }
 
 export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 'replace' }: AIMemoGeneratorProps) {
+  const aiProvider = useSettingsStore((state) => state.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((state) => state.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((state) => state.geminiApiKey)
+  const geminiModel = useSettingsStore((state) => state.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const [generatedMemo, setGeneratedMemo] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -33,7 +41,7 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
   const textRef = useRef('')
 
   const handleGenerate = () => {
-    if (!claudeApiKey) {
+    if (!isServerKey && !apiKey) {
       setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
@@ -48,8 +56,8 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
 
     generateWithStreaming(
       { type: 'memo', context },
-      claudeApiKey,
-      claudeModel,
+      apiKey,
+      model,
       (chunk) => {
         textRef.current += chunk
         setGeneratedMemo(textRef.current)
@@ -62,6 +70,7 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
         setError(err.message)
         setIsGenerating(false)
       },
+      aiProvider,
     )
   }
 

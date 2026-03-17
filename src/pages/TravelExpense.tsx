@@ -5,7 +5,7 @@
 
 import { PageContainer } from '@/components/layout'
 import {
-  ExpenseDaySection,
+  ExpenseCategorySection,
   ExpenseEditModal,
   ExpenseEntryModal,
   ExpenseFilterBar,
@@ -23,12 +23,13 @@ import { clsx } from 'clsx'
 import { useExchangeRates } from '@/hooks/useExchangeRates'
 import { useExpenseView } from '@/hooks/useExpenseView'
 import type { ExpenseSortOrder } from '@/hooks/useExpenseView'
+import { useExpenseThumbnails } from '@/hooks/useExpenseThumbnails'
 import { useExpenseStore, useExpenses, useExpenseLoading } from '@/stores/expenseStore'
 import { useCurrentTrip, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
-import type { Expense, ExpenseCategory, ExpenseSubCategory } from '@/types'
+import type { Expense, ExpenseCategory, ExpenseSubCategory, PaymentMethod } from '@/types'
+import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import { getTripDuration } from '@/utils/format'
-import { getTripDayDate } from '@/utils/timezone'
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -37,6 +38,7 @@ import {
   Plus,
   Search,
   Wallet,
+  WifiOff,
   X,
   Download as DownloadIcon,
 } from 'lucide-react'
@@ -44,6 +46,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 const INITIAL_LOAD_COUNT = 3
+
+const categoryPillColors: Record<string, string> = {
+  food: 'bg-warning-100 text-warning-700 dark:bg-warning-900/30 dark:text-warning-400',
+  transport: 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400',
+  accommodation: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  shopping: 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+  attraction: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+  other: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400',
+}
 
 export function TravelExpense() {
   const { id } = useParams<{ id: string }>()
@@ -63,20 +74,19 @@ export function TravelExpense() {
 
   // UI state
   const [sortOrder, setSortOrder] = useState<ExpenseSortOrder>('newest')
-  const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set())
-  const [loadedDayCount, setLoadedDayCount] = useState(INITIAL_LOAD_COUNT)
+  const [expandedCategories, setExpandedCategories] = useState<Set<ExpenseCategory>>(new Set())
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<ExpenseCategory | null>(null)
   const [subCategoryFilter, setSubCategoryFilter] = useState<ExpenseSubCategory | null>(null)
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<PaymentMethod | null>(null)
   const [showSearch, setShowSearch] = useState(false)
   const [showKRW, setShowKRW] = useState(true)
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false)
-  const [activeDay, setActiveDay] = useState(1)
 
   // Exchange rates
-  const { rates: exchangeRates } = useExchangeRates()
+  const { rates: exchangeRates, isStale: isRatesStale } = useExchangeRates()
 
   const tripId = id ? Number.parseInt(id) : 0
 
@@ -109,14 +119,9 @@ export function TravelExpense() {
   }, [trip])
 
   const {
-    sortedDays,
-    visibleDays,
-    expensesByDay,
-    filteredExpensesByDay,
-    daySummaries,
     tripTotals,
-    hasMoreDays,
     totalFilteredCount,
+    filteredCategoryGroups,
   } = useExpenseView({
     expenses,
     totalDays,
@@ -124,40 +129,50 @@ export function TravelExpense() {
     categoryFilter,
     subCategoryFilter,
     searchQuery,
-    loadedDayCount,
+    loadedDayCount: INITIAL_LOAD_COUNT,
+    paymentMethodFilter,
   })
 
-  // Auto-expand first day with expenses
-  useEffect(() => {
-    if (visibleDays.length > 0 && expandedDays.size === 0) {
-      const firstDayWithExpenses = visibleDays.find(
-        (day) => (filteredExpensesByDay[day]?.length || 0) > 0,
-      )
-      if (firstDayWithExpenses) {
-        setExpandedDays(new Set([firstDayWithExpenses]))
-      }
-    }
-  }, [visibleDays, filteredExpensesByDay, expandedDays.size])
+  // Thumbnail map for expenses imported from travel logs
+  const thumbnailMap = useExpenseThumbnails(expenses)
 
-  const handleToggleDay = useCallback((day: number) => {
-    setExpandedDays((prev) => {
+  // Auto-expand first category with expenses
+  useEffect(() => {
+    if (filteredCategoryGroups.length > 0 && expandedCategories.size === 0) {
+      setExpandedCategories(new Set([filteredCategoryGroups[0].category]))
+    }
+  }, [filteredCategoryGroups, expandedCategories.size])
+
+  const handleToggleCategory = useCallback((cat: ExpenseCategory) => {
+    setExpandedCategories((prev) => {
       const next = new Set(prev)
-      if (next.has(day)) {
-        next.delete(day)
+      if (next.has(cat)) {
+        next.delete(cat)
       } else {
-        next.add(day)
+        next.add(cat)
       }
       return next
     })
   }, [])
 
   const handleExpandAll = useCallback(() => {
-    if (expandedDays.size === visibleDays.length) {
-      setExpandedDays(new Set())
+    const allCats = filteredCategoryGroups.map((g) => g.category)
+    if (expandedCategories.size === allCats.length) {
+      setExpandedCategories(new Set())
     } else {
-      setExpandedDays(new Set(visibleDays))
+      setExpandedCategories(new Set(allCats))
     }
-  }, [expandedDays.size, visibleDays])
+  }, [expandedCategories.size, filteredCategoryGroups])
+
+  // Compute current trip day based on today's date
+  const currentTripDay = useMemo(() => {
+    if (!trip) return 1
+    const start = new Date(trip.startDate)
+    const now = new Date()
+    const diffMs = now.getTime() - start.getTime()
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1
+    return Math.max(1, Math.min(diffDays, totalDays || 1))
+  }, [trip, totalDays])
 
   const handleAddExpense = useCallback(
     async (data: Omit<Expense, 'id' | 'createdAt' | 'updatedAt' | 'tripId' | 'day' | 'timestamp'>) => {
@@ -165,11 +180,11 @@ export function TravelExpense() {
       await addExpense({
         ...data,
         tripId,
-        day: activeDay,
+        day: currentTripDay,
         timestamp: new Date().toISOString(),
       })
     },
-    [tripId, activeDay, addExpense],
+    [tripId, currentTripDay, addExpense],
   )
 
   const handleEditExpense = useCallback(
@@ -185,10 +200,6 @@ export function TravelExpense() {
     },
     [deleteExpense],
   )
-
-  const handleLoadMore = useCallback(() => {
-    setLoadedDayCount((prev) => prev + 3)
-  }, [])
 
   // Loading states
   if (isLoadingTrip) {
@@ -243,16 +254,26 @@ export function TravelExpense() {
       {/* Overview */}
       <ExpenseOverview
         tripTotals={tripTotals}
+        expenses={expenses}
         className="mb-4"
         exchangeRates={exchangeRates}
         showKRW={showKRW}
       />
+
+      {/* Stale rates warning */}
+      {isRatesStale && exchangeRates && (
+        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-warning-50 dark:bg-warning-900/20 text-warning-700 dark:text-warning-400 text-xs">
+          <WifiOff className="size-3.5 shrink-0" />
+          <span>오프라인 환율 (캐시 데이터 사용 중)</span>
+        </div>
+      )}
 
       {/* Budget bar */}
       {trip.budget && (
         <ExpenseBudgetBar
           budget={trip.budget}
           currencyTotals={tripTotals.currencyTotals}
+          categoryTotals={tripTotals.categoryTotals}
           exchangeRates={exchangeRates}
           className="mb-4"
         />
@@ -261,35 +282,26 @@ export function TravelExpense() {
       {/* Control bar */}
       <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-[var(--background)] border-b border-zinc-200 dark:border-zinc-800 mb-3">
         <div className="flex items-center justify-between gap-2">
-          {/* Day tabs */}
+          {/* Category tabs */}
           <div className="flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-            <div className="flex gap-1" role="tablist" aria-label="일자별 경비">
-              {sortedDays.slice(0, loadedDayCount).map((day) => {
-                const hasExpenses = (expensesByDay[day]?.length || 0) > 0
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    role="tab"
-                    aria-selected={activeDay === day}
-                    onClick={() => {
-                      setActiveDay(day)
-                      const el = document.getElementById(`expense-day-${day}`)
-                      el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }}
-                    className={clsx(
-                      'flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-full transition-colors',
-                      activeDay === day
-                        ? 'bg-primary-500 text-white'
-                        : hasExpenses
-                          ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
-                          : 'bg-zinc-50 dark:bg-zinc-900 text-zinc-400',
-                    )}
-                  >
-                    D{day}
-                  </button>
-                )
-              })}
+            <div className="flex gap-1" role="tablist" aria-label="카테고리별 경비">
+              {filteredCategoryGroups.map(({ category, expenseCount }) => (
+                <button
+                  key={category}
+                  type="button"
+                  role="tab"
+                  onClick={() => {
+                    const el = document.getElementById(`expense-cat-${category}`)
+                    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}
+                  className={clsx(
+                    'flex-shrink-0 px-2.5 py-1 text-xs font-medium rounded-full transition-colors',
+                    categoryPillColors[category],
+                  )}
+                >
+                  {EXPENSE_CATEGORY_LABELS[category]}({expenseCount})
+                </button>
+              ))}
             </div>
           </div>
 
@@ -344,13 +356,15 @@ export function TravelExpense() {
               onCategoryFilterChange={setCategoryFilter}
               subCategoryFilter={subCategoryFilter}
               onSubCategoryFilterChange={setSubCategoryFilter}
-              resultCount={searchQuery.trim() || categoryFilter || subCategoryFilter ? totalFilteredCount : undefined}
+              paymentMethodFilter={paymentMethodFilter}
+              onPaymentMethodFilterChange={setPaymentMethodFilter}
+              resultCount={searchQuery.trim() || categoryFilter || subCategoryFilter || paymentMethodFilter ? totalFilteredCount : undefined}
             />
           </div>
         )}
       </div>
 
-      {/* Day Sections */}
+      {/* Category Sections */}
       {isLoadingExpenses ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -365,39 +379,20 @@ export function TravelExpense() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {visibleDays.map((day) => {
-            const dayDate = getTripDayDate(trip.startDate, day)
-            const allDayExpenses = expensesByDay[day] || []
-            const filtered = filteredExpensesByDay[day] || []
-
-            return (
-              <ExpenseDaySection
-                key={day}
-                day={day}
-                date={dayDate}
-                expenses={filtered}
-                allDayExpenses={allDayExpenses}
-                isExpanded={expandedDays.has(day)}
-                onToggleExpand={() => handleToggleDay(day)}
-                summary={daySummaries[day]}
-                onEdit={(e) => setEditingExpense(e)}
-                onDelete={handleDeleteExpense}
-                exchangeRates={exchangeRates}
-                showKRW={showKRW}
-              />
-            )
-          })}
-
-          {/* Load more */}
-          {hasMoreDays && (
-            <button
-              type="button"
-              onClick={handleLoadMore}
-              className="w-full py-3 text-sm text-primary-600 dark:text-primary-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded-xl transition-colors"
-            >
-              더 보기
-            </button>
-          )}
+          {filteredCategoryGroups.map((group) => (
+            <ExpenseCategorySection
+              key={group.category}
+              group={group}
+              isExpanded={expandedCategories.has(group.category)}
+              onToggleExpand={() => handleToggleCategory(group.category)}
+              tripStartDate={trip.startDate}
+              onEdit={(e) => setEditingExpense(e)}
+              onDelete={handleDeleteExpense}
+              exchangeRates={exchangeRates}
+              showKRW={showKRW}
+              thumbnailMap={thumbnailMap}
+            />
+          ))}
         </div>
       )}
 
@@ -436,6 +431,7 @@ export function TravelExpense() {
           handleAddExpense(data as Omit<Expense, 'id' | 'createdAt' | 'updatedAt' | 'tripId' | 'day' | 'timestamp'>)
         }}
         defaultCurrency={expenses[0]?.currency || 'KRW'}
+        expenses={expenses}
       />
 
       <ExpenseEditModal

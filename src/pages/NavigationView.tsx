@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useRef, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Navigation, MapPin, Loader2, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Navigation, Loader2, AlertTriangle } from 'lucide-react'
 import { IconButton, Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { PageContainer } from '@/components/layout'

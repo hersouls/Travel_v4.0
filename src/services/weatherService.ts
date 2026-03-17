@@ -70,7 +70,14 @@ export async function fetchWeatherForecast(
     timezone,
   })
 
-  const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8_000)
+  let response: Response
+  try {
+    response = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`, { signal: controller.signal })
+  } finally {
+    clearTimeout(timeout)
+  }
   if (!response.ok) {
     throw new Error(`Weather API error: ${response.status}`)
   }

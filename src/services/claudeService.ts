@@ -3,7 +3,7 @@
 // SSE streaming + structured response support
 // ============================================
 
-import type { AIGenerateRequest, ClaudeModel, Plan, Trip, GeneratedItinerary, DaySuggestion, ExpenseData } from '@/types'
+import type { AIGenerateRequest, AIProvider, ClaudeModel, GeminiModel, Plan, Trip, GeneratedItinerary, DaySuggestion, ExpenseData } from '@/types'
 
 const API_URL = '/api/claude/generate'
 
@@ -20,15 +20,24 @@ function stripJsonWrapper(content: string): string {
   return s.trim()
 }
 
+const VALID_EXPENSE_CATEGORIES = ['food', 'transport', 'accommodation', 'shopping', 'attraction', 'other'] as const
+
 /** OCR 결과가 유효한 ExpenseData 구조인지 검증 */
 export function isValidExpenseData(obj: unknown): obj is ExpenseData {
   if (!obj || typeof obj !== 'object') return false
   const e = obj as Record<string, unknown>
   return (
-    typeof e.storeName === 'string' &&
+    typeof e.storeName === 'string' && e.storeName.length > 0 &&
     typeof e.category === 'string' &&
+    (VALID_EXPENSE_CATEGORIES as readonly string[]).includes(e.category) &&
     Array.isArray(e.items) &&
-    typeof e.totalAmount === 'number' && isFinite(e.totalAmount) &&
+    e.items.length > 0 &&
+    e.items.some((item: unknown) =>
+      item && typeof item === 'object' &&
+      typeof (item as Record<string, unknown>).name === 'string' &&
+      typeof (item as Record<string, unknown>).amount === 'number',
+    ) &&
+    typeof e.totalAmount === 'number' && isFinite(e.totalAmount) && e.totalAmount > 0 &&
     typeof e.currency === 'string' && e.currency.length > 0
   )
 }
@@ -37,13 +46,26 @@ export function isValidExpenseData(obj: unknown): obj is ExpenseData {
 // SSE Streaming Call
 // ============================================
 
+function buildHeaders(apiKey?: string, provider?: AIProvider): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) {
+    if (provider === 'gemini') {
+      headers['x-gemini-api-key'] = apiKey
+    } else {
+      headers['x-api-key'] = apiKey
+    }
+  }
+  return headers
+}
+
 export async function generateWithStreaming(
   request: AIGenerateRequest,
-  apiKey: string,
-  model: ClaudeModel,
+  apiKey: string | undefined,
+  model: ClaudeModel | GeminiModel,
   onChunk: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
+  provider: AIProvider = 'claude',
 ): Promise<void> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 120_000) // 2분 타임아웃
@@ -51,11 +73,8 @@ export async function generateWithStreaming(
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-      },
-      body: JSON.stringify({ ...request, model, stream: true }),
+      headers: buildHeaders(apiKey, provider),
+      body: JSON.stringify({ ...request, model, provider, stream: true }),
       signal: controller.signal,
     })
 
@@ -112,9 +131,10 @@ export async function generateWithStreaming(
 
 export async function generateStructured<T = string>(
   request: AIGenerateRequest,
-  apiKey: string,
-  model: ClaudeModel,
+  apiKey: string | undefined,
+  model: ClaudeModel | GeminiModel,
   signal?: AbortSignal,
+  provider: AIProvider = 'claude',
 ): Promise<T> {
   // signal이 없으면 기본 60초 타임아웃 적용
   const controller = signal ? null : new AbortController()
@@ -123,11 +143,8 @@ export async function generateStructured<T = string>(
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-      },
-      body: JSON.stringify({ ...request, model, stream: false }),
+      headers: buildHeaders(apiKey, provider),
+      body: JSON.stringify({ ...request, model, provider, stream: false }),
       signal: signal || controller?.signal,
     })
 
@@ -164,12 +181,14 @@ export async function generateStructured<T = string>(
 // Connection Test
 // ============================================
 
-export async function testConnection(apiKey: string, model: ClaudeModel): Promise<boolean> {
+export async function testConnection(apiKey: string | undefined, model: ClaudeModel | GeminiModel, provider: AIProvider = 'claude'): Promise<boolean> {
   try {
     const result = await generateStructured<string>(
       { type: 'test', context: {} },
       apiKey,
       model,
+      undefined,
+      provider,
     )
     return typeof result === 'string' && result.length > 0
   } catch {

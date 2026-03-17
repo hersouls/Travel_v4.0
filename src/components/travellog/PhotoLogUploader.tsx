@@ -66,8 +66,16 @@ export function PhotoLogUploader({
   const [detectProgress, setDetectProgress] = useState<{ current: number; total: number; lastPlace?: string } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
+  const aiProvider = useSettingsStore((s) => s.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((s) => s.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((s) => s.claudeApiKey)
   const claudeModel = useSettingsStore((s) => s.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((s) => s.geminiApiKey)
+  const geminiModel = useSettingsStore((s) => s.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const defaultCurrency = useMemo(
     () => getCurrencyFromCountry(tripCountry || ''),
@@ -154,8 +162,8 @@ export function PhotoLogUploader({
 
   // AI location detection for GPS-less photos
   const handleDetectLocations = useCallback(async () => {
-    if (!claudeApiKey) {
-      setError('AI 위치 분석을 사용하려면 설정에서 Claude API Key를 입력하세요.')
+    if (!isServerKey && !apiKey) {
+      setError('AI 위치 분석을 사용하려면 설정에서 API Key를 입력하세요.')
       return
     }
 
@@ -174,12 +182,13 @@ export function PhotoLogUploader({
       const results = await detectPhotoLocationBatch(
         photosToDetect.map(({ index, entry }) => ({ index, base64Image: entry.base64Full })),
         tripCountry || '',
-        claudeApiKey,
-        claudeModel,
+        apiKey,
+        model,
         (current, total, result) => {
           setDetectProgress({ current, total, lastPlace: result?.placeName })
         },
         controller.signal,
+        aiProvider,
       )
 
       // Apply results to entries
@@ -198,7 +207,7 @@ export function PhotoLogUploader({
       setDetectProgress(null)
       abortRef.current = null
     }
-  }, [entries, claudeApiKey, claudeModel, tripCountry])
+  }, [entries, apiKey, model, aiProvider, tripCountry])
 
   const handleCancelDetection = useCallback(() => {
     abortRef.current?.abort()
@@ -411,14 +420,14 @@ export function PhotoLogUploader({
                     size="sm"
                     onClick={handleDetectLocations}
                     leftIcon={<Sparkles className="size-3.5" />}
-                    disabled={!claudeApiKey}
+                    disabled={!isServerKey && !apiKey}
                   >
                     <span className="hidden sm:inline">AI 위치 분석</span>
                   </Button>
                 </div>
               </div>
-              {!claudeApiKey && (
-                <p className="mt-1.5 text-xs text-zinc-500">설정에서 Claude API Key를 입력하면 사용할 수 있습니다</p>
+              {!isServerKey && !apiKey && (
+                <p className="mt-1.5 text-xs text-zinc-500">설정에서 API Key를 입력하면 사용할 수 있습니다</p>
               )}
             </div>
           )}

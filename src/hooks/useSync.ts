@@ -18,8 +18,13 @@ import { syncManager } from '@/services/firestoreSync'
 export function useSync() {
   const user = useAuthStore((s) => s.user)
   const prevUserIdRef = useRef<string | null>(null)
+  // BUG-05: Generation counter to detect stale async operations
+  // during rapid account switches
+  const generationRef = useRef(0)
 
   useEffect(() => {
+    const currentGeneration = ++generationRef.current
+
     if (!user) {
       const wasLoggedIn = prevUserIdRef.current !== null
       prevUserIdRef.current = null
@@ -28,6 +33,8 @@ export function useSync() {
         // User explicitly logged out: stop sync AND clear stale IndexedDB data
         // This prevents data resurrection when the same or different user logs in next
         syncManager.stop({ clearData: true }).then(() => {
+          // Check generation: if another switch happened, abort
+          if (generationRef.current !== currentGeneration) return
           // Reload stores to reflect the now-empty IndexedDB
           useTripStore.getState().loadTrips()
           usePlaceStore.getState().loadPlaces()
@@ -50,6 +57,8 @@ export function useSync() {
       // Different user logging in: clear previous user's data first, then start sync
       console.log('[Sync] User switch detected:', previousUserId, '→', user.uid)
       syncManager.stop({ clearData: true }).then(() => {
+        // BUG-05: If yet another switch happened during the async gap, abort
+        if (generationRef.current !== currentGeneration) return
         prevUserIdRef.current = user.uid
         syncManager.start(user.uid)
       }).catch((err) => {

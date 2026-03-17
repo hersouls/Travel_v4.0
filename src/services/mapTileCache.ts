@@ -88,7 +88,7 @@ export async function cacheTiles(
   const BATCH_SIZE = 6
   for (let i = 0; i < urls.length; i += BATCH_SIZE) {
     const batch = urls.slice(i, i + BATCH_SIZE)
-    const results = await Promise.allSettled(
+    const _results = await Promise.allSettled(
       batch.map(async (url) => {
         // Check if already cached
         const existing = await cache.match(url)

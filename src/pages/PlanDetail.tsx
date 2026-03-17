@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
     ArrowLeft,
     Edit,
@@ -10,7 +10,6 @@ import {
     ExternalLink,
     Star,
     Phone,
-    Calendar,
     Camera,
     Utensils,
     Bed,
@@ -29,7 +28,7 @@ import { Lightbox } from '@/components/ui/Lightbox'
 import { AudioPlayer } from '@/components/audio'
 import { MemoRenderer } from '@/components/memo'
 import { Button, IconButton } from '@/components/ui/Button'
-import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
+import { PlanTypeBadge } from '@/components/ui/Badge'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { AIGuideGenerator, AIMemoGenerator } from '@/components/ai'

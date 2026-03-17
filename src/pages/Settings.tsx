@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, Palette, HardDrive, Shield, FileJson, Music, Map, Navigation, Sparkles, Eye, EyeOff, Loader2, Settings as SettingsIcon, Volume2, Smartphone } from 'lucide-react'
+import { Sun, Moon, Monitor, Download, Upload, Trash2, Database, Palette, HardDrive, Shield, FileJson, Music, Map, Sparkles, Eye, EyeOff, Settings as SettingsIcon, Volume2, Smartphone } from 'lucide-react'
 import { Card, CardHeader, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
@@ -14,7 +14,7 @@ import { testOpenAIConnection } from '@/services/openaiTtsService'
 import { APP_VERSION, COLOR_PALETTES, SCHEMA_VERSION, TRAVEL_MODE_LABELS } from '@/utils/constants'
 import { DEFAULT_SETTINGS } from '@/types'
 import { getStorageInfo, formatBytes, requestPersistentStorage, type StorageInfo } from '@/services/storageQuota'
-import type { ThemeMode, ColorPalette, MapProvider, TravelMode, ClaudeModel } from '@/types'
+import type { ThemeMode, ColorPalette, MapProvider, TravelMode, ClaudeModel, GeminiModel, AIProvider, AIKeyMode } from '@/types'
 
 const themeOptions: Array<{ value: ThemeMode; label: string; icon: typeof Sun }> = [
   { value: 'light', label: '라이트', icon: Sun },
@@ -33,6 +33,11 @@ export function Settings() {
     claudeEnabled: rawClaudeEnabled,
     claudeApiKey: rawClaudeApiKey,
     claudeModel: rawClaudeModel,
+    aiProvider: rawAiProvider,
+    aiKeyMode: rawAiKeyMode,
+    ttsKeyMode: rawTtsKeyMode,
+    geminiApiKey: rawGeminiApiKey,
+    geminiModel: rawGeminiModel,
     setTheme,
     setColorPalette,
     setMusicPlayerEnabled,
@@ -42,6 +47,11 @@ export function Settings() {
     setClaudeEnabled,
     setClaudeApiKey,
     setClaudeModel,
+    setAIProvider,
+    setAIKeyMode,
+    setTtsKeyMode,
+    setGeminiApiKey,
+    setGeminiModel,
     openaiApiKey: rawOpenaiApiKey,
     openaiTtsModel: rawOpenaiTtsModel,
     openaiTtsVoice: rawOpenaiTtsVoice,
@@ -55,6 +65,11 @@ export function Settings() {
     claudeEnabled: state.claudeEnabled,
     claudeApiKey: state.claudeApiKey,
     claudeModel: state.claudeModel,
+    aiProvider: state.aiProvider,
+    aiKeyMode: state.aiKeyMode,
+    ttsKeyMode: state.ttsKeyMode,
+    geminiApiKey: state.geminiApiKey,
+    geminiModel: state.geminiModel,
     setTheme: state.setTheme,
     setColorPalette: state.setColorPalette,
     setMusicPlayerEnabled: state.setMusicPlayerEnabled,
@@ -64,6 +79,11 @@ export function Settings() {
     setClaudeEnabled: state.setClaudeEnabled,
     setClaudeApiKey: state.setClaudeApiKey,
     setClaudeModel: state.setClaudeModel,
+    setAIProvider: state.setAIProvider,
+    setAIKeyMode: state.setAIKeyMode,
+    setTtsKeyMode: state.setTtsKeyMode,
+    setGeminiApiKey: state.setGeminiApiKey,
+    setGeminiModel: state.setGeminiModel,
     openaiApiKey: state.openaiApiKey,
     openaiTtsModel: state.openaiTtsModel,
     openaiTtsVoice: state.openaiTtsVoice,
@@ -77,11 +97,20 @@ export function Settings() {
   const claudeEnabled = rawClaudeEnabled ?? false
   const claudeApiKey = rawClaudeApiKey ?? ''
   const claudeModel = (rawClaudeModel ?? 'sonnet') as ClaudeModel
+  const aiProvider = (rawAiProvider ?? 'claude') as AIProvider
+  const aiKeyMode = (rawAiKeyMode ?? 'server') as AIKeyMode
+  const ttsKeyMode = (rawTtsKeyMode ?? 'server') as AIKeyMode
+  const geminiApiKey = rawGeminiApiKey ?? ''
+  const geminiModel = (rawGeminiModel ?? 'flash') as GeminiModel
   const openaiApiKey = rawOpenaiApiKey ?? ''
   const openaiTtsModel = (rawOpenaiTtsModel ?? 'tts-1') as 'tts-1' | 'tts-1-hd'
   const openaiTtsVoice = rawOpenaiTtsVoice ?? 'alloy'
   const [showApiKey, setShowApiKey] = useState(false)
   const [showOpenaiApiKey, setShowOpenaiApiKey] = useState(false)
+
+  // Current active API key for test connection
+  const currentAiApiKey = aiProvider === 'gemini' ? geminiApiKey : claudeApiKey
+  const currentAiModel = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   // PWA Install state
   const [canInstallPWA, setCanInstallPWA] = useState(false)
@@ -112,14 +141,15 @@ export function Settings() {
   }
 
   const handleTestConnection = async () => {
-    if (!claudeApiKey) {
+    const key = aiKeyMode === 'custom' ? currentAiApiKey : undefined
+    if (aiKeyMode === 'custom' && !key) {
       toast.error('API 키를 입력하세요')
       return
     }
     setIsTestingConnection(true)
     try {
-      await testConnection(claudeApiKey, claudeModel)
-      toast.success('Claude AI 연결 성공!')
+      await testConnection(key, currentAiModel, aiProvider)
+      toast.success(`${aiProvider === 'gemini' ? 'Gemini' : 'Claude'} AI 연결 성공!`)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Claude AI 연결 실패')
     } finally {
@@ -592,7 +622,7 @@ export function Settings() {
           <Card padding="lg">
             <CardHeader
               title="AI 설정"
-              description="Anthropic Claude API로 AI 여행 어시스턴트를 사용합니다"
+              description="AI 여행 어시스턴트를 사용합니다"
               icon={<Sparkles className="size-5" />}
             />
             <CardContent className="space-y-4">
@@ -618,44 +648,39 @@ export function Settings() {
 
               {claudeEnabled && (
                 <>
-                  {/* API Key */}
+                  {/* AI Provider Selection */}
                   <div>
-                    <p className="text-sm font-medium text-[var(--foreground)] mb-2">Anthropic API 키</p>
-                    <div className="flex gap-2">
-                      <div className="flex-1 relative">
-                        <input
-                          type={showApiKey ? 'text' : 'password'}
-                          value={claudeApiKey}
-                          onChange={(e) => setClaudeApiKey(e.target.value)}
-                          placeholder="sk-ant-..."
-                          className="w-full h-10 px-3 pr-10 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
+                    <p className="text-sm font-medium text-[var(--foreground)] mb-2">AI 프로바이더</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        { value: 'claude' as AIProvider, label: 'Claude', desc: 'Anthropic' },
+                        { value: 'gemini' as AIProvider, label: 'Gemini', desc: 'Google' },
+                      ]).map((option) => (
                         <button
-                          type="button"
-                          onClick={() => setShowApiKey(!showApiKey)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                          key={option.value}
+                          onClick={() => setAIProvider(option.value)}
+                          className={`p-2 sm:p-3 rounded-lg border-2 text-left transition-colors ${aiProvider === option.value
+                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                              : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                            }`}
                         >
-                          {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                          <span className={`text-sm font-medium ${aiProvider === option.value
+                              ? 'text-primary-600 dark:text-primary-400'
+                              : 'text-zinc-600 dark:text-zinc-400'
+                            }`}>
+                            {option.label}
+                          </span>
+                          <p className="text-xs text-zinc-500 mt-0.5">{option.desc}</p>
                         </button>
-                      </div>
-                      <Button
-                        color="secondary"
-                        outline
-                        size="sm"
-                        onClick={handleTestConnection}
-                        isLoading={isTestingConnection}
-                        disabled={!claudeApiKey}
-                      >
-                        {isTestingConnection ? '' : '연결 테스트'}
-                      </Button>
+                      ))}
                     </div>
                   </div>
 
                   {/* Model Selection */}
                   <div>
                     <p className="text-sm font-medium text-[var(--foreground)] mb-2">모델</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {([
+                    <div className={`grid gap-2 ${aiProvider === 'claude' ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2'}`}>
+                      {aiProvider === 'claude' ? ([
                         { value: 'haiku' as ClaudeModel, label: 'Haiku', desc: '빠른 응답, 경제적' },
                         { value: 'sonnet' as ClaudeModel, label: 'Sonnet', desc: '균형 잡힌 성능 (추천)' },
                         { value: 'opus' as ClaudeModel, label: 'Opus', desc: '최고 품질' },
@@ -676,23 +701,137 @@ export function Settings() {
                           </span>
                           <p className="text-xs text-zinc-500 mt-0.5">{option.desc}</p>
                         </button>
+                      )) : ([
+                        { value: 'flash' as GeminiModel, label: 'Flash', desc: '빠른 응답 (추천)' },
+                        { value: 'pro' as GeminiModel, label: 'Pro', desc: '최고 품질' },
+                      ]).map((option) => (
+                        <button
+                          key={option.value}
+                          onClick={() => setGeminiModel(option.value)}
+                          className={`p-2 sm:p-3 rounded-lg border-2 text-left transition-colors ${geminiModel === option.value
+                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                              : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                            }`}
+                        >
+                          <span className={`text-sm font-medium ${geminiModel === option.value
+                              ? 'text-primary-600 dark:text-primary-400'
+                              : 'text-zinc-600 dark:text-zinc-400'
+                            }`}>
+                            {option.label}
+                          </span>
+                          <p className="text-xs text-zinc-500 mt-0.5">{option.desc}</p>
+                        </button>
                       ))}
                     </div>
                   </div>
 
+                  {/* API Key Mode */}
+                  <div>
+                    <p className="text-sm font-medium text-[var(--foreground)] mb-2">API 키</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setAIKeyMode('server')}
+                        className={`p-2 rounded-lg border-2 text-center transition-colors ${aiKeyMode === 'server'
+                            ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                            : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                          }`}
+                      >
+                        <span className={`text-sm font-medium ${aiKeyMode === 'server'
+                            ? 'text-primary-600 dark:text-primary-400'
+                            : 'text-zinc-600 dark:text-zinc-400'
+                          }`}>
+                          서버 키 사용
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setAIKeyMode('custom')}
+                        className={`p-2 rounded-lg border-2 text-center transition-colors ${aiKeyMode === 'custom'
+                            ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/50'
+                            : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                          }`}
+                      >
+                        <span className={`text-sm font-medium ${aiKeyMode === 'custom'
+                            ? 'text-primary-600 dark:text-primary-400'
+                            : 'text-zinc-600 dark:text-zinc-400'
+                          }`}>
+                          직접 입력
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Custom API Key Input */}
+                  {aiKeyMode === 'custom' && (
+                    <div>
+                      <p className="text-sm font-medium text-[var(--foreground)] mb-2">
+                        {aiProvider === 'gemini' ? 'Google AI API 키' : 'Anthropic API 키'}
+                      </p>
+                      <div className="flex gap-2">
+                        <div className="flex-1 relative">
+                          <input
+                            type={showApiKey ? 'text' : 'password'}
+                            value={currentAiApiKey}
+                            onChange={(e) => aiProvider === 'gemini' ? setGeminiApiKey(e.target.value) : setClaudeApiKey(e.target.value)}
+                            placeholder={aiProvider === 'gemini' ? 'AI...' : 'sk-ant-...'}
+                            className="w-full h-10 px-3 pr-10 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowApiKey(!showApiKey)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                          >
+                            {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                          </button>
+                        </div>
+                        <Button
+                          color="secondary"
+                          outline
+                          size="sm"
+                          onClick={handleTestConnection}
+                          isLoading={isTestingConnection}
+                          disabled={!currentAiApiKey}
+                        >
+                          {isTestingConnection ? '' : '연결 테스트'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Server key mode info or test */}
+                  {aiKeyMode === 'server' && (
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        서버에 등록된 API 키를 사용합니다
+                      </p>
+                      <Button
+                        color="secondary"
+                        outline
+                        size="sm"
+                        onClick={handleTestConnection}
+                        isLoading={isTestingConnection}
+                      >
+                        {isTestingConnection ? '' : '연결 테스트'}
+                      </Button>
+                    </div>
+                  )}
+
                   {/* Info */}
                   <div className="pt-2 space-y-1">
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                      API 키는 이 기기에만 저장되며 클라우드에 동기화되지 않습니다.
-                    </p>
-                    <a
-                      href="https://console.anthropic.com/settings/keys"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
-                    >
-                      API 키 발급: console.anthropic.com
-                    </a>
+                    {aiKeyMode === 'custom' && (
+                      <>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          API 키는 이 기기에만 저장되며 클라우드에 동기화되지 않습니다.
+                        </p>
+                        <a
+                          href={aiProvider === 'gemini' ? 'https://aistudio.google.com/apikey' : 'https://console.anthropic.com/settings/keys'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                        >
+                          {aiProvider === 'gemini' ? 'API 키 발급: aistudio.google.com' : 'API 키 발급: console.anthropic.com'}
+                        </a>
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -707,40 +846,83 @@ export function Settings() {
               icon={<Volume2 className="size-5" />}
             />
             <CardContent className="space-y-4">
-              {/* API Key */}
+              {/* TTS API Key Mode */}
               <div>
-                <p className="text-sm font-medium text-[var(--foreground)] mb-2">OpenAI API 키</p>
-                <div className="flex gap-2">
-                  <div className="flex-1 relative">
-                    <input
-                      type={showOpenaiApiKey ? 'text' : 'password'}
-                      value={openaiApiKey}
-                      onChange={(e) => setOpenaiApiKey(e.target.value)}
-                      placeholder="sk-..."
-                      className="w-full h-10 px-3 pr-10 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowOpenaiApiKey(!showOpenaiApiKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                    >
-                      {showOpenaiApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
-                  <Button
-                    color="secondary"
-                    outline
-                    size="sm"
-                    onClick={handleTestOpenaiConnection}
-                    isLoading={isTestingOpenaiConnection}
-                    disabled={!openaiApiKey}
+                <p className="text-sm font-medium text-[var(--foreground)] mb-2">API 키</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setTtsKeyMode('server')}
+                    className={`p-2 rounded-lg border-2 text-center transition-colors ${ttsKeyMode === 'server'
+                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/50'
+                        : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                      }`}
                   >
-                    {isTestingOpenaiConnection ? '' : '연결 테스트'}
-                  </Button>
+                    <span className={`text-sm font-medium ${ttsKeyMode === 'server'
+                        ? 'text-violet-600 dark:text-violet-400'
+                        : 'text-zinc-600 dark:text-zinc-400'
+                      }`}>
+                      서버 키 사용
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setTtsKeyMode('custom')}
+                    className={`p-2 rounded-lg border-2 text-center transition-colors ${ttsKeyMode === 'custom'
+                        ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/50'
+                        : 'border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600'
+                      }`}
+                  >
+                    <span className={`text-sm font-medium ${ttsKeyMode === 'custom'
+                        ? 'text-violet-600 dark:text-violet-400'
+                        : 'text-zinc-600 dark:text-zinc-400'
+                      }`}>
+                      직접 입력
+                    </span>
+                  </button>
                 </div>
               </div>
 
-              {openaiApiKey && (
+              {/* Custom API Key Input */}
+              {ttsKeyMode === 'custom' && (
+                <div>
+                  <p className="text-sm font-medium text-[var(--foreground)] mb-2">OpenAI API 키</p>
+                  <div className="flex gap-2">
+                    <div className="flex-1 relative">
+                      <input
+                        type={showOpenaiApiKey ? 'text' : 'password'}
+                        value={openaiApiKey}
+                        onChange={(e) => setOpenaiApiKey(e.target.value)}
+                        placeholder="sk-..."
+                        className="w-full h-10 px-3 pr-10 rounded-lg border border-zinc-950/10 dark:border-white/10 bg-transparent text-[var(--foreground)] text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowOpenaiApiKey(!showOpenaiApiKey)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                      >
+                        {showOpenaiApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                    <Button
+                      color="secondary"
+                      outline
+                      size="sm"
+                      onClick={handleTestOpenaiConnection}
+                      isLoading={isTestingOpenaiConnection}
+                      disabled={!openaiApiKey}
+                    >
+                      {isTestingOpenaiConnection ? '' : '연결 테스트'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {ttsKeyMode === 'server' && (
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  서버에 등록된 OpenAI API 키를 사용합니다
+                </p>
+              )}
+
+              {(ttsKeyMode === 'server' || openaiApiKey) && (
                 <>
                   {/* TTS Model */}
                   <div>
@@ -806,22 +988,26 @@ export function Settings() {
 
               {/* Info */}
               <div className="pt-2 space-y-1">
-                {!openaiApiKey && (
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    API 키를 입력하면 고품질 AI 음성을 사용할 수 있습니다. 미입력 시 브라우저 기본 TTS가 사용됩니다.
-                  </p>
+                {ttsKeyMode === 'custom' && (
+                  <>
+                    {!openaiApiKey && (
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        API 키를 입력하면 고품질 AI 음성을 사용할 수 있습니다. 미입력 시 브라우저 기본 TTS가 사용됩니다.
+                      </p>
+                    )}
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      API 키는 이 기기에만 저장되며 클라우드에 동기화되지 않습니다.
+                    </p>
+                    <a
+                      href="https://platform.openai.com/api-keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
+                    >
+                      API 키 발급: platform.openai.com
+                    </a>
+                  </>
                 )}
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  API 키는 이 기기에만 저장되며 클라우드에 동기화되지 않습니다.
-                </p>
-                <a
-                  href="https://platform.openai.com/api-keys"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary-600 dark:text-primary-400 hover:underline"
-                >
-                  API 키 발급: platform.openai.com
-                </a>
               </div>
             </CardContent>
           </Card>

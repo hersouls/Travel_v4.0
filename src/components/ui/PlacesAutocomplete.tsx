@@ -93,6 +93,9 @@ export function PlacesAutocomplete({
             ...results.filter(r => !localResults.some(lr => lr.placeId === `local_${r.placeId || ''}`))
           ])
         }
+      } catch (e) {
+        console.warn('[PlacesAutocomplete] Search failed:', e)
+        // Keep local results on error
       } finally {
         if (!cancelled) {
           setIsLoading(false)
@@ -132,8 +135,8 @@ export function PlacesAutocomplete({
           const details: PlaceDetails = {
             name: place.name,
             address: place.address || '',
-            latitude: place.latitude || 0,
-            longitude: place.longitude || 0,
+            latitude: place.latitude ?? 0,
+            longitude: place.longitude ?? 0,
             website: place.website,
             phone: undefined, // Local place might not have full details stored same way
             rating: place.rating,

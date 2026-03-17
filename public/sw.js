@@ -1,5 +1,6 @@
 // Moonwave Travel Service Worker v4.0.0
-const CACHE_VERSION = 'travel-v4.4.0';
+// Cache version hash is injected at build time by Vite plugin
+const CACHE_VERSION = 'travel-v4-__BUILD_HASH__';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`;
 const MAP_TILE_CACHE = `${CACHE_VERSION}-tiles`;

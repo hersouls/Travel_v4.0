@@ -140,6 +140,9 @@ export interface ExpenseData {
   receiptDate?: string // YYYY-MM-DD
 }
 
+// 결제 수단
+export type PaymentMethod = 'cash' | 'card' | 'other'
+
 // 세부 카테고리
 export type ExpenseSubCategory =
   | 'restaurant' | 'cafe' | 'convenience' | 'delivery' | 'snack'        // food
@@ -170,6 +173,7 @@ export interface Expense {
   latitude?: number
   longitude?: number
   address?: string
+  paymentMethod?: PaymentMethod
   createdAt: Date
   updatedAt: Date
 }
@@ -279,17 +283,21 @@ export interface TripStatistics {
 }
 
 // ============================================
-// Claude AI Types
+// AI Types
 // ============================================
 
+export type AIProvider = 'claude' | 'gemini'
+export type AIKeyMode = 'server' | 'custom'
 export type ClaudeModel = 'haiku' | 'sonnet' | 'opus'
+export type GeminiModel = 'flash' | 'pro'
 
 export interface AIGenerateRequest {
   type: 'guide' | 'itinerary' | 'memo' | 'analyze-image' | 'analyze-photo-location' | 'day-recommend' | 'day-suggest' | 'receipt-food' | 'receipt-general' | 'travel-diary' | 'test'
   context: Record<string, unknown>
   image?: string // base64 (for vision)
   imageFormat?: string // MIME type: 'image/jpeg' | 'image/webp' | 'image/png' | 'image/gif'
-  model?: ClaudeModel
+  provider?: AIProvider
+  model?: ClaudeModel | GeminiModel
   stream?: boolean
 }
 
@@ -357,10 +365,17 @@ export interface Settings {
   // 지도 설정
   mapProvider: MapProvider // 지도 제공자 (기본: 'google')
   defaultTravelMode: TravelMode // 기본 이동수단 (기본: 'DRIVE')
+  // AI 공통 설정
+  aiProvider?: AIProvider       // AI 프로바이더 (기본: 'claude')
+  aiKeyMode?: AIKeyMode         // AI API 키 모드 (기본: 'server')
+  ttsKeyMode?: AIKeyMode        // TTS API 키 모드 (기본: 'server')
+  claudeEnabled?: boolean
   // Claude AI 설정 (API key는 localStorage에만 저장, DB/Firestore 제외)
   claudeApiKey?: string
   claudeModel?: ClaudeModel
-  claudeEnabled?: boolean
+  // Gemini AI 설정 (API key는 localStorage에만 저장)
+  geminiApiKey?: string
+  geminiModel?: GeminiModel
   // OpenAI TTS 설정 (API key는 localStorage에만 저장)
   openaiApiKey?: string
   openaiTtsModel?: 'tts-1' | 'tts-1-hd'
@@ -377,8 +392,12 @@ export const DEFAULT_SETTINGS: Settings = {
   timezoneAutoDetect: true,
   mapProvider: 'google',
   defaultTravelMode: 'DRIVE',
+  aiProvider: 'claude',
+  aiKeyMode: 'server',
+  ttsKeyMode: 'server',
   claudeEnabled: false,
   claudeModel: 'sonnet',
+  geminiModel: 'flash',
   openaiTtsModel: 'tts-1',
   openaiTtsVoice: 'alloy',
 }

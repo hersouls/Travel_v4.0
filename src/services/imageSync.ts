@@ -25,6 +25,62 @@ import type { Trip, Plan, Place, TravelLog } from '@/types'
 const MAX_CONCURRENT = 3
 
 // ============================================
+// Download Queue (deduplication + concurrency limit)
+// ============================================
+
+type DownloadTask = () => Promise<void>
+
+class DownloadQueue {
+  private running = 0
+  private queue: Array<{ key: string; task: DownloadTask; resolve: () => void; reject: (e: unknown) => void }> = []
+  private inflight = new Set<string>()
+
+  enqueue(key: string, task: DownloadTask): Promise<void> {
+    // Deduplicate: skip if already queued or running
+    if (this.inflight.has(key)) {
+      return Promise.resolve()
+    }
+    this.inflight.add(key)
+
+    return new Promise<void>((resolve, reject) => {
+      this.queue.push({ key, task, resolve, reject })
+      this.flush()
+    })
+  }
+
+  private flush(): void {
+    while (this.running < MAX_CONCURRENT && this.queue.length > 0) {
+      const item = this.queue.shift()!
+      this.running++
+      item.task()
+        .then(item.resolve)
+        .catch(item.reject)
+        .finally(() => {
+          this.running--
+          this.inflight.delete(item.key)
+          this.flush()
+        })
+    }
+  }
+}
+
+const downloadQueue = new DownloadQueue()
+
+/**
+ * Schedule an image download through the deduplicated queue.
+ * Returns immediately (fire-and-forget with proper error logging).
+ */
+export function scheduleImageDownload(
+  key: string,
+  task: DownloadTask,
+  onComplete?: () => void,
+): void {
+  downloadQueue.enqueue(key, task)
+    .then(() => { onComplete?.() })
+    .catch((e) => { console.error('[ImageSync] Queued download failed:', key, e) })
+}
+
+// ============================================
 // Core Upload / Download
 // ============================================
 
@@ -231,36 +287,32 @@ export async function uploadTravelLogPhoto(userId: string, log: TravelLog): Prom
   if (!log.firebaseId) return
 
   try {
-    // Upload main photo
+    const firestore = getFirebaseDb()
+    const logRef = doc(firestore, 'users', userId, 'travelLogs', log.firebaseId)
+    const uploads: Promise<void>[] = []
+
+    // Upload main photo + thumbnail in parallel (PERF-04)
     if (log.photo) {
-      const ext = getImageFormat(log.photo)
-      const storagePath = `users/${userId}/travelLogs/${log.firebaseId}/photo.${ext}`
-      await uploadImageToStorage(storagePath, log.photo)
-
-      const firestore = getFirebaseDb()
-      const logRef = doc(firestore, 'users', userId, 'travelLogs', log.firebaseId)
-      await updateDoc(logRef, { photoPath: storagePath })
-
-      if (log.id) {
-        await dexieDb.travelLogs.update(log.id, { photoPath: storagePath })
-      }
+      uploads.push((async () => {
+        const ext = getImageFormat(log.photo!)
+        const storagePath = `users/${userId}/travelLogs/${log.firebaseId}/photo.${ext}`
+        await uploadImageToStorage(storagePath, log.photo!)
+        await updateDoc(logRef, { photoPath: storagePath })
+        if (log.id) await dexieDb.travelLogs.update(log.id, { photoPath: storagePath })
+      })())
     }
 
-    // Upload thumbnail
     if (log.thumbnailPhoto) {
-      const thumbExt = getImageFormat(log.thumbnailPhoto)
-      const thumbPath = `users/${userId}/travelLogs/${log.firebaseId}/thumb.${thumbExt}`
-      await uploadImageToStorage(thumbPath, log.thumbnailPhoto)
-
-      const firestore = getFirebaseDb()
-      const logRef = doc(firestore, 'users', userId, 'travelLogs', log.firebaseId)
-      await updateDoc(logRef, { thumbnailPhotoPath: thumbPath })
-
-      if (log.id) {
-        await dexieDb.travelLogs.update(log.id, { thumbnailPhotoPath: thumbPath })
-      }
+      uploads.push((async () => {
+        const thumbExt = getImageFormat(log.thumbnailPhoto!)
+        const thumbPath = `users/${userId}/travelLogs/${log.firebaseId}/thumb.${thumbExt}`
+        await uploadImageToStorage(thumbPath, log.thumbnailPhoto!)
+        await updateDoc(logRef, { thumbnailPhotoPath: thumbPath })
+        if (log.id) await dexieDb.travelLogs.update(log.id, { thumbnailPhotoPath: thumbPath })
+      })())
     }
 
+    await Promise.allSettled(uploads)
     console.log('[ImageSync] Uploaded travel log photo:', log.firebaseId)
   } catch (error) {
     console.error('[ImageSync] Failed to upload travel log photo:', error)
@@ -272,14 +324,22 @@ export async function downloadTravelLogPhoto(log: TravelLog): Promise<void> {
 
   try {
     const updates: Partial<TravelLog> = {}
+    const downloads: Promise<void>[] = []
 
+    // Download main photo + thumbnail in parallel (PERF-04)
     if (log.photoPath && !log.photo) {
-      updates.photo = await downloadImageFromStorage(log.photoPath)
+      downloads.push(
+        downloadImageFromStorage(log.photoPath).then(b64 => { updates.photo = b64 })
+      )
     }
 
     if (log.thumbnailPhotoPath && !log.thumbnailPhoto) {
-      updates.thumbnailPhoto = await downloadImageFromStorage(log.thumbnailPhotoPath)
+      downloads.push(
+        downloadImageFromStorage(log.thumbnailPhotoPath).then(b64 => { updates.thumbnailPhoto = b64 })
+      )
     }
+
+    await Promise.allSettled(downloads)
 
     if (Object.keys(updates).length > 0) {
       await dexieDb.travelLogs.update(log.id, updates)

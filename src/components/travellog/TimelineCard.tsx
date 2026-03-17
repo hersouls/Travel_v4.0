@@ -3,8 +3,8 @@
 // Renders a single travel log entry in timeline
 // ============================================
 
-import { useState, useCallback } from 'react'
-import { Camera, Receipt, FileText, MapPin, Clock, Trash2, Edit3, ChevronDown, ChevronUp, Navigation, Mountain, History } from 'lucide-react'
+import { useState } from 'react'
+import { Camera, Receipt, FileText, MapPin, Clock, Trash2, Edit3, ChevronDown, ChevronUp, Navigation, History } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
 import { Badge } from '@/components/ui/Badge'

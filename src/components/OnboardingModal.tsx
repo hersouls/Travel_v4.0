@@ -74,7 +74,7 @@ export function OnboardingModal() {
   const step = steps[currentStep]
 
   return (
-    <Dialog open={isOpen} onClose={handleClose}>
+    <Dialog open={isOpen} onClose={handleClose} aria-label="사용 가이드">
       <DialogTitle onClose={handleClose}>
         <span className="text-primary-500">Moonwave Travel</span> 시작하기
       </DialogTitle>

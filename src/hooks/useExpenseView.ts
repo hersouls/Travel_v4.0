@@ -5,7 +5,7 @@
 // ============================================
 
 import { useMemo } from 'react'
-import type { Expense, ExpenseCategory, ExpenseSubCategory } from '@/types'
+import type { Expense, ExpenseCategory, ExpenseSubCategory, PaymentMethod } from '@/types'
 
 export type ExpenseSortOrder = 'newest' | 'oldest'
 
@@ -13,6 +13,16 @@ export interface ExpenseDaySummary {
   total: number
   expenseCount: number
   totals: Record<string, number> // currency → total
+}
+
+const CATEGORY_ORDER: ExpenseCategory[] = ['food', 'transport', 'accommodation', 'shopping', 'attraction', 'other']
+
+export interface ExpenseCategoryGroup {
+  category: ExpenseCategory
+  expenseCount: number
+  totals: Record<string, number>  // currency → total
+  expensesByDay: Record<number, Expense[]>
+  sortedDays: number[]
 }
 
 export interface ExpenseTripTotals {
@@ -33,6 +43,7 @@ interface UseExpenseViewParams {
   subCategoryFilter: ExpenseSubCategory | null
   searchQuery: string
   loadedDayCount: number
+  paymentMethodFilter?: PaymentMethod | null
 }
 
 interface UseExpenseViewReturn {
@@ -44,6 +55,7 @@ interface UseExpenseViewReturn {
   tripTotals: ExpenseTripTotals
   hasMoreDays: boolean
   totalFilteredCount: number
+  filteredCategoryGroups: ExpenseCategoryGroup[]
 }
 
 export function useExpenseView({
@@ -54,6 +66,7 @@ export function useExpenseView({
   subCategoryFilter,
   searchQuery,
   loadedDayCount,
+  paymentMethodFilter,
 }: UseExpenseViewParams): UseExpenseViewReturn {
   // Generate sorted days array
   const sortedDays = useMemo(() => {
@@ -127,9 +140,9 @@ export function useExpenseView({
     return { currencyTotals, categoryTotals, totalCount: expenses.length }
   }, [expenses])
 
-  // Apply all filters (category + subcategory + search)
+  // Apply all filters (category + subcategory + search + paymentMethod)
   const filteredExpensesByDay = useMemo(() => {
-    if (!categoryFilter && !subCategoryFilter && !searchQuery.trim()) {
+    if (!categoryFilter && !subCategoryFilter && !searchQuery.trim() && !paymentMethodFilter) {
       return expensesByDay
     }
     const result: Record<number, Expense[]> = {}
@@ -142,6 +155,10 @@ export function useExpenseView({
 
       if (subCategoryFilter) {
         filtered = filtered.filter((e) => e.subCategory === subCategoryFilter)
+      }
+
+      if (paymentMethodFilter) {
+        filtered = filtered.filter((e) => e.paymentMethod === paymentMethodFilter)
       }
 
       if (searchQuery.trim()) {
@@ -160,7 +177,7 @@ export function useExpenseView({
       }
     }
     return result
-  }, [expensesByDay, categoryFilter, subCategoryFilter, searchQuery])
+  }, [expensesByDay, categoryFilter, subCategoryFilter, searchQuery, paymentMethodFilter])
 
   // Visible days (infinite scroll, bypassed during search)
   const visibleDays = useMemo(() => {
@@ -182,6 +199,61 @@ export function useExpenseView({
     return count
   }, [filteredExpensesByDay])
 
+  // Category > Day grouping (from filtered expenses)
+  const filteredCategoryGroups = useMemo(() => {
+    // Flatten filtered expenses
+    const allFiltered: Expense[] = []
+    for (const dayExpenses of Object.values(filteredExpensesByDay)) {
+      allFiltered.push(...dayExpenses)
+    }
+
+    // Group by category → day
+    const catMap = new Map<ExpenseCategory, Map<number, Expense[]>>()
+    for (const e of allFiltered) {
+      if (!catMap.has(e.category)) catMap.set(e.category, new Map())
+      const dayMap = catMap.get(e.category)!
+      if (!dayMap.has(e.day)) dayMap.set(e.day, [])
+      dayMap.get(e.day)!.push(e)
+    }
+
+    // Sort within each day by timestamp
+    for (const dayMap of catMap.values()) {
+      for (const [day, dayExpenses] of dayMap.entries()) {
+        dayExpenses.sort((a, b) => {
+          const diff = new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          return sortOrder === 'newest' ? -diff : diff
+        })
+      }
+    }
+
+    // Build groups in canonical category order
+    const groups: ExpenseCategoryGroup[] = []
+    for (const category of CATEGORY_ORDER) {
+      const dayMap = catMap.get(category)
+      if (!dayMap || dayMap.size === 0) continue
+
+      const expensesByDay: Record<number, Expense[]> = {}
+      const totals: Record<string, number> = {}
+      let expenseCount = 0
+
+      const days = Array.from(dayMap.keys())
+      days.sort((a, b) => sortOrder === 'newest' ? b - a : a - b)
+
+      for (const day of days) {
+        const dayExpenses = dayMap.get(day)!
+        expensesByDay[day] = dayExpenses
+        expenseCount += dayExpenses.length
+        for (const e of dayExpenses) {
+          totals[e.currency] = (totals[e.currency] || 0) + e.totalAmount
+        }
+      }
+
+      groups.push({ category, expenseCount, totals, expensesByDay, sortedDays: days })
+    }
+
+    return groups
+  }, [filteredExpensesByDay, sortOrder])
+
   return {
     sortedDays,
     visibleDays,
@@ -191,5 +263,6 @@ export function useExpenseView({
     tripTotals,
     hasMoreDays,
     totalFilteredCount,
+    filteredCategoryGroups,
   }
 }

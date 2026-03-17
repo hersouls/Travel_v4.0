@@ -37,8 +37,16 @@ export function AIDayRecommendDialog({
   onClose,
   open,
 }: AIDayRecommendDialogProps) {
+  const aiProvider = useSettingsStore((state) => state.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((state) => state.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((state) => state.geminiApiKey)
+  const geminiModel = useSettingsStore((state) => state.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const [keywords, setKeywords] = useState('')
   const [interests, setInterests] = useState<string[]>(['관광', '맛집'])
@@ -55,7 +63,7 @@ export function AIDayRecommendDialog({
   }
 
   const handleGenerate = async () => {
-    if (!claudeApiKey) {
+    if (!isServerKey && !apiKey) {
       setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
@@ -78,9 +86,10 @@ export function AIDayRecommendDialog({
       })
       const response = await generateStructured<string>(
         { type: 'day-recommend', context },
-        claudeApiKey,
-        claudeModel,
+        apiKey,
+        model,
         controller.signal,
+        aiProvider,
       )
 
       const parsed =

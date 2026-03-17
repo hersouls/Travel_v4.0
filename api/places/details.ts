@@ -85,8 +85,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const details: PlaceDetails = {
       name: data.displayName?.text || '',
       address: data.formattedAddress || '',
-      latitude: data.location?.latitude || 0,
-      longitude: data.location?.longitude || 0,
+      latitude: data.location?.latitude ?? 0,
+      longitude: data.location?.longitude ?? 0,
       website: data.websiteUri,
       phone: data.internationalPhoneNumber,
       rating: data.rating,

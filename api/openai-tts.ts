@@ -112,14 +112,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  // API key from header
-  const apiKey = req.headers['x-openai-api-key'] as string
-  if (!apiKey || !apiKey.startsWith('sk-')) {
-    return res.status(401).json({ error: 'Valid OpenAI API key required (sk-...)' })
+  // API key from header or server env
+  const apiKey = (req.headers['x-openai-api-key'] as string) || process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    return res.status(401).json({ error: 'OpenAI API key required' })
   }
 
-  // Rate limiting (10 requests per minute per API key)
-  const rateLimitKey = `openai-tts-${apiKey.slice(-8)}`
+  // Rate limiting (10 requests per minute per API key or IP)
+  const isServerKey = !req.headers['x-openai-api-key']
+  const rateLimitKey = isServerKey
+    ? `openai-tts-srv-${(req.headers['x-forwarded-for'] as string || 'unknown').split(',')[0].trim()}`
+    : `openai-tts-${apiKey.slice(-8)}`
   const { allowed, remaining, resetAt } = checkRateLimit(rateLimitKey, 10, 60_000)
   res.setHeader('X-RateLimit-Remaining', String(remaining))
   res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)))

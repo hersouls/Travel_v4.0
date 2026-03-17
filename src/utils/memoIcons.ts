@@ -349,7 +349,7 @@ export function cleanSectionTitle(title: string): string {
     // 변형 선택자
     .replace(/[\u{FE00}-\u{FE0F}]/gu, '')
     // 특수 이모지 문자
-    .replace(/[✅⚠️⏰💡📍🎫🚗🍽️📞💰📸🚶✈️🏛️⭐☑️❌❗❓✓✗☐☑]/g, '')
+    .replace(/(?:⚠️|🍽️|✈️|🏛️|☑️|[✅⏰💡📍🎫🚗📞💰📸🚶⭐❌❗❓✓✗☐☑])/gu, '')
     // 앞뒤 공백 정리
     .trim()
 }

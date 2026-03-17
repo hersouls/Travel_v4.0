@@ -4,7 +4,7 @@
 
 import { create } from 'zustand'
 import { devtools, persist } from 'zustand/middleware'
-import type { ThemeMode, ColorPalette, ClaudeModel, Settings } from '@/types'
+import type { ThemeMode, ColorPalette, ClaudeModel, GeminiModel, AIProvider, AIKeyMode, Settings } from '@/types'
 import { DEFAULT_SETTINGS } from '@/types'
 import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
@@ -49,10 +49,17 @@ interface SettingsState extends Settings {
   updateDetectedTimezone: (timezone: string) => void
   setMapProvider: (provider: import('@/types').MapProvider) => void
   setDefaultTravelMode: (mode: import('@/types').TravelMode) => void
+  // AI common actions
+  setAIProvider: (provider: AIProvider) => void
+  setAIKeyMode: (mode: AIKeyMode) => void
+  setTtsKeyMode: (mode: AIKeyMode) => void
   // Claude AI actions
   setClaudeApiKey: (key: string) => void
   setClaudeModel: (model: ClaudeModel) => void
   setClaudeEnabled: (enabled: boolean) => void
+  // Gemini AI actions
+  setGeminiApiKey: (key: string) => void
+  setGeminiModel: (model: GeminiModel) => void
   // OpenAI TTS actions
   setOpenaiApiKey: (key: string) => void
   setOpenaiTtsModel: (model: 'tts-1' | 'tts-1-hd') => void
@@ -186,6 +193,24 @@ export const useSettingsStore = create<SettingsState>()(
           sendBroadcast('SETTINGS_CHANGED', { field: 'defaultTravelMode', value: defaultTravelMode })
         },
 
+        // AI common: set provider
+        setAIProvider: (aiProvider) => {
+          set({ aiProvider })
+          debouncedSave(() => get().saveToDatabase())
+        },
+
+        // AI common: set key mode
+        setAIKeyMode: (aiKeyMode) => {
+          set({ aiKeyMode })
+          debouncedSave(() => get().saveToDatabase())
+        },
+
+        // TTS: set key mode
+        setTtsKeyMode: (ttsKeyMode) => {
+          set({ ttsKeyMode })
+          debouncedSave(() => get().saveToDatabase())
+        },
+
         // Claude AI: set API key (localStorage only, NOT synced to DB/Firestore)
         setClaudeApiKey: (claudeApiKey) => {
           set({ claudeApiKey })
@@ -201,6 +226,18 @@ export const useSettingsStore = create<SettingsState>()(
         // Claude AI: toggle enabled
         setClaudeEnabled: (claudeEnabled) => {
           set({ claudeEnabled })
+          debouncedSave(() => get().saveToDatabase())
+        },
+
+        // Gemini AI: set API key (localStorage only, NOT synced to DB/Firestore)
+        setGeminiApiKey: (geminiApiKey) => {
+          set({ geminiApiKey })
+          // Intentionally NOT calling saveToDatabase — key stays in localStorage only
+        },
+
+        // Gemini AI: set model
+        setGeminiModel: (geminiModel) => {
+          set({ geminiModel })
           debouncedSave(() => get().saveToDatabase())
         },
 
@@ -237,11 +274,15 @@ export const useSettingsStore = create<SettingsState>()(
             detectedTimezone: state.detectedTimezone,
             mapProvider: state.mapProvider,
             defaultTravelMode: state.defaultTravelMode,
+            aiProvider: state.aiProvider,
+            aiKeyMode: state.aiKeyMode,
+            ttsKeyMode: state.ttsKeyMode,
             claudeModel: state.claudeModel,
             claudeEnabled: state.claudeEnabled,
+            geminiModel: state.geminiModel,
             openaiTtsModel: state.openaiTtsModel,
             openaiTtsVoice: state.openaiTtsVoice,
-            // NOTE: claudeApiKey & openaiApiKey intentionally excluded — stored in localStorage only
+            // NOTE: claudeApiKey, geminiApiKey & openaiApiKey intentionally excluded — stored in localStorage only
           }
           await db.updateSettings(settings)
 
@@ -261,9 +302,14 @@ export const useSettingsStore = create<SettingsState>()(
           timezoneAutoDetect: state.timezoneAutoDetect,
           mapProvider: state.mapProvider,
           defaultTravelMode: state.defaultTravelMode,
+          aiProvider: state.aiProvider,
+          aiKeyMode: state.aiKeyMode,
+          ttsKeyMode: state.ttsKeyMode,
           claudeApiKey: state.claudeApiKey,
           claudeModel: state.claudeModel,
           claudeEnabled: state.claudeEnabled,
+          geminiApiKey: state.geminiApiKey,
+          geminiModel: state.geminiModel,
           openaiApiKey: state.openaiApiKey,
           openaiTtsModel: state.openaiTtsModel,
           openaiTtsVoice: state.openaiTtsVoice,

@@ -36,7 +36,7 @@ function LoadingFallback() {
 }
 
 export default function App() {
-  const location = useLocation()
+  const _location = useLocation()
   const toasts = useToasts()
   const dismissToast = useUIStore((state) => state.dismissToast)
   const isSidebarCollapsed = useUIStore((state) => state.isSidebarCollapsed)

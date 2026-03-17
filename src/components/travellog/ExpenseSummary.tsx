@@ -63,7 +63,7 @@ function formatAmount(amount: number): string {
   return `₩${Math.round(amount).toLocaleString()}`
 }
 
-export function ExpenseSummary({ logs, className, defaultOpen = false, totalTripDistance, uniqueLocationCount, dayCount, exchangeRates, showKRW }: ExpenseSummaryProps) {
+export function ExpenseSummary({ logs, className, defaultOpen = false, totalTripDistance, uniqueLocationCount, dayCount, exchangeRates, showKRW: _showKRW }: ExpenseSummaryProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   // Sync isOpen when defaultOpen changes (e.g., navigation with ?tab=expense)

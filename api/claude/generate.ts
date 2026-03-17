@@ -1,19 +1,27 @@
 // ============================================
-// Anthropic Claude AI Generate API Proxy
-// SSE streaming + structured JSON support
+// LangChain Claude AI Generate API
+// SSE streaming + Zod structured output
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import Anthropic from '@anthropic-ai/sdk'
+import { ChatAnthropic } from '@langchain/anthropic'
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai'
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
+import { HumanMessage, SystemMessage } from '@langchain/core/messages'
+import { STRUCTURED_SCHEMAS, STREAMING_TEXT_TYPES } from './schemas'
 
 export const config = { maxDuration: 60 }
 
-// Inline rate limiter (Vercel can't resolve local TS imports)
+// Inline rate limiter
 const _rlStore = new Map<string, { count: number; resetAt: number }>()
 function checkRateLimit(key: string, max = 30, windowMs = 60_000) {
   const now = Date.now()
   for (const [k, e] of _rlStore) { if (e.resetAt <= now) _rlStore.delete(k) }
-  if (_rlStore.size > 1000) _rlStore.clear()
+  if (_rlStore.size > 1000) {
+    const entries = Array.from(_rlStore.entries()).sort((a, b) => a[1].resetAt - b[1].resetAt)
+    const toRemove = Math.ceil(entries.length / 2)
+    for (let i = 0; i < toRemove; i++) _rlStore.delete(entries[i][0])
+  }
   const entry = _rlStore.get(key)
   if (!entry || entry.resetAt <= now) {
     _rlStore.set(key, { count: 1, resetAt: now + windowMs })
@@ -30,16 +38,30 @@ const ALLOWED_ORIGINS = [
   'http://localhost:4173',
 ]
 
-const MAX_BODY_SIZE = 2 * 1024 * 1024 // 2MB
+const MAX_BODY_SIZE = 2 * 1024 * 1024
 
-const MODEL_MAP: Record<string, string> = {
+const CLAUDE_MODEL_MAP: Record<string, string> = {
   haiku: 'claude-haiku-4-5-20251001',
   sonnet: 'claude-sonnet-4-5-20250929',
   opus: 'claude-opus-4-6',
 }
 
-function resolveModel(model?: string): string {
-  return MODEL_MAP[model || 'sonnet'] || MODEL_MAP.sonnet
+const GEMINI_MODEL_MAP: Record<string, string> = {
+  flash: 'gemini-2.0-flash',
+  pro: 'gemini-2.5-pro-preview-05-06',
+}
+
+function resolveClaudeModel(model?: string): string {
+  return CLAUDE_MODEL_MAP[model || 'sonnet'] || CLAUDE_MODEL_MAP.sonnet
+}
+
+function resolveGeminiModel(model?: string): string {
+  return GEMINI_MODEL_MAP[model || 'flash'] || GEMINI_MODEL_MAP.flash
+}
+
+function getMaxTokens(type: string): number {
+  if (['itinerary', 'day-recommend', 'day-suggest'].includes(type)) return 8192
+  return 4096
 }
 
 function buildSystemPrompt(type: string, context: Record<string, unknown>): string {
@@ -55,25 +77,7 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 
     case 'itinerary':
       return `당신은 전문 여행 플래너입니다.
-주어진 여행 정보를 기반으로 최적의 일정을 JSON으로 생성하세요.
-반드시 아래 JSON 형식만 출력하세요 (다른 텍스트 없이):
-{
-  "days": [
-    {
-      "day": 1,
-      "plans": [
-        {
-          "placeName": "장소명",
-          "startTime": "09:00",
-          "endTime": "10:30",
-          "type": "attraction|restaurant|hotel|transport|other",
-          "address": "주소 (알려진 경우)",
-          "memo": "간단한 메모"
-        }
-      ]
-    }
-  ]
-}
+주어진 여행 정보를 기반으로 최적의 일정을 생성하세요.
 - 각 일정은 현실적인 이동 시간 고려
 - 식사 시간 포함 (아침/점심/저녁)
 - 관심사와 여행 스타일 반영
@@ -81,62 +85,22 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 
     case 'day-recommend':
       return `당신은 전문 여행 플래너입니다.
-주어진 여행 정보와 키워드를 기반으로 특정 하루의 일정을 JSON으로 생성하세요.
-반드시 아래 JSON 형식만 출력하세요 (다른 텍스트 없이):
-{
-  "days": [
-    {
-      "day": ${context.dayNumber || 1},
-      "plans": [
-        {
-          "placeName": "장소명",
-          "startTime": "09:00",
-          "endTime": "10:30",
-          "type": "attraction|restaurant|hotel|transport|other",
-          "address": "주소 (알려진 경우)",
-          "memo": "간단한 한줄 메모",
-          "latitude": 위도,
-          "longitude": 경도
-        }
-      ]
-    }
-  ]
-}
+주어진 여행 정보와 키워드를 기반으로 Day ${context.dayNumber || 1} 일정을 생성하세요.
 - 키워드/관심 장소를 중심으로 현실적인 하루 일정 구성
 - 아침부터 저녁까지 시간대별로 5~8개 일정
-- 식사 시간 포함 (아침/점심/저녁 중 적절한 것)
+- 식사 시간 포함
 - 장소 간 이동 시간과 거리를 고려한 현실적인 시간 배분
 - 해당 국가/도시의 실제 존재하는 장소만 추천
 - 가능하면 위도/경도 포함 (소수점 6자리)`
 
     case 'day-suggest':
       return `당신은 전문 여행 일정 컨설턴트입니다.
-기존 하루 일정을 분석하고 개선안을 JSON으로 제안하세요.
-반드시 아래 JSON 형식만 출력하세요 (다른 텍스트 없이):
-{
-  "analysis": "현재 일정에 대한 전체 분석 (2-3문장)",
-  "suggestions": [
-    "개선 제안 1",
-    "개선 제안 2"
-  ],
-  "revisedPlans": [
-    {
-      "placeName": "장소명",
-      "startTime": "09:00",
-      "endTime": "10:30",
-      "type": "attraction|restaurant|hotel|transport|other",
-      "address": "주소",
-      "memo": "메모",
-      "latitude": 위도,
-      "longitude": 경도
-    }
-  ]
-}
+기존 하루 일정을 분석하고 개선안을 제안하세요.
 - 기존 일정의 장단점을 솔직하게 분석
 - 동선 최적화, 누락된 식사, 시간 배분 개선을 구체적으로 제안
 - 기존 장소를 최대한 유지하면서 순서/시간 조정
 - 필요시 빠진 식사나 쉼 시간을 추가
-- revisedPlans는 개선된 전체 하루 일정 (기존 장소 + 새 제안 포함)
+- revisedPlans는 개선된 전체 하루 일정
 - 가능하면 위도/경도 포함`
 
     case 'memo':
@@ -166,19 +130,11 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 - 이모지 섹션 헤더 사용
 - 한국어로 작성
 - 마크다운 기호 절대 사용 금지 (#, ##, **, *, |테이블|, ---, > 등)
-- 순수 텍스트 + 이모지 섹션 헤더만 사용
-- 볼드(**) 대신 "라벨: 값" 형식, 테이블 대신 "항목: 금액" 나열`
+- 순수 텍스트 + 이모지 섹션 헤더만 사용`
 
     case 'analyze-image':
       return `당신은 여행 사진 분석 전문가입니다.
-사진을 분석하여 다음 정보를 JSON으로 추출하세요:
-{
-  "placeName": "식별된 장소 이름 (확실하지 않으면 빈 문자열)",
-  "type": "attraction|restaurant|hotel|transport|other",
-  "description": "장소에 대한 2-3줄 설명",
-  "tips": ["유용한 팁1", "팁2"],
-  "estimatedLocation": "추정 위치 (도시/국가)"
-}
+사진을 분석하여 장소 정보를 추출하세요.
 - 확실하지 않은 정보는 빈 값으로
 - 한국어로 작성`
 
@@ -190,66 +146,32 @@ TTS 낭독에 적합한 자연스러운 구어체로 작성하세요.
 - 음식, 메뉴, 영수증의 가게 이름
 - 교통수단, 도로 표지판
 - 자연환경, 건축 양식
-${context.country ? `\n참고: 이 사진은 "${context.country}" 여행 중 촬영되었습니다.` : ''}
-
-반드시 아래 JSON만 출력하세요 (다른 텍스트 없이):
-{
-  "placeName": "구체적인 장소 이름 (예: Terminal 21, Suvarnabhumi Airport). 모르면 빈 문자열",
-  "estimatedLocation": "도시, 국가 (예: Bangkok, Thailand)",
-  "locationType": "attraction|restaurant|hotel|transport|shopping|other",
-  "confidence": "high|medium|low",
-  "clues": "위치를 판단한 근거를 한 줄로 요약"
-}`
+${context.country ? `\n참고: 이 사진은 "${context.country}" 여행 중 촬영되었습니다.` : ''}`
 
     case 'receipt-food':
       return `당신은 영수증 OCR 전문가입니다.
-음식점/카페 영수증 사진을 분석하여 아래 JSON을 정확히 추출하세요:
-{
-  "storeName": "가게 이름",
-  "category": "food",
-  "items": [
-    { "name": "메뉴명", "quantity": 1, "unitPrice": 10000, "amount": 10000 }
-  ],
-  "totalAmount": 합계금액,
-  "currency": "KRW",
-  "receiptDate": "YYYY-MM-DD"
-}
+음식점/카페 영수증 사진을 분석하여 정보를 정확히 추출하세요.
 - 금액은 순수 숫자만 (쉼표/통화기호 제거)
 - currency는 ISO 4217 코드 (KRW, JPY, USD, EUR, THB, VND 등)
 - 읽을 수 없는 항목은 빈 문자열이나 0
-- 다국어 영수증 분석 가능: 한국어, 영어, 일본어, 중국어, 태국어, 베트남어 등
-- 은행 이체 알림, 카드 결제 문자, 모바일 결제 앱 캡처도 분석 가능
-- 현지 통화 정확히 식별: ฿=THB, ₫=VND, ¥=JPY(일본)/CNY(중국), ₩=KRW, $=USD, €=EUR, £=GBP
-- 반드시 JSON만 출력 (다른 텍스트 없이)`
+- 다국어 영수증 분석 가능
+- 현지 통화 정확히 식별: ฿=THB, ₫=VND, ¥=JPY(일본)/CNY(중국), ₩=KRW, $=USD, €=EUR, £=GBP`
 
     case 'receipt-general':
       return `당신은 영수증 OCR 전문가입니다.
-일반 영수증/결제 내역 사진을 분석하여 아래 JSON을 정확히 추출하세요:
-{
-  "storeName": "가게/서비스 이름",
-  "category": "food|transport|accommodation|shopping|attraction|other",
-  "items": [
-    { "name": "항목명", "quantity": 1, "unitPrice": 10000, "amount": 10000 }
-  ],
-  "totalAmount": 합계금액,
-  "currency": "KRW",
-  "receiptDate": "YYYY-MM-DD"
-}
+일반 영수증/결제 내역 사진을 분석하여 정보를 정확히 추출하세요.
 - category는 가게 유형에 따라 자동 분류
 - 금액은 순수 숫자만
 - currency는 ISO 4217 코드
-- 다국어 영수증 분석 가능: 한국어, 영어, 일본어, 중국어, 태국어, 베트남어 등
-- 은행 이체 알림, 카드 결제 문자, 모바일 결제 앱 캡처도 분석 가능
-- 현지 통화 정확히 식별: ฿=THB, ₫=VND, ¥=JPY(일본)/CNY(중국), ₩=KRW, $=USD, €=EUR, £=GBP
-- 반드시 JSON만 출력 (다른 텍스트 없이)`
+- 다국어 영수증 분석 가능
+- 현지 통화 정확히 식별: ฿=THB, ₫=VND, ¥=JPY(일본)/CNY(중국), ₩=KRW, $=USD, €=EUR, £=GBP`
 
     case 'travel-diary':
       return `당신은 감성적이고 따뜻한 여행 에세이 작가입니다.
 주어진 여행 기록 데이터를 기반으로 자연스러운 여행 일기를 작성하세요.
-- 1인칭 시점으로 작성 (나는, 내가)
+- 1인칭 시점으로 작성
 - 장소명과 시간을 자연스럽게 녹여내기
 - 감정, 분위기, 날씨 등을 상상하여 풍부하게 묘사
-- 음식이나 소비 내역이 있으면 자연스럽게 언급
 - 마크다운 없이 순수 텍스트로 작성
 - 문단 나누기는 빈 줄로
 - 800~1500자 분량`
@@ -283,7 +205,7 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       if (context.interests) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
       if (context.style) parts.push(`여행 스타일: ${context.style}`)
       if (context.budget) parts.push(`예산: ${context.budget}`)
-      parts.push('\n위 조건에 맞는 여행 일정을 JSON으로 생성해주세요.')
+      parts.push('\n위 조건에 맞는 여행 일정을 생성해주세요.')
       return parts.join('\n')
     }
 
@@ -295,7 +217,7 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       if (context.keywords) parts.push(`관심 키워드/장소: ${context.keywords}`)
       if (context.interests) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
       if (context.style) parts.push(`여행 스타일: ${context.style}`)
-      parts.push('\n위 키워드를 중심으로 이 날의 하루 일정을 JSON으로 생성해주세요.')
+      parts.push('\n위 키워드를 중심으로 이 날의 하루 일정을 생성해주세요.')
       return parts.join('\n')
     }
 
@@ -313,7 +235,7 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
           parts.push(`${i + 1}. ${p.startTime}${p.endTime ? '-' + p.endTime : ''} ${p.placeName} (${p.type})${p.address ? ' - ' + p.address : ''}`)
         })
       }
-      parts.push('\n위 일정을 분석하고 개선안을 JSON으로 제안해주세요.')
+      parts.push('\n위 일정을 분석하고 개선안을 제안해주세요.')
       return parts.join('\n')
     }
 
@@ -357,37 +279,42 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS — origin whitelist (allow all in dev via env)
+  // CORS
   const origin = req.headers.origin || ''
-  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  const allowedOrigin = ALLOWED_ORIGINS.includes(origin) ? origin : ''
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin)
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key, x-gemini-api-key')
   res.setHeader('Vary', 'Origin')
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end()
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' })
-  }
-
-  // Body size check
   const contentLength = Number(req.headers['content-length'] || 0)
   if (contentLength > MAX_BODY_SIZE) {
     return res.status(413).json({ error: 'Request body too large (max 2MB)' })
   }
 
-  // API key: user-provided header or server env fallback
-  const userApiKey = req.headers['x-api-key'] as string
-  const apiKey = userApiKey || process.env.CLAUDE_API_KEY
-  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-    return res.status(401).json({ error: 'Valid Anthropic API key required (sk-ant-...)' })
+  const { type, context = {}, image, imageFormat, model, stream = true, provider = 'claude' } = req.body || {}
+
+  // Resolve API key based on provider
+  let apiKey: string | undefined
+  if (provider === 'gemini') {
+    apiKey = (req.headers['x-gemini-api-key'] as string) || process.env.GEMINI_API_KEY
+    if (!apiKey) {
+      return res.status(401).json({ error: 'Gemini API key required' })
+    }
+  } else {
+    apiKey = (req.headers['x-api-key'] as string) || process.env.CLAUDE_API_KEY
+    if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+      return res.status(401).json({ error: 'Valid Anthropic API key required (sk-ant-...)' })
+    }
   }
 
-  // Rate limiting (30 requests per minute per API key)
-  const rateLimitKey = apiKey.slice(-8) // use last 8 chars as key
+  const isServerKey = !req.headers['x-api-key'] && !req.headers['x-gemini-api-key']
+  const rateLimitKey = isServerKey
+    ? `srv-${(req.headers['x-forwarded-for'] as string || 'unknown').split(',')[0].trim()}`
+    : apiKey.slice(-8)
   const { allowed, remaining, resetAt } = checkRateLimit(rateLimitKey, 30, 60_000)
   res.setHeader('X-RateLimit-Remaining', String(remaining))
   res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)))
@@ -395,85 +322,151 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'Too many requests. Please try again later.' })
   }
 
-  const { type, context = {}, image, imageFormat, model, stream = true } = req.body || {}
-
   if (!type) {
     return res.status(400).json({ error: 'Request type is required' })
   }
 
   try {
-    const client = new Anthropic({ apiKey })
-    const systemPrompt = buildSystemPrompt(type, context)
-    const resolvedModel = resolveModel(model)
+    const resolvedModel = provider === 'gemini' ? resolveGeminiModel(model) : resolveClaudeModel(model)
+    let chatModel: BaseChatModel
+    if (provider === 'gemini') {
+      chatModel = new ChatGoogleGenerativeAI({
+        model: resolvedModel,
+        maxOutputTokens: getMaxTokens(type),
+        apiKey,
+      })
+    } else {
+      chatModel = new ChatAnthropic({
+        model: resolvedModel,
+        maxTokens: getMaxTokens(type),
+        anthropicApiKey: apiKey,
+      })
+    }
 
-    // Build messages — support Vision (image) for analyze-image
-    const userContent: Anthropic.MessageCreateParams['messages'][0]['content'] = []
+    const systemPrompt = buildSystemPrompt(type, context)
+
+    // Build user message content (supports vision/image)
+    const userText = buildUserMessage(type, context)
+    let humanMessage: HumanMessage
 
     if (image && ['analyze-image', 'analyze-photo-location', 'receipt-food', 'receipt-general'].includes(type)) {
       const validMediaTypes = ['image/jpeg', 'image/webp', 'image/png', 'image/gif'] as const
       const mediaType = (imageFormat && validMediaTypes.includes(imageFormat))
         ? imageFormat as typeof validMediaTypes[number]
         : 'image/jpeg'
-      userContent.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: mediaType,
-          data: image,
-        },
+
+      humanMessage = new HumanMessage({
+        content: [
+          {
+            type: 'image_url',
+            image_url: { url: `data:${mediaType};base64,${image}` },
+          },
+          { type: 'text', text: userText },
+        ],
       })
+    } else {
+      humanMessage = new HumanMessage(userText)
     }
 
-    userContent.push({
-      type: 'text',
-      text: buildUserMessage(type, context),
-    })
+    const messages = [new SystemMessage(systemPrompt), humanMessage]
+    const schema = STRUCTURED_SCHEMAS[type]
+    const isStreamingTextType = STREAMING_TEXT_TYPES.includes(type) || !schema
 
-    if (stream) {
-      // SSE streaming response
+    if (stream && isStreamingTextType) {
+      // === Streaming text mode (guide, memo, travel-diary, test, unknown) ===
       res.setHeader('Content-Type', 'text/event-stream')
       res.setHeader('Cache-Control', 'no-cache')
       res.setHeader('Connection', 'keep-alive')
 
-      const response = client.messages.stream({
-        model: resolvedModel,
-        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 4096 : 4096,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userContent }],
-      })
+      let clientConnected = true
+      res.on('close', () => { clientConnected = false })
 
-      for await (const event of response) {
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta.type === 'text_delta'
-        ) {
-          res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`)
+      const streamResponse = await chatModel.stream(messages)
+
+      for await (const chunk of streamResponse) {
+        if (!clientConnected) break
+        const text = typeof chunk.content === 'string'
+          ? chunk.content
+          : Array.isArray(chunk.content)
+            ? chunk.content.filter((c: { type: string }) => c.type === 'text').map((c: unknown) => (c as { text: string }).text).join('')
+            : ''
+        if (text) {
+          res.write(`data: ${JSON.stringify({ text })}\n\n`)
         }
       }
 
-      res.write('data: [DONE]\n\n')
+      if (clientConnected) {
+        res.write('data: [DONE]\n\n')
+      }
       res.end()
-    } else {
-      // Non-streaming structured response
-      const response = await client.messages.create({
-        model: resolvedModel,
-        max_tokens: ['itinerary', 'day-recommend', 'day-suggest'].includes(type) ? 8192 : ['receipt-food', 'receipt-general'].includes(type) ? 4096 : 4096,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userContent }],
-      })
+    } else if (schema) {
+      // === Structured output mode (itinerary, receipt, image analysis, etc.) ===
+      // Use withStructuredOutput for validated JSON responses
+      try {
+        const structuredModel = chatModel.withStructuredOutput(schema)
+        const result = await structuredModel.invoke(messages)
 
-      const textBlock = response.content.find((b) => b.type === 'text')
+        res.status(200).json({
+          content: JSON.stringify(result),
+          model: resolvedModel,
+          truncated: false,
+        })
+      } catch (structuredError) {
+        // Fallback: if structured output fails, try plain invoke + manual parse
+        console.warn('[LangChain Generate] Structured output failed, falling back to plain invoke:', structuredError)
+        const response = await chatModel.invoke(messages)
+        const rawText = typeof response.content === 'string'
+          ? response.content
+          : Array.isArray(response.content)
+            ? response.content.filter((c: { type: string }) => c.type === 'text').map((c: unknown) => (c as { text: string }).text).join('')
+            : ''
+
+        // Try to extract valid JSON from raw text (AI often wraps JSON in markdown)
+        let parsedContent = rawText
+        try {
+          let cleaned = rawText.trim()
+          if (cleaned.startsWith('```')) {
+            cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '')
+          }
+          const parsed = JSON.parse(cleaned)
+          parsedContent = JSON.stringify(parsed)
+        } catch {
+          // If parsing fails, wrap raw text to prevent client JSON.parse crash
+          parsedContent = JSON.stringify({ rawText, fallback: true })
+        }
+
+        res.status(200).json({
+          content: parsedContent,
+          model: resolvedModel,
+          truncated: false,
+        })
+      }
+    } else {
+      // === Non-streaming text (fallback) ===
+      const response = await chatModel.invoke(messages)
+      const text = typeof response.content === 'string'
+        ? response.content
+        : Array.isArray(response.content)
+          ? response.content.filter((c: { type: string }) => c.type === 'text').map((c: unknown) => (c as { text: string }).text).join('')
+          : ''
+
       res.status(200).json({
-        content: textBlock ? textBlock.text : '',
-        model: response.model,
-        usage: response.usage,
-        truncated: response.stop_reason === 'max_tokens',
+        content: text,
+        model: resolvedModel,
+        truncated: false,
       })
     }
   } catch (err: unknown) {
-    console.error('[Claude] Error:', err)
-    const message = err instanceof Error ? err.message : 'Claude API proxy error'
-    const status = message.includes('authentication') || message.includes('api_key') ? 401 : 500
-    res.status(status).json({ error: message })
+    console.error('[LangChain Generate] Error:', err)
+    const errMsg = err instanceof Error ? err.message : 'LangChain generate error'
+    const status = errMsg.includes('authentication') || errMsg.includes('api_key') ? 401 : 500
+
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ error: errMsg })}\n\n`)
+      res.write('data: [DONE]\n\n')
+      res.end()
+    } else {
+      res.status(status).json({ error: errMsg })
+    }
   }
 }

@@ -35,8 +35,16 @@ export function AIDaySuggestDialog({
   onClose,
   open,
 }: AIDaySuggestDialogProps) {
+  const aiProvider = useSettingsStore((state) => state.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((state) => state.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((state) => state.geminiApiKey)
+  const geminiModel = useSettingsStore((state) => state.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +53,7 @@ export function AIDaySuggestDialog({
   const abortRef = useRef<AbortController | null>(null)
 
   const handleAnalyze = async () => {
-    if (!claudeApiKey) {
+    if (!isServerKey && !apiKey) {
       setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
@@ -61,9 +69,10 @@ export function AIDaySuggestDialog({
       const context = buildDaySuggestContext(trip, dayNumber, dayPlans, dayDate)
       const response = await generateStructured<string>(
         { type: 'day-suggest', context },
-        claudeApiKey,
-        claudeModel,
+        apiKey,
+        model,
         controller.signal,
+        aiProvider,
       )
 
       const parsed =

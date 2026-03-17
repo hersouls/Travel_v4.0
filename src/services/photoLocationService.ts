@@ -7,7 +7,7 @@ import { generateStructured, buildPhotoLocationContext } from '@/services/claude
 import { searchPlaces, getPlaceDetails } from '@/services/placesAutocomplete'
 import { forwardGeocode } from '@/services/geocodingService'
 import { getImageFormat } from '@/services/imageStorage'
-import type { ClaudeModel } from '@/types'
+import type { AIProvider, ClaudeModel, GeminiModel } from '@/types'
 
 interface AILocationResult {
   placeName: string
@@ -35,9 +35,10 @@ export interface DetectedLocation {
 export async function detectPhotoLocation(
   base64Image: string,
   tripCountry: string,
-  apiKey: string,
-  model: ClaudeModel,
+  apiKey: string | undefined,
+  model: ClaudeModel | GeminiModel,
   signal?: AbortSignal,
+  provider?: AIProvider,
 ): Promise<DetectedLocation | null> {
   // Step 1: AI analysis
   const imageFormat = getImageFormat(base64Image)
@@ -50,7 +51,7 @@ export async function detectPhotoLocation(
 
   let aiResult: AILocationResult
   try {
-    aiResult = await generateStructured<AILocationResult>(request, apiKey, model, signal)
+    aiResult = await generateStructured<AILocationResult>(request, apiKey, model, signal, provider)
   } catch {
     return null
   }
@@ -134,10 +135,11 @@ export async function detectPhotoLocation(
 export async function detectPhotoLocationBatch(
   photos: Array<{ index: number; base64Image: string }>,
   tripCountry: string,
-  apiKey: string,
-  model: ClaudeModel,
+  apiKey: string | undefined,
+  model: ClaudeModel | GeminiModel,
   onProgress?: (current: number, total: number, result: DetectedLocation | null) => void,
   signal?: AbortSignal,
+  provider?: AIProvider,
 ): Promise<Map<number, DetectedLocation>> {
   const results = new Map<number, DetectedLocation>()
 
@@ -146,7 +148,7 @@ export async function detectPhotoLocationBatch(
 
     const { index, base64Image } = photos[i]
     try {
-      const location = await detectPhotoLocation(base64Image, tripCountry, apiKey, model, signal)
+      const location = await detectPhotoLocation(base64Image, tripCountry, apiKey, model, signal, provider)
       if (location) {
         results.set(index, location)
       }

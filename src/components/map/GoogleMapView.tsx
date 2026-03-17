@@ -5,7 +5,7 @@
 import { useRef, useEffect, useMemo } from 'react'
 import { useGoogleMapsLoader } from '@/hooks/useGoogleMapsLoader'
 import { MARKER_COLORS, ROUTE_COLORS } from '@/utils/mapStyles'
-import type { Plan, RouteSegment, TravelMode } from '@/types'
+import type { Plan, RouteSegment } from '@/types'
 
 interface GoogleMapViewProps {
   plans: Plan[]

@@ -29,7 +29,7 @@ export function ExpenseDaySectionHeader({
   onToggle,
   summary,
   exchangeRates,
-  showKRW,
+  showKRW: _showKRW,
 }: ExpenseDaySectionHeaderProps) {
   const dateStr = date.toLocaleDateString('ko-KR', {
     month: 'long',
@@ -70,14 +70,14 @@ export function ExpenseDaySectionHeader({
         <div className="flex-shrink-0 text-right">
           {(() => {
             let totalKRW = 0
-            let allConverted = true
+            let _allConverted = true
             for (const [currency, amount] of Object.entries(summary.totals)) {
               if (exchangeRates) {
                 const krw = convertToKRW(amount, currency, exchangeRates)
                 if (krw != null) { totalKRW += krw; continue }
               }
               totalKRW += amount
-              if (currency !== 'KRW') allConverted = false
+              if (currency !== 'KRW') _allConverted = false
             }
             return (
               <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300">

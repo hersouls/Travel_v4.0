@@ -4,7 +4,6 @@
 
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import type { ClaudeModel } from '@/types'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { AI_MESSAGES } from '@/utils/constants'
 
@@ -44,10 +43,14 @@ export const useChatStore = create<ChatState>()(
         _activeAbortController = abortController
 
         const { tripContext, messages } = get()
-        const { claudeApiKey, claudeModel } = useSettingsStore.getState()
+        const { claudeApiKey, claudeModel, geminiApiKey, geminiModel, aiProvider, aiKeyMode } = useSettingsStore.getState()
 
-        if (!claudeApiKey) {
-          // Add error as assistant message
+        const provider = aiProvider || 'claude'
+        const isServerKey = aiKeyMode !== 'custom'
+        const apiKey = isServerKey ? undefined : (provider === 'gemini' ? geminiApiKey : claudeApiKey)
+        const model = provider === 'gemini' ? (geminiModel || 'flash') : (claudeModel || 'sonnet')
+
+        if (!isServerKey && !apiKey) {
           const errorMsg: ChatMessage = {
             id: crypto.randomUUID(),
             role: 'assistant',
@@ -91,17 +94,24 @@ export const useChatStore = create<ChatState>()(
 
         let accumulated = ''
         try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+          if (apiKey) {
+            if (provider === 'gemini') {
+              headers['x-gemini-api-key'] = apiKey
+            } else {
+              headers['x-api-key'] = apiKey
+            }
+          }
+
           const response = await fetch(CHAT_API_URL, {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': claudeApiKey,
-            },
+            headers,
             body: JSON.stringify({
               message: content,
               tripContext,
               history,
-              model: claudeModel || 'sonnet',
+              provider,
+              model,
             }),
             signal: abortController.signal,
           })

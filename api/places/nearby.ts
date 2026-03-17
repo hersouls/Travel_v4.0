@@ -139,8 +139,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         placeId: place.id,
         name: place.displayName?.text || '',
         address: place.formattedAddress || '',
-        latitude: place.location?.latitude || 0,
-        longitude: place.location?.longitude || 0,
+        latitude: place.location?.latitude ?? 0,
+        longitude: place.location?.longitude ?? 0,
       }
 
       if (place.rating !== undefined) result.rating = place.rating

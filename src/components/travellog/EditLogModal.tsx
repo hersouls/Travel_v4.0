@@ -70,8 +70,16 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const aiProvider = useSettingsStore((s) => s.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((s) => s.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((s) => s.claudeApiKey)
   const claudeModel = useSettingsStore((s) => s.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((s) => s.geminiApiKey)
+  const geminiModel = useSettingsStore((s) => s.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const defaultCurrency = getCurrencyFromCountry(tripCountry || '')
   const currencySymbol = CURRENCY_SYMBOLS[defaultCurrency] || defaultCurrency
@@ -170,7 +178,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
 
   // AI location detection
   const handleAIDetect = useCallback(async () => {
-    if (!claudeApiKey || !log) return
+    if ((!isServerKey && !apiKey) || !log) return
 
     const photoBase64 = newPhotoPreview || log.photo
     if (!photoBase64) return
@@ -182,8 +190,10 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
       const result = await detectPhotoLocation(
         photoBase64,
         tripCountry || '',
-        claudeApiKey,
-        claudeModel,
+        apiKey,
+        model,
+        undefined,
+        aiProvider,
       )
 
       if (result) {
@@ -199,7 +209,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
     } finally {
       setIsDetectingLocation(false)
     }
-  }, [claudeApiKey, claudeModel, log, newPhotoPreview, tripCountry])
+  }, [isServerKey, apiKey, model, log, newPhotoPreview, tripCountry])
 
   // Device geolocation
   const handleCurrentLocation = useCallback(async () => {
@@ -540,7 +550,7 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
                 >
                   {isGettingLocation ? '위치 확인 중...' : '현재 위치'}
                 </Button>
-                {hasPhoto && !hasLocation && claudeApiKey && (
+                {hasPhoto && !hasLocation && (isServerKey || apiKey) && (
                   <Button
                     color="secondary"
                     size="sm"

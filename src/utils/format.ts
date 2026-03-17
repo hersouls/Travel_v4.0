@@ -27,7 +27,7 @@ export function formatDateShort(date: Date | string): string {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).replace(/\. /g, '.').replace('.', '')
+  }).replace(/\. ?/g, '.').replace(/\.$/, '')
 }
 
 /**
@@ -75,7 +75,7 @@ export function formatTime(time: string): string {
  */
 export function parseYouTubeId(url: string): string | null {
   const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?#]+)/,
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([^&?#]+)/,
     /youtube\.com\/v\/([^&?#]+)/,
   ]
 
@@ -123,5 +123,5 @@ export function parseMapUrl(url: string): { lat: number; lng: number } | null {
  * Generate unique ID
  */
 export function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`
 }

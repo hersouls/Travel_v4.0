@@ -291,6 +291,11 @@ export async function getExpenseByFirebaseId(firebaseId: string): Promise<Expens
   return db.expenses.where('firebaseId').equals(firebaseId).first()
 }
 
+export async function getTravelLogsByIds(ids: number[]): Promise<TravelLog[]> {
+  if (ids.length === 0) return []
+  return db.travelLogs.where('id').anyOf(ids).toArray()
+}
+
 export async function getExpenseBySourceLogId(sourceLogId: number): Promise<Expense | undefined> {
   return db.expenses.where('sourceLogId').equals(sourceLogId).first()
 }
@@ -483,6 +488,22 @@ export async function exportAllData(): Promise<BackupData> {
 }
 
 export async function importAllData(data: BackupData): Promise<void> {
+  // BUG-08: Create safety backup before destructive import
+  // If import fails mid-transaction, we can restore from this backup
+  let safetyBackup: string | null = null
+  try {
+    const currentData = await exportAllData()
+    safetyBackup = JSON.stringify(currentData)
+    try {
+      localStorage.setItem('moonwave_import_safety_backup', safetyBackup)
+    } catch {
+      // localStorage may be full; proceed without persistent backup
+      console.warn('[importAllData] Could not persist safety backup to localStorage')
+    }
+  } catch {
+    console.warn('[importAllData] Could not create safety backup')
+  }
+
   // Trip: startDate/endDate는 문자열(YYYY-MM-DD)로 유지
   const TRIP_DATE_FIELDS = ['createdAt', 'updatedAt']
   const PLAN_DATE_FIELDS = ['createdAt', 'updatedAt', 'extractedAt']
@@ -513,24 +534,57 @@ export async function importAllData(data: BackupData): Promise<void> {
     ? deserializeDates(data.expenses, EXPENSE_DATE_FIELDS)
     : []
 
-  await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments, db.travelLogs, db.expenses], async () => {
-    // Clear existing data
-    await db.trips.clear()
-    await db.plans.clear()
-    await db.places.clear()
-    await db.routeSegments.clear()
-    await db.travelLogs.clear()
-    await db.expenses.clear()
+  try {
+    await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments, db.travelLogs, db.expenses], async () => {
+      // Clear existing data
+      await db.trips.clear()
+      await db.plans.clear()
+      await db.places.clear()
+      await db.routeSegments.clear()
+      await db.travelLogs.clear()
+      await db.expenses.clear()
 
-    // Import new data
-    if (trips.length > 0) await db.trips.bulkAdd(trips)
-    if (plans.length > 0) await db.plans.bulkAdd(plans)
-    if (places.length > 0) await db.places.bulkAdd(places)
-    if (routeSegments.length > 0) await db.routeSegments.bulkAdd(routeSegments)
-    if (travelLogs.length > 0) await db.travelLogs.bulkAdd(travelLogs)
-    if (expenses.length > 0) await db.expenses.bulkAdd(expenses)
-    if (settings) await db.settings.put(settings)
-  })
+      // Import new data
+      if (trips.length > 0) await db.trips.bulkAdd(trips)
+      if (plans.length > 0) await db.plans.bulkAdd(plans)
+      if (places.length > 0) await db.places.bulkAdd(places)
+      if (routeSegments.length > 0) await db.routeSegments.bulkAdd(routeSegments)
+      if (travelLogs.length > 0) await db.travelLogs.bulkAdd(travelLogs)
+      if (expenses.length > 0) await db.expenses.bulkAdd(expenses)
+      if (settings) await db.settings.put(settings)
+    })
+
+    // Import succeeded — remove safety backup
+    try { localStorage.removeItem('moonwave_import_safety_backup') } catch { /* ignore */ }
+  } catch (error) {
+    // Import failed — attempt to restore from safety backup
+    console.error('[importAllData] Import failed, attempting restore:', error)
+    if (safetyBackup) {
+      try {
+        const backup = JSON.parse(safetyBackup) as BackupData
+        await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments, db.travelLogs, db.expenses], async () => {
+          await db.trips.clear()
+          await db.plans.clear()
+          await db.places.clear()
+          await db.routeSegments.clear()
+          await db.travelLogs.clear()
+          await db.expenses.clear()
+          if (backup.trips.length > 0) await db.trips.bulkAdd(backup.trips)
+          if (backup.plans.length > 0) await db.plans.bulkAdd(backup.plans)
+          if (backup.places.length > 0) await db.places.bulkAdd(backup.places)
+          if (backup.routeSegments && backup.routeSegments.length > 0) await db.routeSegments.bulkAdd(backup.routeSegments)
+          if (backup.travelLogs && backup.travelLogs.length > 0) await db.travelLogs.bulkAdd(backup.travelLogs)
+          if (backup.expenses && backup.expenses.length > 0) await db.expenses.bulkAdd(backup.expenses)
+          if (backup.settings) await db.settings.put(backup.settings)
+        })
+        console.log('[importAllData] Restored from safety backup')
+      } catch (restoreError) {
+        console.error('[importAllData] Restore also failed:', restoreError)
+      }
+    }
+    try { localStorage.removeItem('moonwave_import_safety_backup') } catch { /* ignore */ }
+    throw error
+  }
 
   sendBroadcast('DATA_IMPORTED')
 }
@@ -689,8 +743,8 @@ function normalizeToDateString(value: unknown): string {
   if (value instanceof Date) {
     return value.toISOString().split('T')[0]
   }
-  // 기본값 (오늘 날짜)
-  return new Date().toISOString().split('T')[0]
+  // BUG-03: Throw instead of silently substituting today's date
+  throw new Error(`날짜를 파싱할 수 없습니다: ${String(value)}`)
 }
 
 // Import a single trip with its plans
@@ -1012,7 +1066,7 @@ export async function exportSinglePlace(placeId: number): Promise<SinglePlaceBac
   }
 
   // Remove runtime fields
-  const { id, isFavorite, usageCount, createdAt, updatedAt, ...placeData } = place
+  const { id: _id, isFavorite: _isFavorite, usageCount: _usageCount, createdAt: _createdAt, updatedAt: _updatedAt, ...placeData } = place
 
   return {
     version: APP_VERSION,

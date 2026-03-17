@@ -1,12 +1,17 @@
 // ============================================
 // Expense Filter Bar
-// Search + category + subcategory filter chips
+// Search + category + subcategory + payment method filter chips
 // ============================================
 
-import type { ExpenseCategory, ExpenseSubCategory } from '@/types'
-import { EXPENSE_CATEGORY_LABELS, EXPENSE_SUBCATEGORY_LABELS, EXPENSE_SUBCATEGORIES } from '@/utils/constants'
+import type { ExpenseCategory, ExpenseSubCategory, PaymentMethod } from '@/types'
+import {
+  EXPENSE_CATEGORY_LABELS,
+  EXPENSE_SUBCATEGORY_LABELS,
+  EXPENSE_SUBCATEGORIES,
+  PAYMENT_METHOD_LABELS,
+} from '@/utils/constants'
 import { clsx } from 'clsx'
-import { Search, X } from 'lucide-react'
+import { Search, X, Banknote, CreditCard, Coins } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 interface ExpenseFilterBarProps {
@@ -16,11 +21,19 @@ interface ExpenseFilterBarProps {
   onCategoryFilterChange: (cat: ExpenseCategory | null) => void
   subCategoryFilter: ExpenseSubCategory | null
   onSubCategoryFilterChange: (sub: ExpenseSubCategory | null) => void
+  paymentMethodFilter?: PaymentMethod | null
+  onPaymentMethodFilterChange?: (method: PaymentMethod | null) => void
   resultCount?: number
 }
 
 const CATEGORIES: ExpenseCategory[] = [
   'food', 'transport', 'accommodation', 'shopping', 'attraction', 'other',
+]
+
+const PAYMENT_METHODS: { key: PaymentMethod; icon: typeof Banknote }[] = [
+  { key: 'cash', icon: Banknote },
+  { key: 'card', icon: CreditCard },
+  { key: 'other', icon: Coins },
 ]
 
 export function ExpenseFilterBar({
@@ -30,6 +43,8 @@ export function ExpenseFilterBar({
   onCategoryFilterChange,
   subCategoryFilter,
   onSubCategoryFilterChange,
+  paymentMethodFilter,
+  onPaymentMethodFilterChange,
   resultCount,
 }: ExpenseFilterBarProps) {
   const [localQuery, setLocalQuery] = useState(searchQuery)
@@ -51,9 +66,10 @@ export function ExpenseFilterBar({
     onSearchChange('')
     onCategoryFilterChange(null)
     onSubCategoryFilterChange(null)
-  }, [onSearchChange, onCategoryFilterChange, onSubCategoryFilterChange])
+    onPaymentMethodFilterChange?.(null)
+  }, [onSearchChange, onCategoryFilterChange, onSubCategoryFilterChange, onPaymentMethodFilterChange])
 
-  const isActive = localQuery.trim() || categoryFilter || subCategoryFilter
+  const isActive = localQuery.trim() || categoryFilter || subCategoryFilter || paymentMethodFilter
 
   // Get subcategories for selected category
   const subCategories = categoryFilter
@@ -140,6 +156,34 @@ export function ExpenseFilterBar({
               )}
             >
               {EXPENSE_SUBCATEGORY_LABELS[sub] || sub}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Payment method chips */}
+      {onPaymentMethodFilterChange && (
+        <div className="flex items-center gap-1 sm:gap-1.5">
+          {PAYMENT_METHODS.map(({ key, icon: Icon }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onPaymentMethodFilterChange(
+                paymentMethodFilter === key ? null : key
+              )}
+              className={clsx(
+                'flex-shrink-0 flex items-center gap-1 px-2 py-0.5 text-[11px] font-medium rounded-full transition-colors whitespace-nowrap',
+                paymentMethodFilter === key
+                  ? key === 'cash'
+                    ? 'bg-emerald-500 text-white'
+                    : key === 'card'
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-zinc-500 text-white'
+                  : 'bg-zinc-50 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-600',
+              )}
+            >
+              <Icon className="size-3" />
+              {PAYMENT_METHOD_LABELS[key]}
             </button>
           ))}
         </div>

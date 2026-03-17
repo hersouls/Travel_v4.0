@@ -289,6 +289,7 @@ function expenseToFirestore(expense: Expense): DocumentData {
     latitude: toFiniteNumber(expense.latitude) ?? null,
     longitude: toFiniteNumber(expense.longitude) ?? null,
     address: expense.address || null,
+    paymentMethod: expense.paymentMethod || null,
     createdAt: toTimestamp(expense.createdAt),
     updatedAt: toTimestamp(expense.updatedAt),
   } as Record<string, unknown>)
@@ -311,6 +312,7 @@ function firestoreToExpenseData(data: DocumentData): Omit<Expense, 'id' | 'tripI
     latitude: toFiniteNumber(data.latitude),
     longitude: toFiniteNumber(data.longitude),
     address: data.address || undefined,
+    paymentMethod: data.paymentMethod || undefined,
     createdAt: fromTimestamp(data.createdAt),
     updatedAt: fromTimestamp(data.updatedAt),
   }
@@ -408,6 +410,7 @@ class SyncManager {
   private recentlyPushed = new Set<string>()
   private pendingDeletes = new Set<string>()
   private mergeInProgress = false
+  private mergeQueue: Array<() => Promise<void>> = []
   private syncGeneration = 0
   private notifyTimer: ReturnType<typeof setTimeout> | null = null
   private tripIdCache: Map<string, number> | null = null
@@ -486,6 +489,22 @@ class SyncManager {
     return this.pendingDeletes.has(firebaseId)
   }
 
+  // ---- Merge Queue (queue snapshots arriving during initial sync) ----
+
+  private async drainMergeQueue(): Promise<void> {
+    const queued = [...this.mergeQueue]
+    this.mergeQueue = []
+    if (queued.length === 0) return
+    console.log(`[Sync] Draining ${queued.length} queued snapshot(s) received during merge`)
+    for (const handler of queued) {
+      try {
+        await handler()
+      } catch (e) {
+        console.error('[Sync] Error processing queued snapshot:', e)
+      }
+    }
+  }
+
   // ---- Lifecycle ----
 
   async start(userId: string): Promise<void> {
@@ -501,6 +520,8 @@ class SyncManager {
         await this.performInitialSync(generation)
       } else {
         console.log('[Sync] Skipping initial sync (synced recently)')
+        // Build tripIdCache for real-time listeners even on cooldown skip (PERF-02)
+        await this.buildTripIdCache()
         this.notifySyncStatus({ status: 'done', step: '동기화 완료', skipped: true })
         this.notifyUpdate()
       }
@@ -541,6 +562,7 @@ class SyncManager {
     this.userId = null
     this.isSyncing = false
     this.mergeInProgress = false
+    this.mergeQueue = []
 
     // 타이머 정리
     this.echoTimers.forEach(t => clearTimeout(t))
@@ -722,7 +744,7 @@ class SyncManager {
       for (const r of phase2) {
         if (r.status === 'rejected') console.error('[Sync] Phase 2 partial failure:', r.reason)
       }
-      this.tripIdCache = null // Free cache after Phase 2
+      // tripIdCache is kept alive for real-time listeners (PERF-02)
       if (this.syncGeneration !== generation) return
 
       // Image sync (background, non-blocking for metadata)
@@ -752,6 +774,8 @@ class SyncManager {
     } finally {
       this.isSyncing = false
       this.mergeInProgress = false
+      // Process any snapshots that arrived during the merge
+      await this.drainMergeQueue()
     }
   }
 
@@ -1377,7 +1401,7 @@ class SyncManager {
     // Trip listener
     const tripsRef = collection(firestore, 'users', this.userId, 'trips')
     const tripUnsub = onSnapshot(tripsRef, async (snapshot) => {
-      if (this.mergeInProgress) return
+      const processTrips = async () => {
       let changed = false
       for (const change of snapshot.docChanges()) {
         const docId = change.doc.id
@@ -1389,20 +1413,17 @@ class SyncManager {
           const local = await database.getTripByFirebaseId(docId)
           if (!local) {
             const tripData = firestoreToTripData(data)
-            await dexieDb.trips.add({ ...tripData, firebaseId: docId, coverImage: '', coverImagePath: data.coverImagePath || undefined } as Trip)
+            const addedId = await dexieDb.trips.add({ ...tripData, firebaseId: docId, coverImage: '', coverImagePath: data.coverImagePath || undefined } as Trip)
+            if (this.tripIdCache && addedId) this.tripIdCache.set(docId, addedId as number)
             changed = true
             // Trigger background image download if cloud has image
             if (data.coverImagePath) {
-              (async () => {
-                try {
-                  const { downloadTripCoverImage } = await import('@/services/imageSync')
+              import('@/services/imageSync').then(({ scheduleImageDownload, downloadTripCoverImage }) => {
+                scheduleImageDownload(`trip-cover:${docId}`, async () => {
                   const added = await dexieDb.trips.where('firebaseId').equals(docId).first()
-                  if (added) {
-                    await downloadTripCoverImage(added)
-                    this.notifyUpdateDebounced()
-                  }
-                } catch (e) { console.error('[Sync] Trip image download failed:', e) }
-              })()
+                  if (added) await downloadTripCoverImage(added)
+                }, () => this.notifyUpdateDebounced())
+              }).catch(e => console.error('[Sync] Trip image download schedule failed:', e))
             }
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
@@ -1436,16 +1457,12 @@ class SyncManager {
               changed = true
               // Trigger background image download if cloud has updated image path
               if (data.coverImagePath && data.coverImagePath !== local.coverImagePath) {
-                (async () => {
-                  try {
-                    const { downloadTripCoverImage } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadTripCoverImage }) => {
+                  scheduleImageDownload(`trip-cover:${docId}`, async () => {
                     const t = await dexieDb.trips.get(local.id!)
-                    if (t) {
-                      await downloadTripCoverImage({ ...t, coverImage: '' })
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] Trip image download failed:', e) }
-                })()
+                    if (t) await downloadTripCoverImage({ ...t, coverImage: '' })
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] Trip image download schedule failed:', e))
               }
             } else if (!this.isRecentlyResolved('trip', docId)) {
               // Local is same or newer → check for field conflicts
@@ -1472,16 +1489,12 @@ class SyncManager {
             if (data.coverImagePath && data.coverImagePath !== local.coverImagePath) {
               await dexieDb.trips.update(local.id!, { coverImagePath: data.coverImagePath })
               if (!local.coverImage) {
-                (async () => {
-                  try {
-                    const { downloadTripCoverImage } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadTripCoverImage }) => {
+                  scheduleImageDownload(`trip-cover:${docId}`, async () => {
                     const t = await dexieDb.trips.get(local.id!)
-                    if (t) {
-                      await downloadTripCoverImage(t)
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] Trip image download failed:', e) }
-                })()
+                    if (t) await downloadTripCoverImage(t)
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] Trip image download schedule failed:', e))
               }
             }
           }
@@ -1493,18 +1506,22 @@ class SyncManager {
             await dexieDb.travelLogs.where('tripId').equals(local.id).delete()
             await dexieDb.expenses.where('tripId').equals(local.id).delete()
             await dexieDb.trips.delete(local.id)
+            if (this.tripIdCache) this.tripIdCache.delete(docId)
             changed = true
           }
         }
       }
       if (changed) this.notifyUpdateDebounced()
+      } // end processTrips
+      if (this.mergeInProgress) { this.mergeQueue.push(processTrips); return }
+      await processTrips()
     }, (error) => console.error('[Sync] Trip listener error:', error))
     this.unsubscribers.push(tripUnsub)
 
     // Plan listener
     const plansRef = collection(firestore, 'users', this.userId, 'plans')
     const planUnsub = onSnapshot(plansRef, async (snapshot) => {
-      if (this.mergeInProgress) return
+      const processPlans = async () => {
       let changed = false
       const affectedTripIds = new Set<number>()
       for (const change of snapshot.docChanges()) {
@@ -1524,16 +1541,12 @@ class SyncManager {
             changed = true
             // Trigger background image download if cloud has photos
             if (data.photoPaths?.length) {
-              (async () => {
-                try {
-                  const { downloadPlanPhotos } = await import('@/services/imageSync')
+              import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlanPhotos }) => {
+                scheduleImageDownload(`plan-photos:${docId}`, async () => {
                   const added = await dexieDb.plans.where('firebaseId').equals(docId).first()
-                  if (added) {
-                    await downloadPlanPhotos(added)
-                    this.notifyUpdateDebounced()
-                  }
-                } catch (e) { console.error('[Sync] Plan photos download failed:', e) }
-              })()
+                  if (added) await downloadPlanPhotos(added)
+                }, () => this.notifyUpdateDebounced())
+              }).catch(e => console.error('[Sync] Plan photos download schedule failed:', e))
             }
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
@@ -1567,16 +1580,12 @@ class SyncManager {
               changed = true
               // Trigger background image download if cloud has updated photo paths
               if (data.photoPaths?.length && JSON.stringify(data.photoPaths) !== JSON.stringify(local.photoPaths)) {
-                (async () => {
-                  try {
-                    const { downloadPlanPhotos } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlanPhotos }) => {
+                  scheduleImageDownload(`plan-photos:${docId}`, async () => {
                     const p = await dexieDb.plans.get(local.id!)
-                    if (p) {
-                      await downloadPlanPhotos({ ...p, photos: [] })
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] Plan photos download failed:', e) }
-                })()
+                    if (p) await downloadPlanPhotos({ ...p, photos: [] })
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] Plan photos download schedule failed:', e))
               }
             } else if (!this.isRecentlyResolved('plan', docId)) {
               const cloudFields = extractMergeableFields('plan', firestoreToPlanData(data) as unknown as Record<string, unknown>)
@@ -1602,16 +1611,12 @@ class SyncManager {
             if (data.photoPaths?.length && !local.photoPaths?.length) {
               await dexieDb.plans.update(local.id!, { photoPaths: data.photoPaths })
               if (!local.photos?.length) {
-                (async () => {
-                  try {
-                    const { downloadPlanPhotos } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlanPhotos }) => {
+                  scheduleImageDownload(`plan-photos:${docId}`, async () => {
                     const p = await dexieDb.plans.get(local.id!)
-                    if (p) {
-                      await downloadPlanPhotos({ ...p, photos: [] })
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] Plan photos download failed:', e) }
-                })()
+                    if (p) await downloadPlanPhotos({ ...p, photos: [] })
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] Plan photos download schedule failed:', e))
               }
             }
           }
@@ -1632,13 +1637,16 @@ class SyncManager {
         }))
         this.notifyUpdateDebounced()
       }
+      } // end processPlans
+      if (this.mergeInProgress) { this.mergeQueue.push(processPlans); return }
+      await processPlans()
     }, (error) => console.error('[Sync] Plan listener error:', error))
     this.unsubscribers.push(planUnsub)
 
     // Place listener
     const placesRef = collection(firestore, 'users', this.userId, 'places')
     const placeUnsub = onSnapshot(placesRef, async (snapshot) => {
-      if (this.mergeInProgress) return
+      const processPlaces = async () => {
       let changed = false
       for (const change of snapshot.docChanges()) {
         const docId = change.doc.id
@@ -1654,16 +1662,12 @@ class SyncManager {
             changed = true
             // Trigger background image download if cloud has photos
             if (data.photoPaths?.length) {
-              (async () => {
-                try {
-                  const { downloadPlacePhotos } = await import('@/services/imageSync')
+              import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlacePhotos }) => {
+                scheduleImageDownload(`place-photos:${docId}`, async () => {
                   const added = await dexieDb.places.where('firebaseId').equals(docId).first()
-                  if (added) {
-                    await downloadPlacePhotos(added)
-                    this.notifyUpdateDebounced()
-                  }
-                } catch (e) { console.error('[Sync] Place photos download failed:', e) }
-              })()
+                  if (added) await downloadPlacePhotos(added)
+                }, () => this.notifyUpdateDebounced())
+              }).catch(e => console.error('[Sync] Place photos download schedule failed:', e))
             }
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
@@ -1697,16 +1701,12 @@ class SyncManager {
               changed = true
               // Trigger background image download if cloud has updated photo paths
               if (data.photoPaths?.length && JSON.stringify(data.photoPaths) !== JSON.stringify(local.photoPaths)) {
-                (async () => {
-                  try {
-                    const { downloadPlacePhotos } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlacePhotos }) => {
+                  scheduleImageDownload(`place-photos:${docId}`, async () => {
                     const p = await dexieDb.places.get(local.id!)
-                    if (p) {
-                      await downloadPlacePhotos({ ...p, photos: [] })
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] Place photos download failed:', e) }
-                })()
+                    if (p) await downloadPlacePhotos({ ...p, photos: [] })
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] Place photos download schedule failed:', e))
               }
             } else if (!this.isRecentlyResolved('place', docId)) {
               const cloudFields = extractMergeableFields('place', firestoreToPlaceData(data) as unknown as Record<string, unknown>)
@@ -1732,16 +1732,12 @@ class SyncManager {
             if (data.photoPaths?.length && !local.photoPaths?.length) {
               await dexieDb.places.update(local.id!, { photoPaths: data.photoPaths })
               if (!local.photos?.length) {
-                (async () => {
-                  try {
-                    const { downloadPlacePhotos } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlacePhotos }) => {
+                  scheduleImageDownload(`place-photos:${docId}`, async () => {
                     const p = await dexieDb.places.get(local.id!)
-                    if (p) {
-                      await downloadPlacePhotos({ ...p, photos: [] })
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] Place photos download failed:', e) }
-                })()
+                    if (p) await downloadPlacePhotos({ ...p, photos: [] })
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] Place photos download schedule failed:', e))
               }
             }
           }
@@ -1754,13 +1750,16 @@ class SyncManager {
         }
       }
       if (changed) this.notifyUpdateDebounced()
+      } // end processPlaces
+      if (this.mergeInProgress) { this.mergeQueue.push(processPlaces); return }
+      await processPlaces()
     }, (error) => console.error('[Sync] Place listener error:', error))
     this.unsubscribers.push(placeUnsub)
 
     // Settings listener
     const settingsDocRef = doc(firestore, 'users', this.userId, 'settings', 'main')
     const settingsUnsub = onSnapshot(settingsDocRef, async (docSnap) => {
-      if (this.mergeInProgress) return
+      const processSettings = async () => {
       if (this.isEcho('settings')) return
       if (!docSnap.exists()) return
       const data = docSnap.data()
@@ -1783,13 +1782,16 @@ class SyncManager {
         })
         this.notifyUpdateDebounced()
       }
+      } // end processSettings
+      if (this.mergeInProgress) { this.mergeQueue.push(processSettings); return }
+      await processSettings()
     }, (error) => console.error('[Sync] Settings listener error:', error))
     this.unsubscribers.push(settingsUnsub)
 
     // RouteSegment listener
     const segmentsRef = collection(firestore, 'users', this.userId, 'routeSegments')
     const segmentUnsub = onSnapshot(segmentsRef, async (snapshot) => {
-      if (this.mergeInProgress) return
+      const processSegments = async () => {
       let changed = false
       for (const change of snapshot.docChanges()) {
         const docId = change.doc.id
@@ -1827,13 +1829,16 @@ class SyncManager {
         }
       }
       if (changed) this.notifyUpdateDebounced()
+      } // end processSegments
+      if (this.mergeInProgress) { this.mergeQueue.push(processSegments); return }
+      await processSegments()
     }, (error) => console.error('[Sync] RouteSegment listener error:', error))
     this.unsubscribers.push(segmentUnsub)
 
     // TravelLog listener
     const logsRef = collection(firestore, 'users', this.userId, 'travelLogs')
     const logUnsub = onSnapshot(logsRef, async (snapshot) => {
-      if (this.mergeInProgress) return
+      const processLogs = async () => {
       let changed = false
       for (const change of snapshot.docChanges()) {
         const docId = change.doc.id
@@ -1859,16 +1864,12 @@ class SyncManager {
             changed = true
             // Trigger background image download if cloud has photo
             if (data.photoPath) {
-              (async () => {
-                try {
-                  const { downloadTravelLogPhoto } = await import('@/services/imageSync')
+              import('@/services/imageSync').then(({ scheduleImageDownload, downloadTravelLogPhoto }) => {
+                scheduleImageDownload(`travellog-photo:${docId}`, async () => {
                   const added = await dexieDb.travelLogs.where('firebaseId').equals(docId).first()
-                  if (added) {
-                    await downloadTravelLogPhoto(added)
-                    this.notifyUpdateDebounced()
-                  }
-                } catch (e) { console.error('[Sync] TravelLog photo download failed:', e) }
-              })()
+                  if (added) await downloadTravelLogPhoto(added)
+                }, () => this.notifyUpdateDebounced())
+              }).catch(e => console.error('[Sync] TravelLog photo download schedule failed:', e))
             }
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
@@ -1879,32 +1880,24 @@ class SyncManager {
               changed = true
               // Trigger background image download if cloud has updated photo path
               if (data.photoPath && data.photoPath !== local.photoPath) {
-                (async () => {
-                  try {
-                    const { downloadTravelLogPhoto } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadTravelLogPhoto }) => {
+                  scheduleImageDownload(`travellog-photo:${docId}`, async () => {
                     const l = await dexieDb.travelLogs.get(local.id!)
-                    if (l) {
-                      await downloadTravelLogPhoto(l)
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] TravelLog photo download failed:', e) }
-                })()
+                    if (l) await downloadTravelLogPhoto(l)
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] TravelLog photo download schedule failed:', e))
               }
             }
             // Image path sync — independent of timestamp (paths arrive later via fire-and-forget upload)
             if (data.photoPath && data.photoPath !== local.photoPath) {
               await dexieDb.travelLogs.update(local.id!, { photoPath: data.photoPath, thumbnailPhotoPath: data.thumbnailPhotoPath })
               if (!local.photo) {
-                (async () => {
-                  try {
-                    const { downloadTravelLogPhoto } = await import('@/services/imageSync')
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadTravelLogPhoto }) => {
+                  scheduleImageDownload(`travellog-photo:${docId}`, async () => {
                     const l = await dexieDb.travelLogs.get(local.id!)
-                    if (l) {
-                      await downloadTravelLogPhoto(l)
-                      this.notifyUpdateDebounced()
-                    }
-                  } catch (e) { console.error('[Sync] TravelLog photo download failed:', e) }
-                })()
+                    if (l) await downloadTravelLogPhoto(l)
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] TravelLog photo download schedule failed:', e))
               }
             }
           }
@@ -1917,13 +1910,16 @@ class SyncManager {
         }
       }
       if (changed) this.notifyUpdateDebounced()
+      } // end processLogs
+      if (this.mergeInProgress) { this.mergeQueue.push(processLogs); return }
+      await processLogs()
     }, (error) => console.error('[Sync] TravelLog listener error:', error))
     this.unsubscribers.push(logUnsub)
 
     // Expense listener
     const expensesRef = collection(firestore, 'users', this.userId, 'expenses')
     const expenseUnsub = onSnapshot(expensesRef, async (snapshot) => {
-      if (this.mergeInProgress) return
+      const processExpenses = async () => {
       let changed = false
       for (const change of snapshot.docChanges()) {
         const docId = change.doc.id
@@ -1961,6 +1957,9 @@ class SyncManager {
         }
       }
       if (changed) this.notifyUpdateDebounced()
+      } // end processExpenses
+      if (this.mergeInProgress) { this.mergeQueue.push(processExpenses); return }
+      await processExpenses()
     }, (error) => console.error('[Sync] Expense listener error:', error))
     this.unsubscribers.push(expenseUnsub)
   }
@@ -1979,6 +1978,7 @@ class SyncManager {
   private batchTimer: ReturnType<typeof setTimeout> | null = null
   private failedOps: Array<{ type: 'set' | 'delete'; ref: DocumentReference; data?: DocumentData; echoKey?: string; retryCount?: number }> = []
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private retryAttempt = 0
   private static readonly BATCH_DEBOUNCE_MS = 500
   private static readonly MAX_BATCH_SIZE = 450 // Firestore limit is 500
   private static readonly MAX_RETRY_COUNT = 3
@@ -2041,6 +2041,7 @@ class SyncManager {
 
       try {
         await batch.commit()
+        this.retryAttempt = 0
       } catch (error) {
         console.error('[Sync] Batch commit failed, falling back to individual writes:', error)
         // Fallback: try individual writes
@@ -2072,15 +2073,24 @@ class SyncManager {
 
   private scheduleRetry(): void {
     if (this.retryTimer) return
+    this.retryAttempt++
+    if (this.retryAttempt > 3) {
+      console.error(`[Sync] Giving up after ${this.retryAttempt} retry cycles. ${this.failedOps.length} ops permanently failed.`)
+      this.failedOps = []
+      this.retryAttempt = 0
+      return
+    }
+    const delay = 10_000 * Math.pow(2, this.retryAttempt - 1) // 10s, 20s, 40s
+    console.log(`[Sync] Scheduling retry #${this.retryAttempt} in ${delay / 1000}s for ${this.failedOps.length} ops`)
     this.retryTimer = setTimeout(async () => {
       this.retryTimer = null
-      if (this.failedOps.length === 0) return
+      if (this.failedOps.length === 0) { this.retryAttempt = 0; return }
       const ops = [...this.failedOps]
       this.failedOps = []
-      console.log(`[Sync] Retrying ${ops.length} failed operations...`)
+      console.log(`[Sync] Retrying ${ops.length} failed operations (attempt ${this.retryAttempt})...`)
       this.batchQueue.push(...ops)
       this.scheduleBatchFlush()
-    }, 10_000)
+    }, delay)
   }
 
   // ============================================

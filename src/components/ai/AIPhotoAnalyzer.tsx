@@ -4,7 +4,7 @@
 // ============================================
 
 import { useState } from 'react'
-import { Camera, Sparkles, Loader2, Check } from 'lucide-react'
+import { Camera, Sparkles, Check } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -27,8 +27,16 @@ interface AIPhotoAnalyzerProps {
 }
 
 export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps) {
+  const aiProvider = useSettingsStore((state) => state.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((state) => state.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((state) => state.geminiApiKey)
+  const geminiModel = useSettingsStore((state) => state.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageBase64, setImageBase64] = useState<string | null>(null)
@@ -55,7 +63,7 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
   }
 
   const handleAnalyze = async () => {
-    if (!claudeApiKey) {
+    if (!isServerKey && !apiKey) {
       setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
@@ -73,8 +81,10 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
       const request = buildImageAnalysisContext(imageBase64, format)
       const response = await generateStructured<AnalysisResult>(
         request,
-        claudeApiKey,
-        claudeModel,
+        apiKey,
+        model,
+        undefined,
+        aiProvider,
       )
 
       if (typeof response === 'string') {

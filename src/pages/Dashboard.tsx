@@ -117,9 +117,13 @@ export function Dashboard() {
               leftIcon={<Trash2 className="size-3.5" />}
               onClick={async () => {
                 if (confirm(`${bulk.count}개 여행을 삭제하시겠습니까?`)) {
-                  await deleteTrips(bulk.selectedIds)
-                  toast.success(`${bulk.count}개 여행이 삭제되었습니다`)
-                  bulk.clearSelection()
+                  try {
+                    await deleteTrips(bulk.selectedIds)
+                    toast.success(`${bulk.count}개 여행이 삭제되었습니다`)
+                    bulk.clearSelection()
+                  } catch {
+                    toast.error('여행 삭제 중 오류가 발생했습니다')
+                  }
                 }
               }}
             >
@@ -168,7 +172,7 @@ export function Dashboard() {
                 <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
                   {stats.total}
                 </p>
-                <p className="text-sm text-zinc-500">전체 여행</p>
+                <p className="text-sm text-zinc-400">전체 여행</p>
               </div>
             </div>
           </Card>
@@ -181,7 +185,7 @@ export function Dashboard() {
                 <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
                   {stats.upcoming}
                 </p>
-                <p className="text-sm text-zinc-500">예정된 여행</p>
+                <p className="text-sm text-zinc-400">예정된 여행</p>
               </div>
             </div>
           </Card>
@@ -194,7 +198,7 @@ export function Dashboard() {
                 <p className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
                   {stats.totalPlans}
                 </p>
-                <p className="text-sm text-zinc-500">전체 일정</p>
+                <p className="text-sm text-zinc-400">전체 일정</p>
               </div>
             </div>
           </Card>
@@ -215,7 +219,7 @@ export function Dashboard() {
               <h2 className="text-lg font-semibold text-[var(--foreground)] mb-2">
                 {searchQuery ? '검색 결과가 없습니다' : '아직 여행이 없습니다'}
               </h2>
-              <p className="text-zinc-500 mb-6">
+              <p className="text-zinc-400 mb-6">
                 {searchQuery ? '다른 검색어로 시도해보세요' : '첫 번째 여행을 만들어보세요!'}
               </p>
               {!searchQuery && (
@@ -329,7 +333,7 @@ export function Dashboard() {
                     <h3 className="font-semibold text-[var(--foreground)] group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                       {trip.title}
                     </h3>
-                    <p className="text-sm text-zinc-500 mt-1">
+                    <p className="text-sm text-zinc-400 mt-1">
                       {formatDateRange(trip.startDate, trip.endDate)}
                     </p>
                     <div className="flex items-center justify-between mt-3">

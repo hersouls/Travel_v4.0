@@ -200,7 +200,7 @@ export function MobileNav() {
                 <button
                   type="button"
                   onClick={handleNoTripFallback}
-                  className="w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px] text-zinc-400 dark:text-zinc-500"
+                  className="w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px] text-zinc-400 dark:text-zinc-400"
                 >
                   <item.icon className="size-5" />
                   <span className="text-[10px] font-medium">{item.label}</span>
@@ -212,7 +212,7 @@ export function MobileNav() {
                     'w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px]',
                     item.isActive
                       ? 'text-primary-600 dark:text-primary-400'
-                      : 'text-zinc-400 dark:text-zinc-500 hover:text-primary-600 dark:hover:text-primary-400'
+                      : 'text-zinc-400 dark:text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400'
                   )}
                   aria-current={item.isActive ? 'page' : undefined}
                 >

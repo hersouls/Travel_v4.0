@@ -50,7 +50,7 @@ interface TripState {
 
 export const useTripStore = create<TripState>()(
   devtools(
-    (set, get) => ({
+    (set, _get) => ({
       // Initial State
       trips: [],
       currentTrip: null,

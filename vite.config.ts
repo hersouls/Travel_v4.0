@@ -3,14 +3,35 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { visualizer } from 'rollup-plugin-visualizer'
 import { resolve } from 'path'
+import { readFileSync, writeFileSync } from 'fs'
 
 const isAnalyze = process.env.ANALYZE === 'true'
+
+// BUG-12: Plugin to inject build hash into sw.js after build
+function swBuildHashPlugin() {
+  return {
+    name: 'sw-build-hash',
+    closeBundle() {
+      const swPath = resolve(__dirname, 'dist/sw.js')
+      try {
+        const content = readFileSync(swPath, 'utf-8')
+        const hash = Date.now().toString(36)
+        const updated = content.replace('__BUILD_HASH__', hash)
+        writeFileSync(swPath, updated, 'utf-8')
+        console.log(`[sw-build-hash] Injected hash: ${hash}`)
+      } catch {
+        // sw.js may not exist in dev mode
+      }
+    },
+  }
+}
 
 export default defineConfig({
   base: '/',
   plugins: [
     react(),
     tailwindcss(),
+    swBuildHashPlugin(),
     // Bundle analyzer - only enabled when ANALYZE=true
     isAnalyze &&
       visualizer({

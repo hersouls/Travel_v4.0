@@ -10,7 +10,7 @@ export interface OpenAITTSOptions {
   text: string
   model: 'tts-1' | 'tts-1-hd'
   voice: string
-  apiKey: string
+  apiKey?: string // optional: 서버 키 모드에서는 생략
   onProgress?: ProgressCallback
 }
 
@@ -53,12 +53,14 @@ class OpenAITTSService {
     this._isGenerating = true
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (options.apiKey) {
+        headers['x-openai-api-key'] = options.apiKey
+      }
+
       const response = await fetch('/api/openai-tts', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-openai-api-key': options.apiKey,
-        },
+        headers,
         body: JSON.stringify({
           text: options.text,
           model: options.model,

@@ -18,12 +18,12 @@ interface TimePickerProps {
 const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
 const minutes = ['00', '15', '30', '45']
 
-export function TimePicker({ label, value, onChange, minTime, className, required, align = 'start' }: TimePickerProps & { align?: 'start' | 'end' }) {
+export function TimePicker({ label, value, onChange, minTime, className, required: _required, align = 'start' }: TimePickerProps & { align?: 'start' | 'end' }) {
   const id = useId()
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const [selectedHour, selectedMinute] = value ? value.split(':') : ['09', '00']
+  const [_selectedHour, _selectedMinute] = value ? value.split(':') : ['09', '00']
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -46,7 +46,14 @@ export function TimePicker({ label, value, onChange, minTime, className, require
   const now = new Date()
   const currentHour = now.getHours()
   const quickOptions = [
-    { label: '지금', hour: currentHour.toString().padStart(2, '0'), minute: (Math.ceil(now.getMinutes() / 15) * 15 % 60).toString().padStart(2, '0') },
+    (() => {
+      const rounded = Math.ceil(now.getMinutes() / 15) * 15
+      return {
+        label: '지금',
+        hour: ((currentHour + Math.floor(rounded / 60)) % 24).toString().padStart(2, '0'),
+        minute: (rounded % 60).toString().padStart(2, '0'),
+      }
+    })(),
     { label: '+1시간', hour: ((currentHour + 1) % 24).toString().padStart(2, '0'), minute: '00' },
     { label: '+2시간', hour: ((currentHour + 2) % 24).toString().padStart(2, '0'), minute: '00' },
   ]

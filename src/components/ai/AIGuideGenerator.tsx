@@ -4,7 +4,7 @@
 // ============================================
 
 import { useState, useRef } from 'react'
-import { Sparkles, Loader2, Check, X } from 'lucide-react'
+import { Sparkles, Loader2, Check } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -21,8 +21,16 @@ interface AIGuideGeneratorProps {
 }
 
 export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuideGeneratorProps) {
+  const aiProvider = useSettingsStore((state) => state.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((state) => state.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((state) => state.geminiApiKey)
+  const geminiModel = useSettingsStore((state) => state.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const [generatedText, setGeneratedText] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
@@ -30,7 +38,7 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
   const textRef = useRef('')
 
   const handleGenerate = () => {
-    if (!claudeApiKey) {
+    if (!isServerKey && !apiKey) {
       setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
@@ -44,8 +52,8 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
 
     generateWithStreaming(
       { type: 'guide', context },
-      claudeApiKey,
-      claudeModel,
+      apiKey,
+      model,
       (chunk) => {
         textRef.current += chunk
         setGeneratedText(textRef.current)
@@ -57,6 +65,7 @@ export function AIGuideGenerator({ plan, trip, onApply, onClose, open }: AIGuide
         setError(err.message)
         setIsGenerating(false)
       },
+      aiProvider,
     )
   }
 

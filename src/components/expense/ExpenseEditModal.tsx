@@ -4,9 +4,9 @@
 // ============================================
 
 import { useState, useCallback, useEffect } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Banknote, CreditCard, Coins, ListChecks } from 'lucide-react'
 import { clsx } from 'clsx'
-import type { Expense, ExpenseCategory, ExpenseItem, ExpenseSubCategory } from '@/types'
+import type { Expense, ExpenseCategory, ExpenseItem, ExpenseSubCategory, PaymentMethod } from '@/types'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button, IconButton } from '@/components/ui/Button'
 import {
@@ -14,7 +14,9 @@ import {
   EXPENSE_SUBCATEGORY_LABELS,
   EXPENSE_SUBCATEGORIES,
   CURRENCY_SYMBOLS,
+  PAYMENT_METHOD_LABELS,
 } from '@/utils/constants'
+import { expenseSchema } from '@/lib/validations'
 
 interface ExpenseEditModalProps {
   expense: Expense | null
@@ -25,6 +27,11 @@ interface ExpenseEditModalProps {
 
 const CATEGORIES: ExpenseCategory[] = ['food', 'transport', 'accommodation', 'shopping', 'attraction', 'other']
 const CURRENCIES = Object.keys(CURRENCY_SYMBOLS)
+const PAYMENT_METHODS: { key: PaymentMethod; icon: typeof Banknote }[] = [
+  { key: 'cash', icon: Banknote },
+  { key: 'card', icon: CreditCard },
+  { key: 'other', icon: Coins },
+]
 
 export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEditModalProps) {
   const [category, setCategory] = useState<ExpenseCategory>('food')
@@ -34,6 +41,8 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
   const [currency, setCurrency] = useState('KRW')
   const [receiptDate, setReceiptDate] = useState('')
   const [items, setItems] = useState<ExpenseItem[]>([{ name: '', amount: 0 }])
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('')
+  const [detailMode, setDetailMode] = useState(false)
 
   // Populate form when expense changes or modal opens
   useEffect(() => {
@@ -43,6 +52,7 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
       setStoreName(expense.storeName)
       setMemo(expense.memo || '')
       setCurrency(expense.currency)
+      setPaymentMethod(expense.paymentMethod || '')
 
       // 날짜: receiptDate가 없으면 timestamp에서 추출
       const date = expense.receiptDate
@@ -52,8 +62,12 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
       // 항목: items가 비었거나 금액 합이 0이면 totalAmount로 단일 항목 생성
       if (expense.items.length > 0 && expense.items.some(i => i.amount > 0)) {
         setItems([...expense.items])
+        // 수량/단가가 있는 항목이 하나라도 있으면 상세 모드 활성화
+        const hasDetail = expense.items.some(i => i.quantity && i.unitPrice)
+        setDetailMode(hasDetail)
       } else {
         setItems([{ name: expense.storeName || '합계', amount: expense.totalAmount }])
+        setDetailMode(false)
       }
     }
   }, [expense, isOpen])
@@ -71,9 +85,24 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
 
   const handleItemChange = useCallback((index: number, field: keyof ExpenseItem, value: string | number) => {
     setItems((prev) =>
-      prev.map((item, i) =>
-        i === index ? { ...item, [field]: field === 'amount' ? Number(value) || 0 : value } : item,
-      ),
+      prev.map((item, i) => {
+        if (i !== index) return item
+        const updated = { ...item }
+        if (field === 'name') {
+          updated.name = value as string
+        } else if (field === 'quantity') {
+          updated.quantity = Number(value) || 0
+          if (updated.unitPrice) {
+            updated.amount = (updated.quantity || 1) * updated.unitPrice
+          }
+        } else if (field === 'unitPrice') {
+          updated.unitPrice = Number(value) || 0
+          updated.amount = (updated.quantity || 1) * updated.unitPrice
+        } else if (field === 'amount') {
+          updated.amount = Number(value) || 0
+        }
+        return updated
+      }),
     )
   }, [])
 
@@ -85,18 +114,41 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
       ? validItems.reduce((sum, item) => sum + item.amount, 0)
       : totalAmount
 
+    const finalItems = validItems.length > 0 ? validItems : [{ name: storeName.trim(), amount: finalTotal }]
+
+    // BUG-06: Validate with Zod schema before saving
+    const result = expenseSchema.safeParse({
+      category,
+      storeName: storeName.trim(),
+      totalAmount: finalTotal,
+      currency,
+      items: finalItems,
+      receiptDate: receiptDate || undefined,
+      paymentMethod: paymentMethod || undefined,
+    })
+    if (!result.success) {
+      console.warn('[ExpenseEditModal] Validation failed:', result.error.flatten())
+      return
+    }
+
     onSave(expense.id, {
       category,
       subCategory: subCategory || undefined,
       storeName: storeName.trim(),
       memo: memo.trim() || undefined,
-      items: validItems.length > 0 ? validItems : [{ name: storeName.trim(), amount: finalTotal }],
+      items: finalItems,
       totalAmount: finalTotal,
       currency,
       receiptDate: receiptDate || undefined,
+      paymentMethod: paymentMethod || undefined,
     })
     onClose()
-  }, [expense, category, subCategory, storeName, memo, items, totalAmount, currency, receiptDate, onSave, onClose])
+  }, [expense, category, subCategory, storeName, memo, items, totalAmount, currency, receiptDate, paymentMethod, onSave, onClose])
+
+  const inputClass = clsx(
+    'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
+    'border border-transparent focus:border-primary-500 outline-none',
+  )
 
   return (
     <Dialog open={isOpen} onClose={onClose}>
@@ -159,8 +211,8 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
               placeholder="상점 또는 결제처"
               className={clsx(
                 'w-full px-3 py-2 text-sm rounded-lg',
-                'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
-                'border border-transparent focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none',
+                inputClass,
+                'focus:ring-1 focus:ring-primary-500',
               )}
             />
           </div>
@@ -172,11 +224,7 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
-                className={clsx(
-                  'w-full px-3 py-2 text-sm rounded-lg',
-                  'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
-                  'border border-transparent focus:border-primary-500 outline-none',
-                )}
+                className={clsx('w-full px-3 py-2 text-sm rounded-lg', inputClass)}
               >
                 {CURRENCIES.map((cur) => (
                   <option key={cur} value={cur}>
@@ -191,12 +239,35 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
                 type="date"
                 value={receiptDate}
                 onChange={(e) => setReceiptDate(e.target.value)}
-                className={clsx(
-                  'w-full px-3 py-2 text-sm rounded-lg',
-                  'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
-                  'border border-transparent focus:border-primary-500 outline-none',
-                )}
+                className={clsx('w-full px-3 py-2 text-sm rounded-lg', inputClass)}
               />
+            </div>
+          </div>
+
+          {/* Payment Method */}
+          <div>
+            <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1.5">결제 수단</label>
+            <div className="flex gap-1.5">
+              {PAYMENT_METHODS.map(({ key, icon: Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setPaymentMethod(paymentMethod === key ? '' : key)}
+                  className={clsx(
+                    'flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full transition-colors',
+                    paymentMethod === key
+                      ? key === 'cash'
+                        ? 'bg-emerald-500 text-white'
+                        : key === 'card'
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-zinc-500 text-white'
+                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400',
+                  )}
+                >
+                  <Icon className="size-3" />
+                  {PAYMENT_METHOD_LABELS[key]}
+                </button>
+              ))}
             </div>
           </div>
 
@@ -204,13 +275,28 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">항목</label>
-              <button
-                type="button"
-                onClick={handleAddItem}
-                className="flex items-center gap-0.5 text-xs text-primary-600 dark:text-primary-400 hover:underline flex-shrink-0"
-              >
-                <Plus className="size-3" />추가
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDetailMode(!detailMode)}
+                  className={clsx(
+                    'flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded transition-colors',
+                    detailMode
+                      ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                      : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300',
+                  )}
+                >
+                  <ListChecks className="size-3" />
+                  상세
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  className="flex items-center gap-0.5 text-xs text-primary-600 dark:text-primary-400 hover:underline flex-shrink-0"
+                >
+                  <Plus className="size-3" />추가
+                </button>
+              </div>
             </div>
             <div className="space-y-2">
               {items.map((item, idx) => (
@@ -222,21 +308,50 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
                     placeholder="항목명"
                     className={clsx(
                       'flex-1 min-w-0 px-2.5 py-1.5 text-sm rounded-lg',
-                      'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
-                      'border border-transparent focus:border-primary-500 outline-none',
+                      inputClass,
                     )}
                   />
-                  <input
-                    type="number"
-                    value={item.amount || ''}
-                    onChange={(e) => handleItemChange(idx, 'amount', e.target.value)}
-                    placeholder="금액"
-                    className={clsx(
-                      'w-20 sm:w-24 flex-shrink-0 px-2 py-1.5 text-sm rounded-lg text-right',
-                      'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
-                      'border border-transparent focus:border-primary-500 outline-none',
-                    )}
-                  />
+                  {detailMode ? (
+                    <>
+                      <input
+                        type="number"
+                        value={item.quantity || ''}
+                        onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                        placeholder="수량"
+                        min="1"
+                        className={clsx(
+                          'w-14 flex-shrink-0 px-1.5 py-1.5 text-sm rounded-lg text-center',
+                          inputClass,
+                        )}
+                      />
+                      <span className="text-xs text-zinc-400 flex-shrink-0">&times;</span>
+                      <input
+                        type="number"
+                        value={item.unitPrice || ''}
+                        onChange={(e) => handleItemChange(idx, 'unitPrice', e.target.value)}
+                        placeholder="단가"
+                        className={clsx(
+                          'w-20 flex-shrink-0 px-1.5 py-1.5 text-sm rounded-lg text-right',
+                          inputClass,
+                        )}
+                      />
+                      <span className="text-xs text-zinc-400 flex-shrink-0">=</span>
+                      <span className="w-16 flex-shrink-0 text-sm text-right font-medium text-[var(--foreground)]">
+                        {(item.amount || 0).toLocaleString()}
+                      </span>
+                    </>
+                  ) : (
+                    <input
+                      type="number"
+                      value={item.amount || ''}
+                      onChange={(e) => handleItemChange(idx, 'amount', e.target.value)}
+                      placeholder="금액"
+                      className={clsx(
+                        'w-20 sm:w-24 flex-shrink-0 px-2 py-1.5 text-sm rounded-lg text-right',
+                        inputClass,
+                      )}
+                    />
+                  )}
                   {items.length > 1 && (
                     <IconButton plain color="danger" onClick={() => handleRemoveItem(idx)} aria-label="항목 삭제">
                       <Trash2 className="size-3.5" />
@@ -251,7 +366,7 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
           <div className="flex justify-between items-center px-1 pt-2 border-t border-zinc-200 dark:border-zinc-700">
             <span className="text-sm font-medium text-zinc-600 dark:text-zinc-400">합계</span>
             <span className="text-base font-bold text-[var(--foreground)]">
-              ₩{Math.round(totalAmount).toLocaleString()}
+              {CURRENCY_SYMBOLS[currency] || ''}{Math.round(totalAmount).toLocaleString()}
             </span>
           </div>
 
@@ -265,8 +380,7 @@ export function ExpenseEditModal({ expense, isOpen, onClose, onSave }: ExpenseEd
               rows={2}
               className={clsx(
                 'w-full px-3 py-2 text-sm rounded-lg resize-none',
-                'bg-zinc-100 dark:bg-zinc-800 text-[var(--foreground)]',
-                'border border-transparent focus:border-primary-500 outline-none',
+                inputClass,
               )}
             />
           </div>

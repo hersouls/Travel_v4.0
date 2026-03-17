@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Sparkles, Download, FileDown, MessageSquare, Share2, Link2, WifiOff, ChevronDown, ChevronRight, BookOpen, Wallet } from 'lucide-react'
-import { Card, CardHeader, CardContent } from '@/components/ui/Card'
+import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Sparkles, Download, FileDown, MessageSquare, Share2, Link2, ChevronDown, ChevronRight, BookOpen, Wallet } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
@@ -40,14 +40,13 @@ export function TripDetail() {
   const trip = useCurrentTrip()
   const plans = useCurrentPlans()
   const isLoading = useTripLoading()
-  const { loadTrip, deleteTrip, toggleFavorite, addPlan, deletePlan, updatePlan } = useTripStore(
+  const { loadTrip, deleteTrip, toggleFavorite, addPlan, deletePlan } = useTripStore(
     useShallow((s) => ({
       loadTrip: s.loadTrip,
       deleteTrip: s.deleteTrip,
       toggleFavorite: s.toggleFavorite,
       addPlan: s.addPlan,
       deletePlan: s.deletePlan,
-      updatePlan: s.updatePlan,
     }))
   )
 
@@ -247,7 +246,7 @@ export function TripDetail() {
                       try {
                         await downloadItineraryPDF(trip, plans)
                         toast.success('PDF 파일이 다운로드되었습니다')
-                      } catch (e) {
+                      } catch {
                         toast.error('PDF 생성에 실패했습니다')
                       }
                     }}

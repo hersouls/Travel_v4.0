@@ -138,6 +138,7 @@ export function Header() {
             color="primary"
             size="sm"
             leftIcon={<Plus className="size-4" />}
+            aria-label="새 여행"
           >
             <span className="hidden sm:inline">새 여행</span>
           </Button>

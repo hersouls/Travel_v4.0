@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, X, Clock, MapPin, Globe, Youtube, Camera, Loader2, Sparkles, ExternalLink, Volume2, Eye, EyeOff, ChevronDown, ChevronUp, BookmarkPlus, Download, Upload, FileJson } from 'lucide-react'
+import { ArrowLeft, X, MapPin, Globe, Youtube, Camera, Loader2, Sparkles, ExternalLink, Volume2, Eye, EyeOff, ChevronDown, ChevronUp, BookmarkPlus, Download, Upload, FileJson } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { MemoRenderer } from '@/components/memo'
 import { Button, IconButton } from '@/components/ui/Button'
@@ -432,7 +432,7 @@ export function PlanForm() {
         return
       }
 
-      const newPlanId = await db.importSinglePlan(data, parseInt(tripId), formData.day)
+      const _newPlanId = await db.importSinglePlan(data, parseInt(tripId), formData.day)
       toast.success('일정이 가져오기되었습니다')
       navigate(-1)
     } catch (error) {

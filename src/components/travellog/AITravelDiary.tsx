@@ -26,11 +26,20 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
   const [isGenerating, setIsGenerating] = useState(false)
   const abortRef = useRef(false)
 
-  const apiKey = useSettingsStore((s) => s.claudeApiKey) || ''
+  const aiProvider = useSettingsStore((s) => s.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((s) => s.aiKeyMode) || 'server'
+  const claudeApiKey = useSettingsStore((s) => s.claudeApiKey)
+  const claudeModel = useSettingsStore((s) => s.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((s) => s.geminiApiKey)
+  const geminiModel = useSettingsStore((s) => s.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const handleGenerate = useCallback(async () => {
-    if (!apiKey) {
-      toast.error('설정에서 Claude API 키를 입력해주세요')
+    if (!isServerKey && !apiKey) {
+      toast.error('설정에서 API 키를 입력해주세요')
       return
     }
 
@@ -81,7 +90,7 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
       await generateWithStreaming(
         context,
         apiKey,
-        'sonnet',
+        model,
         (chunk) => {
           if (!abortRef.current) {
             setText((prev) => prev + chunk)
@@ -92,11 +101,12 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
           toast.error(`생성 실패: ${err.message}`)
           setIsGenerating(false)
         },
+        aiProvider,
       )
     } catch {
       setIsGenerating(false)
     }
-  }, [apiKey, logs, selectedDay, tripTitle, totalDays])
+  }, [apiKey, model, aiProvider, isServerKey, logs, selectedDay, tripTitle, totalDays])
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(text).then(() => {
@@ -169,7 +179,7 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
           <Button
             color="primary"
             onClick={handleGenerate}
-            disabled={isGenerating || !apiKey}
+            disabled={isGenerating || (!isServerKey && !apiKey)}
             leftIcon={
               isGenerating ? (
                 <Loader2 className="size-4 animate-spin" />
@@ -182,9 +192,9 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
             {isGenerating ? '생성 중...' : '일기 생성'}
           </Button>
 
-          {!apiKey && (
+          {!isServerKey && !apiKey && (
             <p className="text-xs text-warning-600 text-center">
-              설정 → Claude API 키를 먼저 입력해주세요
+              설정 → API 키를 먼저 입력해주세요
             </p>
           )}
 

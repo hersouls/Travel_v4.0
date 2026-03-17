@@ -51,7 +51,6 @@ import {
   MapPin,
   Receipt,
   Search,
-  X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'

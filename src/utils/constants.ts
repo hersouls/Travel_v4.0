@@ -202,7 +202,8 @@ export const TRAVEL_LOG_TYPE_LABELS: Record<string, string> = {
 
 // AI Error/Status Messages
 export const AI_MESSAGES = {
-  API_KEY_MISSING: 'API 키가 설정되지 않았습니다. 설정에서 Claude API 키를 입력하세요.',
+  API_KEY_MISSING: 'API 키가 설정되지 않았습니다. 설정에서 API 키를 확인하세요.',
+  SERVER_KEY_ERROR: '서버 API 키를 사용할 수 없습니다. 관리자에게 문의하거나 직접 입력 모드로 전환하세요.',
   PARSE_ERROR: 'AI 응답을 파싱할 수 없습니다. 다시 시도해주세요.',
 } as const
 
@@ -304,4 +305,11 @@ export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: '현금',
   card: '카드',
   other: '기타',
+} as const
+
+// Payment Method Icons (Lucide icon names)
+export const PAYMENT_METHOD_ICONS: Record<string, string> = {
+  cash: 'Banknote',
+  card: 'CreditCard',
+  other: 'Coins',
 } as const

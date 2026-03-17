@@ -2,7 +2,7 @@
 // Directions Service - Route Fetching & Caching
 // ============================================
 
-import type { RouteSegment, TravelMode, Plan } from '@/types'
+import type { RouteSegment, TravelMode } from '@/types'
 import {
   getRouteSegment,
   upsertRouteSegment,

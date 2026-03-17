@@ -38,7 +38,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import { Icon, divIcon } from 'leaflet'
-import { Card, CardContent } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
@@ -51,7 +51,7 @@ import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@
 import { toast } from '@/stores/uiStore'
 import { formatTime } from '@/utils/format'
 import { getTripDurationSafe, getTripDayDate } from '@/utils/timezone'
-import { formatRating, formatReviewCount, extractPlaceInfo } from '@/services/googleMaps'
+import { formatReviewCount, extractPlaceInfo } from '@/services/googleMaps'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
 import { getMarkerColor } from '@/utils/mapStyles'
 import {
@@ -322,13 +322,13 @@ export function DayDetail() {
       addPlan: s.addPlan,
     }))
   )
-  const { claudeEnabled, claudeApiKey } = useSettingsStore(
+  const { claudeEnabled, aiKeyMode } = useSettingsStore(
     useShallow((s) => ({
       claudeEnabled: s.claudeEnabled,
-      claudeApiKey: s.claudeApiKey,
+      aiKeyMode: s.aiKeyMode,
     }))
   )
-  const isAIAvailable = claudeEnabled || !!claudeApiKey
+  const isAIAvailable = claudeEnabled || aiKeyMode === 'server'
 
   const dayTravelLogs = useTravelLogStore((s) => s.logs)
   const loadLogsForDay = useTravelLogStore((s) => s.loadLogsForDay)
@@ -388,7 +388,7 @@ export function DayDetail() {
 
   // Plans with coordinates for map
   const plansWithCoords = useMemo(() => {
-    return dayPlans.filter((p) => p.latitude && p.longitude)
+    return dayPlans.filter((p) => typeof p.latitude === 'number' && typeof p.longitude === 'number')
   }, [dayPlans])
 
   // Calculate map center
@@ -503,8 +503,12 @@ export function DayDetail() {
 
   const handleDeletePlan = async () => {
     if (planToDelete) {
-      await deletePlan(planToDelete)
-      toast.success('일정이 삭제되었습니다')
+      try {
+        await deletePlan(planToDelete)
+        toast.success('일정이 삭제되었습니다')
+      } catch {
+        toast.error('일정 삭제에 실패했습니다')
+      }
     }
     setPlanToDelete(null)
   }
@@ -525,7 +529,7 @@ export function DayDetail() {
         googleInfo: extracted.googleInfo,
       })
       toast.success('장소 정보가 업데이트되었습니다')
-    } catch (error) {
+    } catch {
       toast.error('정보 업데이트에 실패했습니다')
     } finally {
       setRefreshingPlanId(null)
@@ -538,8 +542,44 @@ export function DayDetail() {
     const existingMaxOrder =
       dayPlans.length > 0 ? Math.max(...dayPlans.map((p) => p.order ?? 0)) : -1
 
-    for (const day of itinerary.days) {
-      for (const plan of day.plans) {
+    try {
+      for (const day of itinerary.days) {
+        for (const plan of day.plans) {
+          await addPlan({
+            tripId: trip!.id!,
+            day: dayNumber,
+            placeName: plan.placeName,
+            startTime: plan.startTime,
+            endTime: plan.endTime || '',
+            type: plan.type || 'attraction',
+            address: plan.address || '',
+            memo: plan.memo || '',
+            latitude: plan.latitude,
+            longitude: plan.longitude,
+            photos: [],
+            order: existingMaxOrder + 1 + addedCount,
+          })
+          addedCount++
+        }
+      }
+      toast.success(`AI가 ${addedCount}개 일정을 추천했습니다`)
+    } catch {
+      toast.error(addedCount > 0 ? `${addedCount}개 추가 후 오류 발생` : 'AI 추천 적용에 실패했습니다')
+    }
+  }
+
+  // AI Day Suggest: replace existing plans with revised plans
+  const handleApplySuggest = async (suggestion: DaySuggestion) => {
+    try {
+      // Delete existing plans for this day
+      for (const plan of dayPlans) {
+        if (plan.id) {
+          await deletePlan(plan.id)
+        }
+      }
+      // Add revised plans
+      let addedCount = 0
+      for (const plan of suggestion.revisedPlans) {
         await addPlan({
           tripId: trip!.id!,
           day: dayNumber,
@@ -552,42 +592,14 @@ export function DayDetail() {
           latitude: plan.latitude,
           longitude: plan.longitude,
           photos: [],
-          order: existingMaxOrder + 1 + addedCount,
+          order: addedCount,
         })
         addedCount++
       }
+      toast.success(`AI가 일정을 ${addedCount}개로 개선했습니다`)
+    } catch {
+      toast.error('AI 일정 개선 적용 중 오류가 발생했습니다')
     }
-    toast.success(`AI가 ${addedCount}개 일정을 추천했습니다`)
-  }
-
-  // AI Day Suggest: replace existing plans with revised plans
-  const handleApplySuggest = async (suggestion: DaySuggestion) => {
-    // Delete existing plans for this day
-    for (const plan of dayPlans) {
-      if (plan.id) {
-        await deletePlan(plan.id)
-      }
-    }
-    // Add revised plans
-    let addedCount = 0
-    for (const plan of suggestion.revisedPlans) {
-      await addPlan({
-        tripId: trip!.id!,
-        day: dayNumber,
-        placeName: plan.placeName,
-        startTime: plan.startTime,
-        endTime: plan.endTime || '',
-        type: plan.type || 'attraction',
-        address: plan.address || '',
-        memo: plan.memo || '',
-        latitude: plan.latitude,
-        longitude: plan.longitude,
-        photos: [],
-        order: addedCount,
-      })
-      addedCount++
-    }
-    toast.success(`AI가 일정을 ${addedCount}개로 개선했습니다`)
   }
 
   if (isLoading) {

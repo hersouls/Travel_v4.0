@@ -173,13 +173,14 @@ export const useTravelLogStore = create<TravelLogState>()(
           sendBroadcast('LOG_DELETED', { id, tripId })
 
           // Deferred remote delete with undo
-          let undone = false
+          const undoController = new AbortController()
           const timer = setTimeout(async () => {
-            if (undone) return
+            if (undoController.signal.aborted) return
             if (syncManager.isActive() && firebaseId) {
               try {
                 await syncManager.deleteRemoteTravelLog(firebaseId)
               } catch (e) {
+                if (undoController.signal.aborted) return
                 console.error('[TravelLogStore] Remote delete failed:', e)
               }
             }
@@ -194,7 +195,7 @@ export const useTravelLogStore = create<TravelLogState>()(
             action: {
               label: '되돌리기',
               onClick: async () => {
-                undone = true
+                undoController.abort()
                 clearTimeout(timer)
                 if (firebaseId) syncManager.removePendingDelete(firebaseId)
                 // Restore from snapshot

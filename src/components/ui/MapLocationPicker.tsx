@@ -41,7 +41,7 @@ export function MapLocationPicker({
   const [latInput, setLatInput] = useState('')
   const [lngInput, setLngInput] = useState('')
   const [address, setAddress] = useState('')
-  const [placeName, setPlaceName] = useState('')
+  const [_placeName, setPlaceName] = useState('')
   const [isGeocoding, setIsGeocoding] = useState(false)
   const [latError, setLatError] = useState('')
   const [lngError, setLngError] = useState('')
@@ -202,9 +202,8 @@ export function MapLocationPicker({
     }
 
     if (hasError || !latStr || !lngStr) {
-      if (!latStr && !lngStr) {
-        onLocationChangeRef.current(null)
-      }
+      // Clear location when coordinates are incomplete or invalid
+      onLocationChangeRef.current(null)
       return
     }
 

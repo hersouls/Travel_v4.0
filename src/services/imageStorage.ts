@@ -110,22 +110,44 @@ export async function compressImage(
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(img, 0, 0, width, height)
 
-      // Adaptive quality compression to meet target file size
-      let currentQuality = quality
-      let base64 = canvas.toDataURL(mimeType, currentQuality)
-      let currentSize = getBase64Size(base64)
+      // BUG-10: Use canvas.toBlob() (async) instead of toDataURL() (sync)
+      // to avoid blocking the main thread during iterative quality reduction
       const targetSize = targetSizeKB * 1024
 
-      // Iteratively reduce quality if file is too large
-      let attempts = 0
-      while (currentSize > targetSize && currentQuality > 0.3 && attempts < 5) {
-        currentQuality -= 0.1
-        base64 = canvas.toDataURL(mimeType, currentQuality)
-        currentSize = getBase64Size(base64)
-        attempts++
-      }
+      const canvasToBase64Async = (q: number): Promise<string> =>
+        new Promise((res, rej) => {
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) { rej(new Error('toBlob returned null')); return }
+              const reader = new FileReader()
+              reader.onload = () => res(reader.result as string)
+              reader.onerror = rej
+              reader.readAsDataURL(blob)
+            },
+            mimeType,
+            q,
+          )
+        })
 
-      resolve(base64)
+      try {
+        let currentQuality = quality
+        let base64 = await canvasToBase64Async(currentQuality)
+        let currentSize = getBase64Size(base64)
+        let attempts = 0
+
+        while (currentSize > targetSize && currentQuality > 0.3 && attempts < 5) {
+          currentQuality -= 0.1
+          // Yield to main thread between iterations
+          await new Promise(r => requestAnimationFrame(r))
+          base64 = await canvasToBase64Async(currentQuality)
+          currentSize = getBase64Size(base64)
+          attempts++
+        }
+
+        resolve(base64)
+      } catch (e) {
+        reject(e)
+      }
     }
 
     img.onerror = () => reject(new Error('Failed to load image'))
@@ -155,7 +177,16 @@ export async function compressImageLegacy(
  * Convert Base64 string to Blob
  */
 export function base64ToBlob(base64: string): Blob {
-  const [header, data] = base64.split(',')
+  const parts = base64.split(',')
+  const header = parts[0]
+  const data = parts[1]
+  if (!data) {
+    // No comma in string — treat entire input as raw base64
+    const binary = atob(base64)
+    const array = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i)
+    return new Blob([array], { type: 'image/jpeg' })
+  }
   const mimeMatch = header.match(/:(.*?);/)
   const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg'
   const binary = atob(data)
@@ -194,10 +225,10 @@ export function getBase64Size(base64: string): number {
  * Format bytes to human-readable string
  */
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
+  if (bytes <= 0) return '0 Bytes'
   const k = 1024
   const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1)
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 

@@ -6,7 +6,6 @@
 import { doc, setDoc, getDoc, deleteDoc, Timestamp } from 'firebase/firestore'
 import { getFirebaseDb } from '@/services/firebase'
 import * as db from '@/services/database'
-import type { Trip, Plan } from '@/types'
 import { useAuthStore } from '@/stores/authStore'
 
 // ============================================

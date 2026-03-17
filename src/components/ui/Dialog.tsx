@@ -14,6 +14,7 @@ interface DialogProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full'
   children: ReactNode
   className?: string
+  'aria-label'?: string
 }
 
 const sizeStyles = {
@@ -25,10 +26,10 @@ const sizeStyles = {
   full: 'max-w-[calc(100vw-2rem)]',
 }
 
-export function Dialog({ open, onClose, size = 'md', children, className }: DialogProps) {
+export function Dialog({ open, onClose, size = 'md', children, className, 'aria-label': ariaLabel }: DialogProps) {
   return (
     <Transition show={open} as={Fragment}>
-      <HeadlessDialog onClose={onClose} className="relative z-[2000]">
+      <HeadlessDialog onClose={onClose} className="relative z-[2000]" aria-label={ariaLabel}>
         <TransitionChild
           as={Fragment}
           enter="ease-out duration-300"

@@ -5,7 +5,7 @@
 import * as Headless from '@headlessui/react'
 import { clsx } from 'clsx'
 import { type ReactNode, forwardRef, useState, useCallback } from 'react'
-import { Link, type LinkProps } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 
 // ============================================
 // Ripple Effect Hook
@@ -274,7 +274,7 @@ export const Button = forwardRef<HTMLButtonElement | HTMLAnchorElement, ButtonPr
     // Render as span (for wrapping in label)
     if (as === 'span') {
       return (
-        <span className={classes} ref={ref as React.Ref<HTMLAnchorElement>}>
+        <span className={classes} ref={ref as React.Ref<HTMLSpanElement>}>
           {content}
         </span>
       )

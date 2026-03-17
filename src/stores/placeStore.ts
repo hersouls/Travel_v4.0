@@ -198,12 +198,15 @@ export const usePlaceStore = create<PlaceState>()(
           sendBroadcast('PLACE_DELETED', { id })
 
           // Deferred Firestore deletion with undo
-          let undone = false
+          const undoController = new AbortController()
           const timer = setTimeout(async () => {
-            if (undone) return
+            if (undoController.signal.aborted) return
             if (syncManager.isActive() && firebaseId) {
               try { await syncManager.deleteRemotePlace(firebaseId) }
-              catch (e) { console.error('[Sync] Failed to delete remote place:', e) }
+              catch (e) {
+                if (undoController.signal.aborted) return
+                console.error('[Sync] Failed to delete remote place:', e)
+              }
             }
             if (firebaseId) syncManager.removePendingDelete(firebaseId)
           }, UNDO_TIMEOUT_MS)
@@ -216,7 +219,7 @@ export const usePlaceStore = create<PlaceState>()(
             action: {
               label: '되돌리기',
               onClick: async () => {
-                undone = true
+                undoController.abort()
                 clearTimeout(timer)
                 if (firebaseId) syncManager.removePendingDelete(firebaseId)
                 const newId = await db.addPlace({ ...placeSnapshot, id: undefined } as Omit<Place, 'id'>)

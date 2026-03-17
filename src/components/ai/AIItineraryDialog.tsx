@@ -9,7 +9,7 @@ import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/
 import { Button } from '@/components/ui/Button'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { generateStructured, buildItineraryContext, parseItineraryResponse } from '@/services/claudeService'
-import type { Trip, GeneratedItinerary, PlanType } from '@/types'
+import type { Trip, GeneratedItinerary } from '@/types'
 import { AI_MESSAGES, INTEREST_OPTIONS, STYLE_OPTIONS, PLAN_TYPE_LABELS } from '@/utils/constants'
 
 const BUDGET_OPTIONS = [
@@ -35,8 +35,16 @@ export function AIItineraryDialog({
   onClose,
   open,
 }: AIItineraryDialogProps) {
+  const aiProvider = useSettingsStore((state) => state.aiProvider) || 'claude'
+  const aiKeyMode = useSettingsStore((state) => state.aiKeyMode) || 'server'
   const claudeApiKey = useSettingsStore((state) => state.claudeApiKey)
   const claudeModel = useSettingsStore((state) => state.claudeModel) || 'sonnet'
+  const geminiApiKey = useSettingsStore((state) => state.geminiApiKey)
+  const geminiModel = useSettingsStore((state) => state.geminiModel) || 'flash'
+
+  const isServerKey = aiKeyMode !== 'custom'
+  const apiKey = isServerKey ? undefined : (aiProvider === 'gemini' ? geminiApiKey : claudeApiKey)
+  const model = aiProvider === 'gemini' ? geminiModel : claudeModel
 
   const [interests, setInterests] = useState<string[]>(['관광', '맛집'])
   const [style, setStyle] = useState('균형')
@@ -53,7 +61,7 @@ export function AIItineraryDialog({
   }
 
   const handleGenerate = async () => {
-    if (!claudeApiKey) {
+    if (!isServerKey && !apiKey) {
       setError(AI_MESSAGES.API_KEY_MISSING)
       return
     }
@@ -73,9 +81,10 @@ export function AIItineraryDialog({
       const context = buildItineraryContext(trip, totalDays, { interests, style, budget })
       const response = await generateStructured<string>(
         { type: 'itinerary', context },
-        claudeApiKey,
-        claudeModel,
+        apiKey,
+        model,
         controller.signal,
+        aiProvider,
       )
 
       const parsed = typeof response === 'string'
