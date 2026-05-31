@@ -5,11 +5,19 @@
 import type { Expense } from '@/types'
 import { EXPENSE_CATEGORY_LABELS, EXPENSE_SUBCATEGORY_LABELS, PAYMENT_METHOD_LABELS } from '@/utils/constants'
 
+// CSV/Excel 수식 인젝션(CWE-1236) 방지: 수식 트리거 문자로 시작하는 셀을
+// 작은따옴표로 무력화하여 스프레드시트가 텍스트로 처리하게 한다.
+const FORMULA_TRIGGERS = /^[=+\-@\t\r]/
+function sanitizeCell(value: string): string {
+  return FORMULA_TRIGGERS.test(value) ? `'${value}` : value
+}
+
 function escapeCSV(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`
+  const v = sanitizeCell(value)
+  if (v.includes(',') || v.includes('"') || v.includes('\n') || v.includes('\r')) {
+    return `"${v.replace(/"/g, '""')}"`
   }
-  return value
+  return v
 }
 
 export function generateExpenseCSV(expenses: Expense[]): string {
@@ -64,13 +72,13 @@ function expenseToRow(e: Expense) {
     '시간': date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
     '카테고리': EXPENSE_CATEGORY_LABELS[e.category] || e.category,
     '세부카테고리': e.subCategory ? (EXPENSE_SUBCATEGORY_LABELS[e.subCategory] || e.subCategory) : '',
-    '상점명': e.storeName,
-    '항목': e.items.map((i) => `${i.name}(${i.amount})`).join('; '),
+    '상점명': sanitizeCell(e.storeName),
+    '항목': sanitizeCell(e.items.map((i) => `${i.name}(${i.amount})`).join('; ')),
     '금액': e.totalAmount,
     '통화': e.currency,
     '결제수단': e.paymentMethod ? (PAYMENT_METHOD_LABELS[e.paymentMethod] || e.paymentMethod) : '',
-    '메모': e.memo || '',
-    '주소': e.address || '',
+    '메모': sanitizeCell(e.memo || ''),
+    '주소': sanitizeCell(e.address || ''),
   }
 }
 

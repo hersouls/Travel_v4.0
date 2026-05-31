@@ -63,8 +63,11 @@ export function getTripDuration(startDate: string, endDate: string): number {
  * Format time (HH:mm)
  */
 export function formatTime(time: string): string {
+  // 빈 문자열/형식 불일치 시 'NaN:undefined' 대신 원본을 그대로 반환
+  if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return time ?? ''
   const [hours, minutes] = time.split(':')
   const h = parseInt(hours, 10)
+  if (Number.isNaN(h)) return time
   const period = h >= 12 ? '오후' : '오전'
   const hour = h === 0 ? 12 : h > 12 ? h - 12 : h
   return `${period} ${hour}:${minutes}`

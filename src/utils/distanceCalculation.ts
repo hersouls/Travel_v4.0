@@ -110,7 +110,8 @@ export function findNearestPlan(
   let minDist = maxDistanceMeters
 
   for (const plan of plans) {
-    if (!plan.latitude || !plan.longitude) continue
+    // 0(적도/본초자오선)은 유효 좌표이므로 truthiness가 아닌 null 검사 (모듈 내 다른 곳과 일관)
+    if (plan.latitude == null || plan.longitude == null) continue
     const dist = haversineDistance(lat, lng, plan.latitude, plan.longitude)
     if (dist < minDist) {
       minDist = dist
