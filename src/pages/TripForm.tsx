@@ -96,8 +96,9 @@ export function TripForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validate(formData)) {
-      const firstError = Object.values(errors)[0]
+    const validationErrors = validate(formData)
+    if (validationErrors) {
+      const firstError = Object.values(validationErrors)[0]
       if (firstError) toast.error(firstError)
       return
     }

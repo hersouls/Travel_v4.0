@@ -522,8 +522,8 @@ export function DayDetail() {
       await updatePlan(plan.id, {
         ...plan,
         address: extracted.address || plan.address,
-        latitude: extracted.latitude || plan.latitude,
-        longitude: extracted.longitude || plan.longitude,
+        latitude: extracted.latitude ?? plan.latitude,
+        longitude: extracted.longitude ?? plan.longitude,
         website: extracted.website || plan.website,
         googlePlaceId: extracted.googleInfo.placeId,
         googleInfo: extracted.googleInfo,
@@ -570,17 +570,14 @@ export function DayDetail() {
 
   // AI Day Suggest: replace existing plans with revised plans
   const handleApplySuggest = async (suggestion: DaySuggestion) => {
+    // 삭제를 먼저 커밋하면 add 실패 시 원본이 유실되므로, 새 plan을 먼저 추가하고
+    // 모두 성공한 뒤에 원본을 삭제한다. 추가 도중 실패하면 추가분만 롤백하여 원본을 보존한다.
+    const originalIds = dayPlans.map((p) => p.id).filter((id): id is number => id != null)
+    const addedIds: number[] = []
     try {
-      // Delete existing plans for this day
-      for (const plan of dayPlans) {
-        if (plan.id) {
-          await deletePlan(plan.id)
-        }
-      }
-      // Add revised plans
       let addedCount = 0
       for (const plan of suggestion.revisedPlans) {
-        await addPlan({
+        const newId = await addPlan({
           tripId: trip!.id!,
           day: dayNumber,
           placeName: plan.placeName,
@@ -594,10 +591,23 @@ export function DayDetail() {
           photos: [],
           order: addedCount,
         })
+        addedIds.push(newId)
         addedCount++
+      }
+      // 추가가 모두 성공한 후에만 원본 삭제
+      for (const id of originalIds) {
+        await deletePlan(id)
       }
       toast.success(`AI가 일정을 ${addedCount}개로 개선했습니다`)
     } catch {
+      // 부분 추가분을 롤백하여 원본을 source of truth로 유지
+      for (const id of addedIds) {
+        try {
+          await deletePlan(id)
+        } catch {
+          // best-effort rollback
+        }
+      }
       toast.error('AI 일정 개선 적용 중 오류가 발생했습니다')
     }
   }

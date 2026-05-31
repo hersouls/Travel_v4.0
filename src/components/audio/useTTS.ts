@@ -52,6 +52,9 @@ export function useTTS(): UseTTSReturn {
     }
     return 1.0
   })
+  // 항상 최신 rate를 가리키는 ref — play()가 동기적으로 호출될 때 stale closure를 피한다
+  const rateRef = useRef(rate)
+  rateRef.current = rate
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null)
   const [currentText, setCurrentText] = useState<string>('')
@@ -100,8 +103,13 @@ export function useTTS(): UseTTSReturn {
     }
 
     return () => {
-      ttsService.stop()
-      openaiTtsService.dispose()
+      // 공유 싱글톤은 이 훅이 활성 재생 소유자일 때만 정리한다.
+      // (다른 마운트된 player가 재생 중인 OpenAI 오디오를 idle 훅이 dispose하는 것을 방지)
+      if (activeModeRef.current === 'openai') {
+        openaiTtsService.dispose()
+      } else {
+        ttsService.stop()
+      }
     }
   }, [])
 
@@ -186,7 +194,7 @@ export function useTTS(): UseTTSReturn {
         // 배타적 재생
         useAudioStore.getState().playAudio('tts')
 
-        openaiTtsService.setRate(rate)
+        openaiTtsService.setRate(rateRef.current)
         openaiTtsService.generate({
           text,
           model: openaiTtsModel as 'tts-1' | 'tts-1-hd',
@@ -222,7 +230,7 @@ export function useTTS(): UseTTSReturn {
       useAudioStore.getState().playAudio('tts')
 
       const options: TTSOptions = {
-        rate,
+        rate: rateRef.current,
         voice: (voice !== undefined ? voice : selectedVoice) ?? undefined
       }
 
@@ -259,7 +267,7 @@ export function useTTS(): UseTTSReturn {
         }
       })
     },
-    [rate, selectedVoice, fullText, ttsMode, openaiApiKey, openaiTtsModel, openaiTtsVoice]
+    [selectedVoice, fullText, ttsMode, openaiApiKey, openaiTtsModel, openaiTtsVoice]
   )
 
   const seek = useCallback((percentage: number) => {
@@ -361,13 +369,30 @@ export function useTTS(): UseTTSReturn {
 
   const setRate = useCallback((newRate: number) => {
     const clampedRate = Math.max(0.5, Math.min(2.0, newRate))
+    rateRef.current = clampedRate // 동기 재시작이 새 rate를 쓰도록 즉시 갱신
     setRateState(clampedRate)
     if (activeModeRef.current === 'openai') {
       openaiTtsService.setRate(clampedRate)
-    } else {
-      ttsService.setRate(clampedRate)
+      return
     }
-  }, [])
+    ttsService.setRate(clampedRate)
+    // Web Speech(SpeechSynthesisUtterance.rate)는 재생 중 변경 불가 → 현재 offset에서 재시작해 적용.
+    // Google fallback(audioElement)은 playbackRate가 즉시 반영되므로 재시작 불필요.
+    if (
+      activeModeRef.current === 'browser' &&
+      !ttsService.isFallbackMode() &&
+      (ttsService.isSpeaking() || ttsService.isPaused())
+    ) {
+      const textToUse = fullText || currentText
+      if (textToUse) {
+        ttsService.stop()
+        const currentSlice = textToUse.slice(startOffset)
+        setTimeout(() => {
+          play(currentSlice, selectedVoice, startOffset)
+        }, 50)
+      }
+    }
+  }, [fullText, currentText, play, startOffset, selectedVoice])
 
   return {
     isSupported,

@@ -92,7 +92,17 @@ export function SharedTrip() {
           return
         }
 
-        setData(docSnap.data() as SharedTripData)
+        // 공개 read-only 컬렉션이므로 원격 문서 형태를 신뢰하지 않고 런타임 검증
+        const raw = docSnap.data() as Partial<SharedTripData>
+        if (!raw?.trip?.startDate || !raw?.trip?.endDate || !Array.isArray(raw.plans)) {
+          setError('공유된 여행 데이터가 올바르지 않습니다.')
+          setIsLoading(false)
+          return
+        }
+        const safePlans = raw.plans.filter(
+          (p) => p && typeof p.startTime === 'string' && typeof p.day === 'number',
+        )
+        setData({ ...raw, plans: safePlans } as SharedTripData)
       } catch (err) {
         console.error('[SharedTrip] Failed to fetch shared trip:', err)
         const message = err instanceof Error ? err.message : String(err)
@@ -122,7 +132,7 @@ export function SharedTrip() {
 
     // Sort by startTime within each day
     for (const day of Object.keys(grouped)) {
-      grouped[parseInt(day)].sort((a, b) => a.startTime.localeCompare(b.startTime))
+      grouped[parseInt(day)].sort((a, b) => (a.startTime ?? '').localeCompare(b.startTime ?? ''))
     }
 
     return grouped

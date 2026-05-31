@@ -76,6 +76,12 @@ export function GoogleMapView({
     })
   }, [isLoaded, mapCenter, zoom, mapTypeControl])
 
+  // 초기화 이후 mapTypeControl prop 변경을 라이브로 반영 (init effect는 한 번만 실행되므로 무시됨)
+  useEffect(() => {
+    if (!mapInstanceRef.current) return
+    mapInstanceRef.current.setOptions({ mapTypeControl })
+  }, [mapTypeControl])
+
   // Update markers
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return

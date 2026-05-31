@@ -59,6 +59,11 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
       setResult(null)
       setError(null)
     }
+    reader.onerror = () => {
+      setError('사진을 불러오지 못했습니다. 다른 파일을 선택해 주세요.')
+      setImagePreview(null)
+      setImageBase64(null)
+    }
     reader.readAsDataURL(file)
   }
 

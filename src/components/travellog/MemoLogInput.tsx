@@ -77,7 +77,9 @@ export function MemoLogInput({
   const buildLog = useCallback((): Omit<TravelLog, 'id' | 'createdAt' | 'updatedAt'> | null => {
     if (!memo.trim()) return null
 
-    const timestamp = new Date()
+    // 오늘이 아니라 선택한 Day N의 실제 날짜에 시각을 결합해야 정렬/그룹핑/내보내기가 올바름
+    const dayDate = getTripDayDate(tripStartDate, day)
+    const timestamp = dayDate && !Number.isNaN(dayDate.getTime()) ? new Date(dayDate) : new Date()
     const [hours, minutes] = time.split(':').map(Number)
     timestamp.setHours(hours, minutes, 0, 0)
 
@@ -91,7 +93,7 @@ export function MemoLogInput({
       photo: photoPreview || undefined,
       thumbnailPhoto: thumbnailBase64 || undefined,
     }
-  }, [tripId, day, time, memo, placeName, photoPreview, thumbnailBase64])
+  }, [tripId, day, time, memo, placeName, photoPreview, thumbnailBase64, tripStartDate])
 
   const handleConfirm = useCallback(() => {
     const log = buildLog()

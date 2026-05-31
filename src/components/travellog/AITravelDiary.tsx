@@ -24,7 +24,7 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [text, setText] = useState('')
   const [isGenerating, setIsGenerating] = useState(false)
-  const abortRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   const aiProvider = useSettingsStore((s) => s.aiProvider) || 'claude'
   const aiKeyMode = useSettingsStore((s) => s.aiKeyMode) || 'server'
@@ -52,7 +52,8 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
 
     setIsGenerating(true)
     setText('')
-    abortRef.current = false
+    const ac = new AbortController()
+    abortRef.current = ac
 
     const logSummaries = targetLogs
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
@@ -92,19 +93,23 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
         apiKey,
         model,
         (chunk) => {
-          if (!abortRef.current) {
+          if (!ac.signal.aborted) {
             setText((prev) => prev + chunk)
           }
         },
-        () => setIsGenerating(false),
+        () => {
+          if (!ac.signal.aborted) setIsGenerating(false)
+        },
         (err) => {
+          if (ac.signal.aborted) return // 닫기로 인한 중단이면 토스트 생략
           toast.error(`생성 실패: ${err.message}`)
           setIsGenerating(false)
         },
         aiProvider,
+        ac.signal,
       )
     } catch {
-      setIsGenerating(false)
+      if (!ac.signal.aborted) setIsGenerating(false)
     }
   }, [apiKey, model, aiProvider, isServerKey, logs, selectedDay, tripTitle, totalDays])
 
@@ -115,7 +120,7 @@ export function AITravelDiary({ logs, tripTitle, totalDays }: AITravelDiaryProps
   }, [text])
 
   const handleClose = useCallback(() => {
-    abortRef.current = true
+    abortRef.current?.abort() // 진행 중인 스트림 요청을 실제로 취소
     setOpen(false)
     setIsGenerating(false)
   }, [])

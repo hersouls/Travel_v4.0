@@ -88,7 +88,8 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
   const originalRef = useRef<{
     day: number; time: string; memo: string; placeName: string;
     latitude?: number; longitude?: number; address?: string;
-    expense: string | null; hasNewPhoto: boolean
+    expense: string | null; hasNewPhoto: boolean;
+    simpleExpenseAmount: string; simpleExpenseCategory: string
   } | null>(null)
 
   // Initialize state from log prop
@@ -126,6 +127,8 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
       address: log.address,
       expense: log.expense ? JSON.stringify(log.expense) : null,
       hasNewPhoto: false,
+      simpleExpenseAmount: log.expense && log.type !== 'receipt' ? String(log.expense.totalAmount) : '',
+      simpleExpenseCategory: log.expense && log.type !== 'receipt' ? log.expense.category : '',
     }
   }, [log])
 
@@ -142,7 +145,9 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
     if (address !== orig.address) return true
     if (newPhotoPreview) return true
     if (expense && orig.expense && JSON.stringify(expense) !== orig.expense) return true
-    if (simpleExpenseAmount || simpleExpenseCategory) return true
+    // 기존 값과 비교 (단순 truthy 검사는 변경 없는 기존 경비도 dirty로 오판)
+    if (simpleExpenseAmount !== orig.simpleExpenseAmount) return true
+    if (simpleExpenseCategory !== orig.simpleExpenseCategory) return true
     return false
   }, [day, time, memo, placeName, latitude, longitude, address, newPhotoPreview, expense, simpleExpenseAmount, simpleExpenseCategory])
 
@@ -236,7 +241,15 @@ export function EditLogModal({ log, totalDays, tripCountry, onSave, onClose }: E
     setIsSaving(true)
     setError(null)
     try {
-      const [hours, minutes] = time.split(':').map(Number)
+      const [h, m] = time.split(':')
+      const hours = Number(h)
+      const minutes = Number(m)
+      // 빈/잘못된 시간이면 Invalid Date → toISOString()이 throw 하므로 사전 차단
+      if (!time || Number.isNaN(hours) || Number.isNaN(minutes)) {
+        setError('시간을 입력해주세요.')
+        setIsSaving(false)
+        return
+      }
       const ts = new Date(log.timestamp)
       ts.setHours(hours, minutes, 0, 0)
 

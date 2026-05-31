@@ -74,7 +74,8 @@ export function TripMap() {
 
   // Create polyline for Leaflet
   const routePositions = useMemo(() => {
-    return plansWithCoords
+    // memoized 배열을 in-place sort로 변형하지 않도록 복사본을 정렬
+    return [...plansWithCoords]
       .sort((a, b) => a.day - b.day || a.startTime.localeCompare(b.startTime))
       .map((p) => [p.latitude!, p.longitude!] as [number, number])
   }, [plansWithCoords])

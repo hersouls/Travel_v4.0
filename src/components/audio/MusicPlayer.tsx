@@ -42,6 +42,10 @@ export function MusicPlayer() {
   const [volume, setVolume] = useState(0.2)
   const [isMuted, setIsMuted] = useState(false)
   const audioRef = useRef<HTMLAudioElement>(null)
+  // 배타 재생 양보 전 재생 의도를 기억 (TTS 종료 후 BGM 재개용)
+  const isPlayingRef = useRef(isPlaying)
+  isPlayingRef.current = isPlaying
+  const wasPlayingBeforeExclusive = useRef(false)
 
   const currentAudioId = useAudioStore((state) => state.currentAudioId)
   const playAudio = useAudioStore((state) => state.playAudio)
@@ -60,10 +64,16 @@ export function MusicPlayer() {
     }
   }, [volume, isMuted])
 
-  // 배타적 재생: 다른 오디오(TTS) 재생 시 음악 일시정지
+  // 배타적 재생: 다른 오디오(TTS) 재생 시 음악 일시정지, 종료 시 재개
   useEffect(() => {
     if (currentAudioId && currentAudioId !== 'bgm') {
+      // 다른 소스(TTS)가 점유 → 현재 재생 의도를 기억하고 양보
+      wasPlayingBeforeExclusive.current = isPlayingRef.current
       setIsPlaying(false)
+    } else if (currentAudioId === null && wasPlayingBeforeExclusive.current) {
+      // 배타 소스 해제 → 이전에 재생 중이었으면 BGM 재개
+      wasPlayingBeforeExclusive.current = false
+      setIsPlaying(true)
     }
   }, [currentAudioId])
 
@@ -102,7 +112,8 @@ export function MusicPlayer() {
   // 1초 후 자동 재생 (다른 오디오 없을 때)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!currentAudioId) {
+      // 마운트 시점의 stale 값이 아닌 라이브 store 값을 읽어, 1초 내 다른 오디오가 시작된 경우 충돌 방지
+      if (!useAudioStore.getState().currentAudioId) {
         setIsPlaying(true)
       }
     }, 1000)

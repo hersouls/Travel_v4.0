@@ -174,8 +174,8 @@ export function PlanForm() {
         placeName: extracted.placeName || prev.placeName,
         address: extracted.address || prev.address,
         website: extracted.website || prev.website,
-        latitude: extracted.latitude || prev.latitude,
-        longitude: extracted.longitude || prev.longitude,
+        latitude: extracted.latitude ?? prev.latitude,
+        longitude: extracted.longitude ?? prev.longitude,
         googlePlaceId: extracted.googleInfo.placeId,
         googleInfo: extracted.googleInfo,
         // Auto-fill opening hours to memo if available
@@ -334,8 +334,9 @@ export function PlanForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validate(formData)) {
-      const firstError = Object.values(errors)[0]
+    const validationErrors = validate(formData)
+    if (validationErrors) {
+      const firstError = Object.values(validationErrors)[0]
       if (firstError) toast.error(firstError)
       return
     }
@@ -975,7 +976,7 @@ export function PlanForm() {
               </div>
               <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {formData.photos.map((photo, index) => (
-                  <div key={index} className="relative aspect-square rounded-lg overflow-hidden">
+                  <div key={photo} className="relative aspect-square rounded-lg overflow-hidden">
                     <img src={photo} alt="" className="w-full h-full object-cover" />
                     <IconButton
                       type="button"

@@ -24,6 +24,7 @@ const MAX_FILE_SIZE_MB = 20
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 interface PhotoEntry {
+  id: string
   file: File
   preview: string
   base64Full: string
@@ -138,7 +139,7 @@ export function PhotoLogUploader({
             if (exifDay !== null) day = exifDay
           }
 
-          newEntries.push({ file, preview: base64Full, base64Full, thumbnailBase64, exif, day, memo: '', expenseAmount: '', expenseCategory: '' })
+          newEntries.push({ id: crypto.randomUUID(), file, preview: base64Full, base64Full, thumbnailBase64, exif, day, memo: '', expenseAmount: '', expenseCategory: '' })
         } catch (err) {
           newWarnings.push(`"${file.name}" 처리 실패: ${err instanceof Error ? err.message : '알 수 없는 에러'}`)
         }
@@ -507,7 +508,7 @@ export function PhotoLogUploader({
 
                 return (
                   <div
-                    key={index}
+                    key={entry.id}
                     className="flex gap-2 sm:gap-3 p-2 sm:p-3 rounded-xl border border-[var(--border)] bg-[var(--card)]"
                   >
                     {/* Thumbnail */}
