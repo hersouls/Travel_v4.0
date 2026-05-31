@@ -31,6 +31,9 @@ export function useElevation(
     }
 
     let cancelled = false
+    // 좌표가 바뀌면 이전 좌표의 값을 먼저 비워, 인플라이트 중 또는 실패 시
+    // 직전 좌표의 고도가 그대로 남아 잘못 표시되는 것을 방지
+    setElevation(null)
     setIsLoading(true)
 
     fetch('/api/routes/elevation', {
@@ -52,7 +55,8 @@ export function useElevation(
         }
       })
       .catch(() => {
-        // elevation lookup failure is non-critical
+        // elevation lookup failure is non-critical; keep value cleared
+        if (!cancelled) setElevation(null)
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false)

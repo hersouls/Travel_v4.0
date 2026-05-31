@@ -37,7 +37,8 @@ export function useVisitHistory(
   })
 
   useEffect(() => {
-    if (!lat || !lng || !currentTripId) return
+    // 0(적도/본초자오선)은 유효 좌표이므로 truthiness가 아닌 null 검사
+    if (lat == null || lng == null || currentTripId == null) return
 
     let cancelled = false
 
