@@ -50,6 +50,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useCurrentTrip, useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatTime } from '@/utils/format'
+import { safeHref } from '@/utils/url'
 import { getTripDurationSafe, getTripDayDate } from '@/utils/timezone'
 import { formatReviewCount, extractPlaceInfo } from '@/services/googleMaps'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
@@ -229,7 +230,7 @@ function SortablePlanCard({
                 )}
                 {(plan.googleInfo?.website || plan.website) && (
                   <a
-                    href={plan.googleInfo?.website || plan.website}
+                    href={safeHref(plan.googleInfo?.website || plan.website)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-zinc-500 hover:text-primary-600 transition-colors"
@@ -340,7 +341,9 @@ export function DayDetail() {
   const [isSuggestOpen, setIsSuggestOpen] = useState(false)
   const [isDayPickerOpen, setIsDayPickerOpen] = useState(false)
 
-  const dayNumber = day ? Number.parseInt(day) : 1
+  // 잘못된 day URL 파라미터(예: 오래된 딥링크)는 NaN이 되어 navigation/렌더를 깨뜨리므로 1 이상 유한 정수로 보정
+  const parsedDay = day ? Number.parseInt(day, 10) : 1
+  const dayNumber = Number.isFinite(parsedDay) && parsedDay >= 1 ? parsedDay : 1
 
   useEffect(() => {
     if (id) {
@@ -361,12 +364,14 @@ export function DayDetail() {
     return plans
       .filter((p) => p.day === dayNumber)
       .sort((a, b) => {
-        // order가 둘 다 있으면 order로 정렬
-        if (a.order !== undefined && b.order !== undefined) {
-          return a.order - b.order
-        }
-        // order가 없으면 startTime으로 정렬
-        return a.startTime.localeCompare(b.startTime)
+        // 일부 plan만 order를 가지면 intransitive 비교로 정렬이 불안정해진다.
+        // 누락 order는 큰 sentinel로 두고 order → startTime → id 순으로 total-order 보장
+        const ao = a.order ?? Number.MAX_SAFE_INTEGER
+        const bo = b.order ?? Number.MAX_SAFE_INTEGER
+        if (ao !== bo) return ao - bo
+        const t = a.startTime.localeCompare(b.startTime)
+        if (t !== 0) return t
+        return (a.id ?? 0) - (b.id ?? 0)
       })
   }, [plans, dayNumber])
 
@@ -418,6 +423,16 @@ export function DayDetail() {
     if (!trip) return 1
     return getTripDurationSafe(trip.startDate, trip.endDate)
   }, [trip])
+
+  // 범위 밖/잘못된 day(오래된 딥링크, 기간 단축 등)는 trip 로드 후 유효한 day로 리다이렉트
+  useEffect(() => {
+    if (!trip) return
+    if (!Number.isFinite(dayNumber) || dayNumber < 1) {
+      navigate(`/trips/${id}/day/1`, { replace: true })
+    } else if (dayNumber > totalDays) {
+      navigate(`/trips/${id}/day/${totalDays}`, { replace: true })
+    }
+  }, [trip, dayNumber, totalDays, id, navigate])
 
   // Day navigation handlers
   const goToPrevDay = () => {

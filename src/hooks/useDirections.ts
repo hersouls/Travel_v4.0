@@ -2,7 +2,7 @@
 // Directions Hook - Route Directions for a Trip
 // ============================================
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { fetchDirectionsForTrip, invalidateRouteCache } from '@/services/directionsService'
 import type { RouteSegment, TravelMode, Plan } from '@/types'
 
@@ -40,6 +40,9 @@ export function useDirections(
     setRefreshKey((prev) => prev + 1)
   }, [])
 
+  // 캐시 무효화는 refreshKey 값당 1회만 — plans/travelMode 변경으로 effect가 재실행돼도 재무효화하지 않음
+  const lastInvalidatedKey = useRef(0)
+
   useEffect(() => {
     if (!tripId || plans.length < 2) {
       setSegments([])
@@ -68,8 +71,9 @@ export function useDirections(
       setError(null)
 
       try {
-        // On manual refresh, invalidate cache first
-        if (refreshKey > 0) {
+        // On manual refresh, invalidate cache first (refreshKey당 1회만)
+        if (refreshKey > 0 && refreshKey !== lastInvalidatedKey.current) {
+          lastInvalidatedKey.current = refreshKey
           await invalidateRouteCache(tripId)
         }
 

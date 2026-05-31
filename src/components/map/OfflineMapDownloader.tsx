@@ -31,7 +31,7 @@ export function OfflineMapDownloader({ plans, tripTitle }: OfflineMapDownloaderP
   const [cachedCount, setCachedCount] = useState(0)
 
   const coords = plans
-    .filter((p) => p.latitude && p.longitude)
+    .filter((p) => p.latitude != null && p.longitude != null)
     .map((p) => ({ lat: p.latitude!, lon: p.longitude! }))
 
   const bbox = getBoundingBox(coords)

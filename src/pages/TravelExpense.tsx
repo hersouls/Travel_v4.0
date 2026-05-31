@@ -138,9 +138,12 @@ export function TravelExpense() {
   // Thumbnail map for expenses imported from travel logs
   const thumbnailMap = useExpenseThumbnails(expenses)
 
-  // Auto-expand first category with expenses
+  // Auto-expand first category with expenses — 최초 1회만.
+  // size===0 조건만 쓰면 '전체 접기'로 비운 직후 다시 첫 카테고리를 펼쳐 collapse-all이 불가능했음.
+  const hasAutoExpandedRef = useRef(false)
   useEffect(() => {
-    if (filteredCategoryGroups.length > 0 && expandedCategories.size === 0) {
+    if (!hasAutoExpandedRef.current && filteredCategoryGroups.length > 0 && expandedCategories.size === 0) {
+      hasAutoExpandedRef.current = true
       setExpandedCategories(new Set([filteredCategoryGroups[0].category]))
     }
   }, [filteredCategoryGroups, expandedCategories.size])

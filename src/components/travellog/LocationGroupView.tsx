@@ -29,15 +29,18 @@ export function LocationGroupView({
   onPhotoClick,
 }: LocationGroupViewProps) {
   const clusters = useMemo(() => clusterLogsByLocation(logs, 100), [logs])
-  const [expandedClusters, setExpandedClusters] = useState<Set<number>>(
-    () => new Set(clusters.length > 0 ? [0] : []),
+  // 인덱스가 아니라 안정적인 cluster 식별자(centroid)로 펼침 상태를 추적 —
+  // 로그 삭제/편집으로 클러스터가 재계산·재정렬돼도 올바른 클러스터를 가리킴
+  const clusterKey = (c: (typeof clusters)[number]) => `${c.centroid.lat}-${c.centroid.lng}`
+  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(
+    () => new Set(clusters.length > 0 ? [clusterKey(clusters[0])] : []),
   )
 
-  const toggleCluster = (idx: number) => {
+  const toggleCluster = (key: string) => {
     setExpandedClusters((prev) => {
       const next = new Set(prev)
-      if (next.has(idx)) next.delete(idx)
-      else next.add(idx)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -50,8 +53,9 @@ export function LocationGroupView({
 
   return (
     <div className="space-y-2">
-      {clusters.map((cluster, idx) => {
-        const isExpanded = expandedClusters.has(idx)
+      {clusters.map((cluster) => {
+        const key = clusterKey(cluster)
+        const isExpanded = expandedClusters.has(key)
         const typeCounts = {
           photo: cluster.logs.filter((l) => l.type === 'photo').length,
           receipt: cluster.logs.filter((l) => l.type === 'receipt').length,
@@ -59,10 +63,10 @@ export function LocationGroupView({
         }
 
         return (
-          <div key={`${cluster.centroid.lat}-${cluster.centroid.lng}`}>
+          <div key={key}>
             <button
               type="button"
-              onClick={() => toggleCluster(idx)}
+              onClick={() => toggleCluster(key)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--card)] hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
             >
               <MapPin className="size-4 text-violet-500 flex-shrink-0" />

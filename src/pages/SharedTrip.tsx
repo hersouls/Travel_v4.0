@@ -55,7 +55,9 @@ function formatDateRange(start: string, end: string): string {
 function getTripDuration(start: string, end: string): number {
   const s = new Date(start)
   const e = new Date(end)
-  return Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  const span = Math.ceil((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  // 잘못된/역순 날짜로 NaN·음수 일수 → 빈 day 리스트가 되는 것을 방지
+  return Number.isFinite(span) && span > 0 ? span : 1
 }
 
 function formatTime(time: string): string {
@@ -94,14 +96,21 @@ export function SharedTrip() {
 
         // 공개 read-only 컬렉션이므로 원격 문서 형태를 신뢰하지 않고 런타임 검증
         const raw = docSnap.data() as Partial<SharedTripData>
-        if (!raw?.trip?.startDate || !raw?.trip?.endDate || !Array.isArray(raw.plans)) {
+        const startMs = raw?.trip?.startDate ? new Date(raw.trip.startDate as string).getTime() : NaN
+        const endMs = raw?.trip?.endDate ? new Date(raw.trip.endDate as string).getTime() : NaN
+        if (
+          !raw?.trip?.startDate || !raw?.trip?.endDate || !Array.isArray(raw.plans) ||
+          Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs
+        ) {
           setError('공유된 여행 데이터가 올바르지 않습니다.')
           setIsLoading(false)
           return
         }
-        const safePlans = raw.plans.filter(
-          (p) => p && typeof p.startTime === 'string' && typeof p.day === 'number',
-        )
+        // 알 수 없는 plan.type(레거시/수기편집 문서)은 'other'로 보정해 빈 라벨/undefined 색상 방지
+        const SHARED_PLAN_TYPES = new Set(['attraction', 'restaurant', 'hotel', 'transport', 'car', 'plane', 'airport', 'other'])
+        const safePlans = raw.plans
+          .filter((p) => p && typeof p.startTime === 'string' && typeof p.day === 'number')
+          .map((p) => ({ ...p, type: SHARED_PLAN_TYPES.has(p.type) ? p.type : 'other' }))
         setData({ ...raw, plans: safePlans } as SharedTripData)
       } catch (err) {
         console.error('[SharedTrip] Failed to fetch shared trip:', err)

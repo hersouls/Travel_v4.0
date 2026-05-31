@@ -54,6 +54,7 @@ export function useNearbyPlaces({
         radiusMeters,
         types,
         maxResults,
+        controller.signal,
       )
       // 취소된 요청의 결과 무시
       if (!controller.signal.aborted) {

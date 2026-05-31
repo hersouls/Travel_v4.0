@@ -102,10 +102,14 @@ export function PlaceLibrary() {
     })
   }, [_places, searchQuery, filterType, sortBy, sortOrder])
 
-  const handleCopyJSON = () => {
+  const handleCopyJSON = async () => {
     const json = JSON.stringify(formData, null, 2)
-    navigator.clipboard.writeText(json)
-    toast.success('JSON데이터가 복사되었습니다')
+    try {
+      await navigator.clipboard.writeText(json)
+      toast.success('JSON데이터가 복사되었습니다')
+    } catch {
+      toast.error('클립보드 복사에 실패했습니다')
+    }
   }
 
   const handleExtractInfo = async () => {

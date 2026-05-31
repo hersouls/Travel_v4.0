@@ -157,6 +157,16 @@ export function MapLocationPicker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded])
 
+  // 언마운트 시 대기 중인 reverse-geocode 디바운스 타이머 정리 (언마운트 후 setState/낭비 네트워크 방지)
+  useEffect(() => {
+    return () => {
+      if (geocodeTimerRef.current) {
+        clearTimeout(geocodeTimerRef.current)
+        geocodeTimerRef.current = null
+      }
+    }
+  }, [])
+
   // Handle PlacesAutocomplete selection
   const handlePlaceSelect = useCallback((details: PlaceDetails) => {
     const { latitude, longitude, name, address: addr } = details

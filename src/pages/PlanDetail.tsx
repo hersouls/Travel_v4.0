@@ -37,6 +37,7 @@ import { useCurrentPlans, useTripLoading, useTripStore } from '@/stores/tripStor
 import { useSettingsStore } from '@/stores/settingsStore'
 import { toast } from '@/stores/uiStore'
 import { formatTime } from '@/utils/format'
+import { safeHref } from '@/utils/url'
 import { formatReviewCount } from '@/services/googleMaps'
 import { PLAN_TYPE_ICONS } from '@/utils/constants'
 import type { PlanType } from '@/types'
@@ -82,10 +83,18 @@ export function PlanDetail() {
     const [lightboxIndex, setLightboxIndex] = useState(0)
     const [lightboxImages, setLightboxImages] = useState<string[]>([])
 
-    // Fetch Google Place photos
+    // Fetch Google Place photos (취소 가드 + placeId 없을 때 리셋 → 이전 plan 사진 잔존 방지)
     useEffect(() => {
-        if (plan?.googlePlaceId) {
-            getPlacePhotos(plan.googlePlaceId, 6).then(setGooglePhotos)
+        if (!plan?.googlePlaceId) {
+            setGooglePhotos([])
+            return
+        }
+        let cancelled = false
+        getPlacePhotos(plan.googlePlaceId, 6).then((photos) => {
+            if (!cancelled) setGooglePhotos(photos)
+        })
+        return () => {
+            cancelled = true
         }
     }, [plan?.googlePlaceId])
 
@@ -94,17 +103,22 @@ export function PlanDetail() {
     const { isLoaded: isGoogleMapsLoaded } = useGoogleMapsLoader()
 
     useEffect(() => {
+        setIsStreetViewAvailable(false) // plan 전환 시 이전 값 잔존 방지
         if (!plan?.latitude || !plan?.longitude || !isGoogleMapsLoaded) {
             return
         }
 
+        let cancelled = false
         const svService = new google.maps.StreetViewService()
         svService.getPanorama(
             { location: { lat: plan.latitude, lng: plan.longitude }, radius: 50 },
-            (data, status) => {
-                setIsStreetViewAvailable(status === google.maps.StreetViewStatus.OK)
+            (_data, status) => {
+                if (!cancelled) setIsStreetViewAvailable(status === google.maps.StreetViewStatus.OK)
             }
         )
+        return () => {
+            cancelled = true
+        }
     }, [plan?.latitude, plan?.longitude, isGoogleMapsLoaded])
 
     useEffect(() => {
@@ -261,7 +275,7 @@ export function PlanDetail() {
                             <div className="flex gap-2 pt-2">
                                 {(plan.website || plan.googleInfo?.website) && (
                                     <a
-                                        href={plan.website || plan.googleInfo?.website}
+                                        href={safeHref(plan.website || plan.googleInfo?.website)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-600 dark:text-zinc-400 bg-transparent border border-zinc-300 dark:border-zinc-600 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"

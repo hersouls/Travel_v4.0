@@ -9,7 +9,7 @@ import { ChevronDown, ChevronUp, ChevronRight, Utensils, Bus, Bed, ShoppingBag, 
 import { clsx } from 'clsx'
 import type { Expense, ExpenseCategory } from '@/types'
 import type { ExpenseTripTotals } from '@/hooks/useExpenseView'
-import { EXPENSE_CATEGORY_LABELS, EXPENSE_SUBCATEGORY_LABELS } from '@/utils/constants'
+import { EXPENSE_CATEGORY_LABELS, EXPENSE_SUBCATEGORY_LABELS, CURRENCY_SYMBOLS } from '@/utils/constants'
 import { convertToKRW } from '@/services/exchangeRateService'
 
 interface ExpenseOverviewProps {
@@ -43,7 +43,11 @@ function formatAmount(amount: number): string {
   return `₩${Math.round(amount).toLocaleString()}`
 }
 
-export function ExpenseOverview({ tripTotals, expenses, className, exchangeRates, showKRW: _showKRW }: ExpenseOverviewProps) {
+function formatNative(amount: number, currency: string): string {
+  return `${CURRENCY_SYMBOLS[currency] ?? ''}${Math.round(amount).toLocaleString()}`
+}
+
+export function ExpenseOverview({ tripTotals, expenses, className, exchangeRates, showKRW = true }: ExpenseOverviewProps) {
   const [isOpen, setIsOpen] = useState(true)
   const [expandedCategory, setExpandedCategory] = useState<ExpenseCategory | null>(null)
   const { currencyTotals, categoryTotals, totalCount } = tripTotals
@@ -136,7 +140,8 @@ export function ExpenseOverview({ tripTotals, expenses, className, exchangeRates
                   <div key={currency} className="flex justify-between items-center">
                     <span className="text-sm text-zinc-600 dark:text-zinc-300">{currency}</span>
                     <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                      {formatAmount(krw ?? total)}
+                      {/* 원화 환산 토글: OFF면 통화별 합계를 네이티브 금액으로 표시 */}
+                      {showKRW ? formatAmount(krw ?? total) : formatNative(total, currency)}
                     </span>
                   </div>
                 )

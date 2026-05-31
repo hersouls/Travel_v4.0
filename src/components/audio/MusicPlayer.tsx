@@ -145,7 +145,8 @@ export function MusicPlayer() {
   // 트랙 이름 추출 (파일명에서 확장자 제거)
   const getTrackName = () => {
     const fileName = TRACKS[currentTrackIndex].split('/').pop() || ''
-    return fileName.replace('.wav', '')
+    // URL-인코딩된 파일명(%20 등)을 디코드하고 끝의 .wav만 제거
+    return decodeURIComponent(fileName).replace(/\.wav$/, '')
   }
 
   return (

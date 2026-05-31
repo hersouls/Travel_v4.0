@@ -3,7 +3,7 @@
 // Generates structured travel memos compatible with MemoRenderer
 // ============================================
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Sparkles, Loader2, Check } from 'lucide-react'
 import { Dialog, DialogTitle, DialogBody, DialogActions } from '@/components/ui/Dialog'
 import { Button } from '@/components/ui/Button'
@@ -39,6 +39,15 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
   const [error, setError] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(false)
   const textRef = useRef('')
+  const abortRef = useRef<AbortController | null>(null)
+
+  // 언마운트 시 진행 중 스트림 취소 (setState-after-unmount + 토큰 낭비 방지)
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  const handleClose = () => {
+    abortRef.current?.abort()
+    onClose()
+  }
 
   const handleGenerate = () => {
     if (!isServerKey && !apiKey) {
@@ -52,6 +61,10 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
     textRef.current = ''
     setShowPreview(false)
 
+    abortRef.current?.abort()
+    const ac = new AbortController()
+    abortRef.current = ac
+
     const context = buildMemoContext(plan, country)
 
     generateWithStreaming(
@@ -59,18 +72,22 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
       apiKey,
       model,
       (chunk) => {
+        if (ac.signal.aborted) return
         textRef.current += chunk
         setGeneratedMemo(textRef.current)
       },
       () => {
+        if (ac.signal.aborted) return
         setIsGenerating(false)
         setShowPreview(true)
       },
       (err) => {
+        if (ac.signal.aborted) return
         setError(err.message)
         setIsGenerating(false)
       },
       aiProvider,
+      ac.signal,
     )
   }
 
@@ -80,12 +97,12 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
     } else {
       onApply(generatedMemo)
     }
-    onClose()
+    handleClose()
   }
 
   return (
-    <Dialog open={open} onClose={onClose} size="lg">
-      <DialogTitle onClose={onClose}>
+    <Dialog open={open} onClose={handleClose} size="lg">
+      <DialogTitle onClose={handleClose}>
         <span className="flex items-center gap-2">
           <Sparkles className="size-5 text-blue-500" />
           AI 메모 생성
@@ -131,7 +148,7 @@ export function AIMemoGenerator({ plan, country, onApply, onClose, open, mode = 
         )}
       </DialogBody>
       <DialogActions>
-        <Button color="secondary" onClick={onClose}>
+        <Button color="secondary" onClick={handleClose}>
           닫기
         </Button>
         {!generatedMemo && !isGenerating && (

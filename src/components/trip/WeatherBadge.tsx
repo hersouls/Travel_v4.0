@@ -25,10 +25,13 @@ export function WeatherBadge({ country, date, compact = false }: WeatherBadgePro
     const coords = getCountryCoordinates(country)
     if (!coords) return
 
-    // Only fetch for dates within 16 days (Open-Meteo limit)
-    const targetDate = new Date(date)
-    const now = new Date()
-    const diffDays = Math.floor((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    // Only fetch for dates within 16 days (Open-Meteo limit).
+    // UTC-midnight vs local-now 혼용을 피하고 로컬 자정 기준 캘린더 일수로 비교
+    const [y, mo, d] = date.split('-').map(Number)
+    const targetMidnight = new Date(y, mo - 1, d).getTime()
+    const nowD = new Date()
+    const nowMidnight = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime()
+    const diffDays = Math.round((targetMidnight - nowMidnight) / (1000 * 60 * 60 * 24))
     if (diffDays < -1 || diffDays > 15) return
 
     let cancelled = false

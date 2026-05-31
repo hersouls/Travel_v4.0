@@ -80,7 +80,14 @@ export function MemoLogInput({
     // 오늘이 아니라 선택한 Day N의 실제 날짜에 시각을 결합해야 정렬/그룹핑/내보내기가 올바름
     const dayDate = getTripDayDate(tripStartDate, day)
     const timestamp = dayDate && !Number.isNaN(dayDate.getTime()) ? new Date(dayDate) : new Date()
-    const [hours, minutes] = time.split(':').map(Number)
+    const [h, m] = time.split(':')
+    const hours = Number(h)
+    const minutes = Number(m)
+    // 시간 입력이 비거나 잘못되면 Invalid Date → toISOString()이 throw 하므로 사전 차단
+    if (!time || Number.isNaN(hours) || Number.isNaN(minutes)) {
+      toast.error('시간을 입력해주세요.')
+      return null
+    }
     timestamp.setHours(hours, minutes, 0, 0)
 
     return {

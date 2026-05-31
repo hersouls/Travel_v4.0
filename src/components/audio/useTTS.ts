@@ -65,6 +65,8 @@ export function useTTS(): UseTTSReturn {
   const [progress, setProgress] = useState(0)
   const [startOffset, setStartOffset] = useState(0)
   const [fullText, setFullText] = useState('')
+  // 동기 호출되는 onBoundary가 최신 전체 텍스트 길이를 읽도록 ref 병행 (stale 분모 방지)
+  const fullTextRef = useRef('')
 
   // Track which mode is active for current playback
   const activeModeRef = useRef<TTSMode>('browser')
@@ -186,6 +188,7 @@ export function useTTS(): UseTTSReturn {
         // Stop any browser TTS
         ttsService.stop()
 
+        fullTextRef.current = text
         setFullText(text)
         setStartOffset(0)
         setProgress(0)
@@ -219,6 +222,7 @@ export function useTTS(): UseTTSReturn {
 
       // 처음 재생하는 경우 fullText 설정
       if (offset === 0) {
+        fullTextRef.current = text
         setFullText(text)
         setStartOffset(0)
         setProgress(0)
@@ -262,12 +266,12 @@ export function useTTS(): UseTTSReturn {
         },
         onBoundary: (charIndex) => {
           const globalIndex = offset + charIndex
-          const newProgress = Math.min(1, globalIndex / Math.max(1, fullText.length || text.length + offset))
+          const newProgress = Math.min(1, globalIndex / Math.max(1, fullTextRef.current.length || text.length + offset))
           setProgress(newProgress)
         }
       })
     },
-    [selectedVoice, fullText, ttsMode, openaiApiKey, openaiTtsModel, openaiTtsVoice]
+    [selectedVoice, ttsMode, openaiApiKey, openaiTtsModel, openaiTtsVoice]
   )
 
   const seek = useCallback((percentage: number) => {
@@ -360,6 +364,7 @@ export function useTTS(): UseTTSReturn {
         resume()
       } else {
         // New play
+        fullTextRef.current = text
         setFullText(text)
         play(text, null, 0)
       }

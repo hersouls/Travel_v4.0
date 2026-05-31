@@ -82,6 +82,9 @@ export function GoogleMapView({
     mapInstanceRef.current.setOptions({ mapTypeControl })
   }, [mapTypeControl])
 
+  // 마지막으로 auto-fit한 좌표 집합 — 동일 geometry면 재-fit하지 않아 사용자 pan/zoom 보존
+  const lastBoundsKeyRef = useRef<string | null>(null)
+
   // Update markers
   useEffect(() => {
     if (!mapInstanceRef.current || !isLoaded) return
@@ -144,11 +147,16 @@ export function GoogleMapView({
       markersRef.current.push(marker)
     })
 
-    if (filteredPlans.length > 1) {
-      mapInstanceRef.current.fitBounds(bounds, 60)
-    } else if (filteredPlans.length === 1) {
-      mapInstanceRef.current.setCenter(bounds.getCenter())
-      mapInstanceRef.current.setZoom(15)
+    // plans 배열 재생성(메모 편집 등 좌표 무변경)으로는 재-fit하지 않고, 좌표 집합이 실제로 바뀔 때만 뷰포트 조정
+    const boundsKey = filteredPlans.map((p) => `${p.latitude},${p.longitude}`).join('|')
+    if (boundsKey !== lastBoundsKeyRef.current) {
+      lastBoundsKeyRef.current = boundsKey
+      if (filteredPlans.length > 1) {
+        mapInstanceRef.current.fitBounds(bounds, 60)
+      } else if (filteredPlans.length === 1) {
+        mapInstanceRef.current.setCenter(bounds.getCenter())
+        mapInstanceRef.current.setZoom(15)
+      }
     }
   }, [filteredPlans, isLoaded, selectedDay])
 

@@ -4,7 +4,7 @@
 
 import { clsx } from 'clsx'
 import { AlertCircle, CheckCircle, Info, X, AlertTriangle } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { IconButton } from './Button'
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
@@ -50,6 +50,10 @@ export function Toast({ id, type, title, message, duration = 5000, action, onDis
   const [isVisible, setIsVisible] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
   const Icon = iconMap[type]
+  // leave 애니메이션 타이머를 추적해 언마운트 시 정리 (언마운트 후 onDismiss 발화 방지)
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => { if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current) }, [])
 
   useEffect(() => {
     const showTimer = setTimeout(() => setIsVisible(true), 10)
@@ -60,7 +64,7 @@ export function Toast({ id, type, title, message, duration = 5000, action, onDis
     if (duration > 0) {
       const timer = setTimeout(() => {
         setIsLeaving(true)
-        setTimeout(() => onDismiss(id), 300)
+        leaveTimerRef.current = setTimeout(() => onDismiss(id), 300)
       }, duration)
       return () => clearTimeout(timer)
     }
@@ -68,7 +72,7 @@ export function Toast({ id, type, title, message, duration = 5000, action, onDis
 
   const handleDismiss = () => {
     setIsLeaving(true)
-    setTimeout(() => onDismiss(id), 300)
+    leaveTimerRef.current = setTimeout(() => onDismiss(id), 300)
   }
 
   return (

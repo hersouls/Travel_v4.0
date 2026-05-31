@@ -186,7 +186,7 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
                       <p className="text-sm text-zinc-700 dark:text-zinc-300">{result.description}</p>
                     </div>
                   )}
-                  {result.tips && result.tips.length > 0 && (
+                  {Array.isArray(result.tips) && result.tips.length > 0 && (
                     <div>
                       <span className="text-xs font-medium text-zinc-500">팁</span>
                       <ul className="mt-1 space-y-1">

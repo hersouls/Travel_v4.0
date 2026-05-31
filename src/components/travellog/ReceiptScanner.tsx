@@ -139,12 +139,17 @@ export function ReceiptScanner({
     return {
       tripId,
       day,
-      timestamp: expense.receiptDate
-        ? (() => {
-            const [y, m, d] = expense.receiptDate.split('-').map(Number)
-            return new Date(y, m - 1, d, 12, 0, 0).toISOString()
-          })()
-        : new Date().toISOString(),
+      timestamp: (() => {
+        // AI가 반환한 receiptDate가 비-ISO(예: '2024년 1월 1일')면 Invalid Date → toISOString() throw.
+        // 형식·유효성 검증 후 실패 시 현재 시각으로 폴백.
+        const raw = expense.receiptDate
+        if (raw && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+          const [y, m, d] = raw.split('-').map(Number)
+          const dt = new Date(y, m - 1, d, 12, 0, 0)
+          if (!Number.isNaN(dt.getTime())) return dt.toISOString()
+        }
+        return new Date().toISOString()
+      })(),
       type: 'receipt',
       photo: imagePreview,
       thumbnailPhoto: thumbnailBase64 || undefined,
