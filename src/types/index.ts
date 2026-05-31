@@ -219,15 +219,11 @@ export type TravelMode = 'DRIVE' | 'WALK' | 'TRANSIT' | 'BICYCLE'
 // 지도 제공자
 export type MapProvider = 'google' | 'leaflet'
 
-// 경로 단계 (턴바이턴 안내)
+// 경로 단계 (턴바이턴 안내) — Routes API가 반환하는 현지화 텍스트 그대로 보존
 export interface RouteStep {
   instruction: string
-  distanceMeters: number
-  duration: string // e.g., "300s"
-  startLocation: { lat: number; lng: number }
-  endLocation: { lat: number; lng: number }
-  travelMode: string
-  polyline: string // encoded polyline
+  distanceText: string // 현지화 거리, e.g., "5.2 km"
+  durationText: string // 현지화 소요시간, e.g., "5분"
 }
 
 // 경로 구간 (두 장소 사이)
