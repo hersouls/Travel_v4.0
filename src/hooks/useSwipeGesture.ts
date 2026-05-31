@@ -4,6 +4,7 @@
 // ============================================
 
 import { useRef, useCallback } from 'react'
+import { useHaptic } from './useHaptic'
 
 interface SwipeOptions {
   onSwipeLeft?: () => void
@@ -21,6 +22,7 @@ export function useSwipeGesture({
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
   const isSwiping = useRef(false)
+  const haptic = useHaptic()
 
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX
@@ -50,13 +52,15 @@ export function useSwipeGesture({
       // Only trigger if horizontal swipe is dominant
       if (Math.abs(diffX) > threshold && Math.abs(diffX) > diffY * 1.5) {
         if (diffX > 0 && onSwipeRight) {
+          haptic('light')
           onSwipeRight()
         } else if (diffX < 0 && onSwipeLeft) {
+          haptic('light')
           onSwipeLeft()
         }
       }
     },
-    [onSwipeLeft, onSwipeRight, threshold]
+    [onSwipeLeft, onSwipeRight, threshold, haptic]
   )
 
   return { onTouchStart, onTouchMove, onTouchEnd }
