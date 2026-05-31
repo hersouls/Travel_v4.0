@@ -126,7 +126,7 @@ export function ExpenseCard({ expense, thumbnailPhoto, onEdit, onDelete, exchang
                 )
               })()}
             </div>
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
               {onEdit && (
                 <IconButton plain color="secondary" onClick={() => onEdit(expense)} aria-label="수정">
                   <Edit3 className="size-3.5" />

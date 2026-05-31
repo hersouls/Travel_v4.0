@@ -101,8 +101,13 @@
   --z-index-70: 70;
   --z-index-80: 80;
 
-  /* Custom Breakpoints — Galaxy S24 viewport is ~360px */
+  /* Custom Breakpoints — 4-tier 의미 계층 (최근 3년 갤럭시/아이폰 대응)
+     xs 360 = Galaxy S23/S24 베이스 / mobile-lg 430 = iPhone 16 Pro Max·S24 Ultra 큰 폰
+     sm 640 / md 768(태블릿) / lg 1024(데스크톱) / xl 1280 / 2xl 1536(와이드) = Tailwind 기본
+     3xl 1920 = 울트라와이드 */
   --breakpoint-xs: 360px;
+  --breakpoint-mobile-lg: 430px;
+  --breakpoint-3xl: 1920px;
 }
 
 /* CSS Variables for Light/Dark Mode */
@@ -279,12 +284,24 @@ body {
   -webkit-tap-highlight-color: transparent;
   transition: background-color 0.3s ease, color 0.3s ease;
   margin: 0;
+  /* 동적 뷰포트: 모바일 주소창 변화에 따른 레이아웃 점프 제거 (100vh 폴백) */
   min-height: 100vh;
+  min-height: 100dvh;
+  /* 노치/곡면 기기 좌우 인셋 (index.html viewport-fit=cover와 연동) */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
 }
+
+/* Safe-area 유틸리티 (sticky 헤더/FAB/Lightbox 등 재사용) */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.px-safe { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+.top-safe { top: env(safe-area-inset-top); }
 
 /* Scrollbar */
 .scrollbar-hide::-webkit-scrollbar { display: none; }

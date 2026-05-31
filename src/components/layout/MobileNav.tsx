@@ -6,11 +6,13 @@
 import { Fragment, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Dialog, DialogPanel, Transition, TransitionChild } from '@headlessui/react'
+import { motion } from 'framer-motion'
 import { X, Star, Plane } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useUIStore } from '@/stores/uiStore'
 import { useTrips } from '@/stores/tripStore'
 import { useNavItems } from '@/hooks/useNavItems'
+import { useHaptic } from '@/hooks/useHaptic'
 import { APP_NAME, APP_VERSION } from '@/utils/constants'
 
 export function MobileNav() {
@@ -19,6 +21,7 @@ export function MobileNav() {
   const setMobileMenuOpen = useUIStore((state) => state.setMobileMenuOpen)
   const trips = useTrips()
   const { sideNavItems, bottomNavItems, handleNoTripFallback } = useNavItems()
+  const haptic = useHaptic()
 
   const favoriteTrips = useMemo(() => trips.filter((t) => t.isFavorite).slice(0, 5), [trips])
   const recentTrips = useMemo(() => trips.filter((t) => !t.isFavorite).slice(0, 5), [trips])
@@ -199,7 +202,10 @@ export function MobileNav() {
               {item.isDynamic && !item.path ? (
                 <button
                   type="button"
-                  onClick={handleNoTripFallback}
+                  onClick={() => {
+                    haptic('selection')
+                    handleNoTripFallback()
+                  }}
                   className="w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px] text-zinc-400 dark:text-zinc-400"
                 >
                   <item.icon className="size-5" />
@@ -208,14 +214,22 @@ export function MobileNav() {
               ) : (
                 <Link
                   to={item.path!}
+                  onClick={() => haptic('selection')}
                   className={clsx(
-                    'w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px]',
+                    'relative w-full flex flex-col items-center justify-center gap-1 py-2 transition-colors min-h-[44px]',
                     item.isActive
                       ? 'text-primary-600 dark:text-primary-400'
                       : 'text-zinc-400 dark:text-zinc-400 hover:text-primary-600 dark:hover:text-primary-400'
                   )}
                   aria-current={item.isActive ? 'page' : undefined}
                 >
+                  {item.isActive && (
+                    <motion.span
+                      layoutId="bottomnav-active"
+                      className="absolute top-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary-500"
+                      transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                    />
+                  )}
                   <item.icon className="size-5" />
                   <span className="text-[10px] font-medium">{item.label}</span>
                 </Link>

@@ -6,10 +6,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Command } from 'cmdk'
-import { Search, MapPin, Globe, Plus, Settings, Star, BookOpen } from 'lucide-react'
+import { Search, MapPin, Globe, Plus, Star, Sun, Moon } from 'lucide-react'
 import { useUIStore } from '@/stores/uiStore'
 import { useTripStore } from '@/stores/tripStore'
 import { usePlaceStore } from '@/stores/placeStore'
+import { useSettingsStore, useTheme } from '@/stores/settingsStore'
+import { useNavItems } from '@/hooks/useNavItems'
 import { db as dexieDb } from '@/services/database'
 import type { Plan } from '@/types'
 
@@ -20,6 +22,13 @@ export function CommandPalette() {
 
   const trips = useTripStore((s) => s.trips)
   const places = usePlaceStore((s) => s.places)
+  const { sideNavItems } = useNavItems()
+  const theme = useTheme()
+  const setTheme = useSettingsStore((s) => s.setTheme)
+
+  // 명령 항목 공통 스타일
+  const itemCls =
+    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[var(--foreground)] cursor-pointer data-[selected=true]:bg-primary-50 dark:data-[selected=true]:bg-primary-950/30'
 
   const [searchPlans, setSearchPlans] = useState<Plan[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -114,30 +123,43 @@ export function CommandPalette() {
 
             {/* Quick Actions */}
             <Command.Group heading="빠른 작업" className="text-xs font-medium text-zinc-400 px-2 py-1.5">
-              <Command.Item
-                value="새 여행 만들기"
-                onSelect={() => handleSelect('/trips/new')}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[var(--foreground)] cursor-pointer data-[selected=true]:bg-primary-50 dark:data-[selected=true]:bg-primary-950/30"
-              >
+              <Command.Item value="새 여행 만들기" onSelect={() => handleSelect('/trips/new')} className={itemCls}>
                 <Plus className="size-4 text-primary-500" />
                 새 여행 만들기
               </Command.Item>
               <Command.Item
-                value="설정"
-                onSelect={() => handleSelect('/settings')}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[var(--foreground)] cursor-pointer data-[selected=true]:bg-primary-50 dark:data-[selected=true]:bg-primary-950/30"
+                value="테마 다크 라이트 모드 전환 theme dark light"
+                onSelect={() => {
+                  setTheme(theme === 'dark' ? 'light' : 'dark')
+                  setOpen(false)
+                  setQuery('')
+                }}
+                className={itemCls}
               >
-                <Settings className="size-4 text-zinc-500" />
-                설정
+                {theme === 'dark' ? (
+                  <Sun className="size-4 text-amber-500" />
+                ) : (
+                  <Moon className="size-4 text-zinc-500" />
+                )}
+                {theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
               </Command.Item>
-              <Command.Item
-                value="장소 라이브러리"
-                onSelect={() => handleSelect('/places')}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-[var(--foreground)] cursor-pointer data-[selected=true]:bg-primary-50 dark:data-[selected=true]:bg-primary-950/30"
-              >
-                <BookOpen className="size-4 text-zinc-500" />
-                장소 라이브러리
-              </Command.Item>
+            </Command.Group>
+
+            {/* Navigate */}
+            <Command.Group heading="탐색" className="text-xs font-medium text-zinc-400 px-2 py-1.5">
+              {sideNavItems
+                .filter((item) => item.path)
+                .map((item) => (
+                  <Command.Item
+                    key={`nav-${item.id}`}
+                    value={`이동 ${item.label}`}
+                    onSelect={() => handleSelect(item.path!)}
+                    className={itemCls}
+                  >
+                    <item.icon className="size-4 text-zinc-500 flex-shrink-0" />
+                    {item.label}
+                  </Command.Item>
+                ))}
             </Command.Group>
 
             {/* Trips */}

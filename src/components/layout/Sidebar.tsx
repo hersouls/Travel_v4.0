@@ -35,6 +35,7 @@ export function Sidebar() {
                 key={item.id}
                 type="button"
                 onClick={handleNoTripFallback}
+                title={isSidebarCollapsed ? item.label : undefined}
                 className={clsx(
                   'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
                   'text-[var(--muted-foreground)] hover:bg-[var(--muted)] dark:hover:bg-[var(--muted)]'
@@ -51,6 +52,7 @@ export function Sidebar() {
               key={item.id}
               to={item.path!}
               aria-current={item.isActive ? 'page' : undefined}
+              title={isSidebarCollapsed ? item.label : undefined}
               className={clsx(
                 'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
                 item.isActive
