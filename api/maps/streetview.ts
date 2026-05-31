@@ -82,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // API 키를 프록시 경로로 대체
-    const imageUrl = `/api/maps/streetview-image?lat=${latNum}&lng=${lngNum}&size=${sizeStr}&heading=${headingStr}`
+    const imageUrl = `/api/maps/streetview-image?lat=${latNum}&lng=${lngNum}&size=${encodeURIComponent(sizeStr)}&heading=${encodeURIComponent(headingStr)}`
 
     const result: StreetViewResponse = {
       imageUrl,

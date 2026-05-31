@@ -64,7 +64,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     maxResults = 10,
   } = (req.body ?? {}) as NearbyRequestBody
 
-  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+  if (
+    typeof latitude !== 'number' ||
+    typeof longitude !== 'number' ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude)
+  ) {
     return res.status(400).json({ error: 'Valid latitude and longitude are required' })
   }
 

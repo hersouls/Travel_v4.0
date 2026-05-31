@@ -15,7 +15,7 @@ export function createWeatherTool() {
     description: '특정 도시의 현재 날씨와 일기예보를 조회합니다. 여행 날씨 관련 질문에 사용하세요.',
     schema: z.object({
       city: z.string().describe('도시 이름 (영어, 예: Tokyo, Bangkok, Paris)'),
-      days: z.number().min(1).max(7).default(3).describe('예보 일수 (1-7일)'),
+      days: z.number().int().min(1).max(7).default(3).describe('예보 일수 (1-7일, 정수)'),
     }),
     func: async ({ city, days }) => {
       try {

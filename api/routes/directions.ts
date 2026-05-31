@@ -132,11 +132,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 본문이 없거나 비-JSON이면 req.body가 undefined → 디스트럭처링 전 방어 (500 대신 아래 400 검증으로 처리)
   const { origin, destination, travelMode, language = 'ko' } = (req.body ?? {}) as DirectionsRequestBody
 
-  if (!origin || typeof origin.lat !== 'number' || typeof origin.lng !== 'number') {
+  const validCoord = (p: { lat: number; lng: number } | undefined): boolean =>
+    !!p &&
+    Number.isFinite(p.lat) &&
+    Number.isFinite(p.lng) &&
+    p.lat >= -90 &&
+    p.lat <= 90 &&
+    p.lng >= -180 &&
+    p.lng <= 180
+
+  if (!validCoord(origin)) {
     return res.status(400).json({ error: 'Valid origin with lat and lng is required' })
   }
 
-  if (!destination || typeof destination.lat !== 'number' || typeof destination.lng !== 'number') {
+  if (!validCoord(destination)) {
     return res.status(400).json({ error: 'Valid destination with lat and lng is required' })
   }
 

@@ -39,8 +39,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Invalid photo name format' })
   }
 
+  // maxWidthPx 검증·클램프 (URL 쿼리 주입 및 과대 이미지 요청 차단)
+  const width = Math.min(Math.max(parseInt(String(maxWidthPx), 10) || 600, 1), 4800)
+
   try {
-    const photoUrl = `https://places.googleapis.com/v1/${name}/media?maxWidthPx=${maxWidthPx}&key=${apiKey}`
+    const photoUrl = `https://places.googleapis.com/v1/${name}/media?maxWidthPx=${width}&key=${apiKey}`
     const response = await fetch(photoUrl)
 
     if (!response.ok) {

@@ -214,9 +214,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const langchainMessages: (HumanMessage | AIMessage)[] = []
     if (Array.isArray(history)) {
       for (const msg of history.slice(-10)) {
-        if (msg.role === 'user' && msg.content?.trim()) {
+        // 비-객체/비-문자열 content는 건너뛴다(throw → 500 방지)
+        if (!msg || typeof msg !== 'object' || typeof msg.content !== 'string' || !msg.content.trim()) continue
+        if (msg.role === 'user') {
           langchainMessages.push(new HumanMessage(msg.content))
-        } else if (msg.role === 'assistant' && msg.content?.trim()) {
+        } else if (msg.role === 'assistant') {
           langchainMessages.push(new AIMessage(msg.content))
         }
       }

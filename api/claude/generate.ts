@@ -353,7 +353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userText = buildUserMessage(type, context)
     let humanMessage: HumanMessage
 
-    if (image && ['analyze-image', 'analyze-photo-location', 'receipt-food', 'receipt-general'].includes(type)) {
+    if (typeof image === 'string' && image.length > 0 && ['analyze-image', 'analyze-photo-location', 'receipt-food', 'receipt-general'].includes(type)) {
       const validMediaTypes = ['image/jpeg', 'image/webp', 'image/png', 'image/gif'] as const
       const mediaType = (imageFormat && validMediaTypes.includes(imageFormat))
         ? imageFormat as typeof validMediaTypes[number]
@@ -376,6 +376,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const schema = STRUCTURED_SCHEMAS[type]
     const isStreamingTextType = STREAMING_TEXT_TYPES.includes(type) || !schema
 
+    // 클라이언트 연결 종료 시 상류 LLM 요청 취소 (토큰/리소스 낭비 방지)
+    const abortController = new AbortController()
+    res.on('close', () => abortController.abort())
+
+    // 응답 메타데이터로 토큰 한도 절단 여부 판별 (하드코딩 false 대신)
+    const isTruncated = (resp: unknown): boolean => {
+      const meta = (resp as { response_metadata?: Record<string, unknown> })?.response_metadata
+      return meta?.stop_reason === 'max_tokens' || meta?.finishReason === 'MAX_TOKENS'
+    }
+
     if (stream && isStreamingTextType) {
       // === Streaming text mode (guide, memo, travel-diary, test, unknown) ===
       res.setHeader('Content-Type', 'text/event-stream')
@@ -385,7 +395,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let clientConnected = true
       res.on('close', () => { clientConnected = false })
 
-      const streamResponse = await chatModel.stream(messages)
+      const streamResponse = await chatModel.stream(messages, { signal: abortController.signal })
 
       for await (const chunk of streamResponse) {
         if (!clientConnected) break
@@ -408,7 +418,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Use withStructuredOutput for validated JSON responses
       try {
         const structuredModel = chatModel.withStructuredOutput(schema)
-        const result = await structuredModel.invoke(messages)
+        const result = await structuredModel.invoke(messages, { signal: abortController.signal })
 
         res.status(200).json({
           content: JSON.stringify(result),
@@ -418,7 +428,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (structuredError) {
         // Fallback: if structured output fails, try plain invoke + manual parse
         console.warn('[LangChain Generate] Structured output failed, falling back to plain invoke:', structuredError)
-        const response = await chatModel.invoke(messages)
+        const response = await chatModel.invoke(messages, { signal: abortController.signal })
         const rawText = typeof response.content === 'string'
           ? response.content
           : Array.isArray(response.content)
@@ -442,12 +452,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({
           content: parsedContent,
           model: resolvedModel,
-          truncated: false,
+          truncated: isTruncated(response),
         })
       }
     } else {
       // === Non-streaming text (fallback) ===
-      const response = await chatModel.invoke(messages)
+      const response = await chatModel.invoke(messages, { signal: abortController.signal })
       const text = typeof response.content === 'string'
         ? response.content
         : Array.isArray(response.content)
@@ -457,7 +467,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({
         content: text,
         model: resolvedModel,
-        truncated: false,
+        truncated: isTruncated(response),
       })
     }
   } catch (err: unknown) {

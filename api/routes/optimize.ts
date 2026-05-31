@@ -88,9 +88,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'At least 2 waypoints are required' })
   }
 
+  // origin + 25 intermediates + destination (Routes API optimizeWaypointOrder 상한)
+  const MAX_WAYPOINTS = 27
+  if (waypoints.length > MAX_WAYPOINTS) {
+    return res.status(400).json({ error: `At most ${MAX_WAYPOINTS} waypoints are allowed` })
+  }
+
   for (const wp of waypoints) {
-    if (typeof wp.lat !== 'number' || typeof wp.lng !== 'number' || typeof wp.planId !== 'number') {
-      return res.status(400).json({ error: 'Each waypoint must have lat, lng, and planId as numbers' })
+    if (
+      typeof wp.lat !== 'number' ||
+      typeof wp.lng !== 'number' ||
+      typeof wp.planId !== 'number' ||
+      !Number.isFinite(wp.lat) ||
+      !Number.isFinite(wp.lng)
+    ) {
+      return res.status(400).json({ error: 'Each waypoint must have valid lat, lng, and planId as numbers' })
     }
   }
 
