@@ -3,7 +3,7 @@
 // Category-based and currency-based totals
 // ============================================
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronUp, Utensils, Bus, Bed, ShoppingBag, Camera, MoreHorizontal, MapPin, Route } from 'lucide-react'
 import { clsx } from 'clsx'
 import type { TravelLog, ExpenseCategory } from '@/types'
@@ -73,7 +73,20 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
     }
   }, [defaultOpen])
 
-  const { categoryTotals, currencyTotals, totalCount, maxCategoryAmount } = useMemo(() => {
+  // 막대그래프/표시 금액을 통화 혼합 없이 KRW 단일 기준으로 합산 (환율 없으면 원시 금액 fallback)
+  const toKRWTotal = useCallback(
+    (totals: Record<string, number>): number => {
+      let sum = 0
+      for (const [cur, amt] of Object.entries(totals)) {
+        const krw = exchangeRates ? convertToKRW(amt, cur, exchangeRates) : null
+        sum += krw ?? amt
+      }
+      return sum
+    },
+    [exchangeRates]
+  )
+
+  const { categoryTotals, currencyTotals, totalCount } = useMemo(() => {
     const catMap = new Map<ExpenseCategory, { totals: Record<string, number>; count: number }>()
     const curMap = new Map<string, number>()
 
@@ -105,13 +118,14 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
       .map(([currency, total]) => ({ currency, total }))
       .sort((a, b) => b.total - a.total)
 
-    // Max category amount for bar chart scaling
-    const maxCategoryAmount = categoryTotals.length > 0
-      ? Math.max(...categoryTotals.map((c) => Object.values(c.totals).reduce((s, v) => s + v, 0)))
-      : 0
-
-    return { categoryTotals, currencyTotals, totalCount: count, maxCategoryAmount }
+    return { categoryTotals, currencyTotals, totalCount: count }
   }, [logs])
+
+  // 막대 스케일 기준값을 KRW 환산 합계로 산출 (통화 혼합 시 비율 왜곡 방지)
+  const maxCategoryAmount = useMemo(
+    () => (categoryTotals.length > 0 ? Math.max(...categoryTotals.map((c) => toKRWTotal(c.totals))) : 0),
+    [categoryTotals, toKRWTotal]
+  )
 
   const hasMovementStats = totalTripDistance != null && totalTripDistance > 0
 
@@ -213,8 +227,8 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
             <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">카테고리별</span>
             {categoryTotals.map(({ category, totals, count }) => {
               const Icon = categoryIcons[category]
-              const catTotal = Object.values(totals).reduce((s, v) => s + v, 0)
-              const pct = maxCategoryAmount > 0 ? (catTotal / maxCategoryAmount) * 100 : 0
+              const catKRW = toKRWTotal(totals)
+              const pct = maxCategoryAmount > 0 ? (catKRW / maxCategoryAmount) * 100 : 0
               return (
                 <div key={category} className="flex items-center gap-2 sm:gap-3">
                   <div className={clsx('size-8 rounded-lg flex items-center justify-center flex-shrink-0', categoryColorClasses[category])}>
@@ -228,14 +242,7 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
                       <span className="text-xs text-zinc-400">{count}건</span>
                     </div>
                     <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-                      {(() => {
-                        let catKRW = 0
-                        for (const [cur, amt] of Object.entries(totals)) {
-                          const krw = exchangeRates ? convertToKRW(amt, cur, exchangeRates) : null
-                          catKRW += krw ?? amt
-                        }
-                        return formatAmount(catKRW)
-                      })()}
+                      {formatAmount(catKRW)}
                     </span>
                     {/* Bar chart */}
                     <div className="mt-1 h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">

@@ -80,14 +80,10 @@ export async function fetchDirections(
     durationText: data.durationText,
     distanceText: data.distanceText,
     encodedPolyline: data.encodedPolyline,
-    steps: data.steps.map((step) => ({
+    steps: (data.steps ?? []).map((step) => ({
       instruction: step.instruction,
-      distanceMeters: 0,
-      duration: '',
-      startLocation: { lat: 0, lng: 0 },
-      endLocation: { lat: 0, lng: 0 },
-      travelMode: travelMode,
-      polyline: '',
+      distanceText: step.distance,
+      durationText: step.duration,
     })),
     cachedAt: now,
     updatedAt: now,
