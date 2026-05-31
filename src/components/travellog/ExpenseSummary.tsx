@@ -78,8 +78,8 @@ export function ExpenseSummary({ logs, className, defaultOpen = false, totalTrip
     (totals: Record<string, number>): number => {
       let sum = 0
       for (const [cur, amt] of Object.entries(totals)) {
-        const krw = exchangeRates ? convertToKRW(amt, cur, exchangeRates) : null
-        sum += krw ?? amt
+        // 환율 없음(오프라인): 원시 금액 합 / 환율 있음: 환산 실패분(외화 누락)은 통화 혼합 방지 위해 제외
+        sum += exchangeRates ? (convertToKRW(amt, cur, exchangeRates) ?? 0) : amt
       }
       return sum
     },

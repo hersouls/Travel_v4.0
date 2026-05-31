@@ -15,8 +15,13 @@ export function useMediaQuery(query: string): boolean {
     (onChange: () => void) => {
       if (typeof window === 'undefined' || !window.matchMedia) return () => {}
       const mql = window.matchMedia(query)
-      mql.addEventListener('change', onChange)
-      return () => mql.removeEventListener('change', onChange)
+      // 구형 Safari(<16, iOS 15 등)는 MediaQueryList.addEventListener 미지원 → deprecated addListener fallback
+      if (typeof mql.addEventListener === 'function') {
+        mql.addEventListener('change', onChange)
+        return () => mql.removeEventListener('change', onChange)
+      }
+      mql.addListener(onChange)
+      return () => mql.removeListener(onChange)
     },
     [query],
   )
