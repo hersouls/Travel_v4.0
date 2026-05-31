@@ -2,7 +2,7 @@
 // Timezone Utilities for Travel v4.0
 // ============================================
 
-import { formatInTimeZone, toZonedTime } from 'date-fns-tz'
+import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz'
 import { differenceInCalendarDays, addDays } from 'date-fns'
 
 // 28개 국가 → IANA 시간대 매핑
@@ -85,7 +85,9 @@ export function getTimezoneFromCountry(country: string): string {
 export function parseDateAsLocal(dateString: string): Date {
   if (!dateString || !/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
     console.warn(`Invalid date string: ${dateString}`)
-    return new Date()
+    // 오늘 날짜로 조용히 대체하면 다운스트림 계산이 그럴듯하게 틀어지므로,
+    // 감지 가능한 Invalid Date를 반환해 호출부가 잘못된 데이터를 인지하게 한다
+    return new Date(NaN)
   }
   const [year, month, day] = dateString.split('-').map(Number)
   return new Date(year, month - 1, day, 12, 0, 0)
@@ -109,14 +111,45 @@ export function formatDateInTimezone(
 }
 
 /**
+ * 특정 시간대의 UTC 기준 오프셋(분 단위, 동쪽이 양수)을 주어진 시점 기준으로 계산.
+ * 예: Asia/Seoul → +540, Europe/Paris(겨울) → +60
+ */
+function getZoneOffsetMinutes(timeZone: string, date: Date): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+  const parts = Object.fromEntries(
+    dtf.formatToParts(date).map((p) => [p.type, p.value])
+  ) as Record<string, string>
+  // 'en-US' + hour12:false 는 자정에 '24'를 낼 수 있어 24로 보정
+  const hour = Number(parts.hour) % 24
+  const asUTC = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    hour,
+    Number(parts.minute),
+    Number(parts.second)
+  )
+  return Math.round((asUTC - date.getTime()) / 60000)
+}
+
+/**
  * 두 시간대 간 시차 반환 (시간 단위)
  * 양수: tz1이 tz2보다 앞서있음
  */
 export function getTimezoneOffset(tz1: string, tz2: string): number {
   const now = new Date()
-  const date1 = toZonedTime(now, tz1)
-  const date2 = toZonedTime(now, tz2)
-  return (date2.getTimezoneOffset() - date1.getTimezoneOffset()) / 60
+  const offset1 = getZoneOffsetMinutes(tz1, now)
+  const offset2 = getZoneOffsetMinutes(tz2, now)
+  return (offset1 - offset2) / 60
 }
 
 /**
@@ -224,7 +257,8 @@ export function getTimezoneDisplayName(timezone: string): string {
  * fromTz 기준으로 toTz가 얼마나 빠르거나 느린지 표시
  */
 export function getTimezoneDifference(fromTz: string, toTz: string): string {
-  const diff = getTimezoneOffset(fromTz, toTz)
+  // toTz가 fromTz 대비 앞서면(빠름) 양수가 되도록 (toTz, fromTz) 순서로 계산
+  const diff = getTimezoneOffset(toTz, fromTz)
   if (diff === 0) return '동일'
   if (diff > 0) return `${diff}시간 빠름`
   return `${Math.abs(diff)}시간 느림`
@@ -241,12 +275,17 @@ export function convertTimeBetweenZones(
 ): string {
   try {
     const [hours, minutes] = time.split(':').map(Number)
-    const sourceDate = new Date(date)
-    sourceDate.setHours(hours, minutes, 0, 0)
+    // date의 달력 일자 + 입력 시각으로 naive wall-clock 문자열을 만든 뒤
+    // fromTimezone 기준으로 해석(UTC instant)하여 toTimezone으로 포맷한다.
+    const y = date.getFullYear()
+    const mo = String(date.getMonth() + 1).padStart(2, '0')
+    const d = String(date.getDate()).padStart(2, '0')
+    const hh = String(hours).padStart(2, '0')
+    const mm = String(minutes).padStart(2, '0')
+    const naive = `${y}-${mo}-${d} ${hh}:${mm}`
 
-    // fromTimezone 기준의 시간을 toTimezone으로 변환
-    const zonedDate = toZonedTime(sourceDate, fromTimezone)
-    return formatInTimeZone(zonedDate, toTimezone, 'HH:mm')
+    const utcInstant = fromZonedTime(naive, fromTimezone)
+    return formatInTimeZone(utcInstant, toTimezone, 'HH:mm')
   } catch {
     return time
   }

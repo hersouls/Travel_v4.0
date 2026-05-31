@@ -30,6 +30,10 @@ export function usePullToRefresh({
   pullDistanceRef.current = pullDistance
 
   useEffect(() => {
+    // 의존성(threshold/maxPull) 변경으로 effect가 재실행될 때 cleanup이 false로 만든
+    // mountedRef를 다시 복구한다. 그렇지 않으면 이후 상태 갱신이 영구히 차단된다.
+    mountedRef.current = true
+
     const onTouchStart = (e: TouchEvent) => {
       if (window.scrollY <= 0) {
         touchStartY.current = e.touches[0].clientY

@@ -96,8 +96,16 @@ class OpenAITTSService {
     }
   }
 
+  private safePlay(): void {
+    this.audio?.play().catch((err: unknown) => {
+      // 자동재생 정책/요소 제거/stop 경합으로 인한 거부는 무시, 그 외는 경고 (unhandled rejection 방지)
+      if (err instanceof DOMException && (err.name === 'AbortError' || err.name === 'NotAllowedError')) return
+      console.warn('[OpenAI TTS] play() failed:', err)
+    })
+  }
+
   play(): void {
-    this.audio?.play()
+    this.safePlay()
   }
 
   pause(): void {
@@ -105,7 +113,7 @@ class OpenAITTSService {
   }
 
   resume(): void {
-    this.audio?.play()
+    this.safePlay()
   }
 
   stop(): void {

@@ -15,6 +15,8 @@ export function useUnsavedChanges(isDirty: boolean) {
 
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault()
+      // Safari/WebKit 및 일부 구형 Chromium은 returnValue가 설정되어야 확인 대화상자를 표시
+      e.returnValue = ''
     }
 
     window.addEventListener('beforeunload', handler)

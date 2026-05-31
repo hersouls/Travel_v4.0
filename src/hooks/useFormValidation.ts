@@ -12,12 +12,14 @@ export interface ValidationErrors {
 export function useFormValidation<T>(schema: ZodSchema<T>) {
   const [errors, setErrors] = useState<ValidationErrors>({})
 
+  // 검증 결과(에러 맵)를 동기적으로 반환한다. null이면 통과.
+  // setErrors는 비동기이므로 호출부가 errors 상태 대신 이 반환값을 읽어야 stale closure를 피한다.
   const validate = useCallback(
-    (data: unknown): data is T => {
+    (data: unknown): ValidationErrors | null => {
       try {
         schema.parse(data)
         setErrors({})
-        return true
+        return null
       } catch (err) {
         const zodError = err as ZodError
         const fieldErrors: ValidationErrors = {}
@@ -28,7 +30,7 @@ export function useFormValidation<T>(schema: ZodSchema<T>) {
           }
         }
         setErrors(fieldErrors)
-        return false
+        return fieldErrors
       }
     },
     [schema]

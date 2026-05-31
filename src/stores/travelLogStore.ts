@@ -118,15 +118,16 @@ export const useTravelLogStore = create<TravelLogState>()(
       // Update a log
       updateLog: async (id, updates) => {
         try {
-          // If photo changed, clear path to trigger re-upload
+          // photo/thumbnail 변경 시 재업로드 트리거를 위해 path를 비운다 (호출자 인자 비변형)
+          let updatesToApply = updates
           if ('photo' in updates) {
-            updates.photoPath = undefined
+            updatesToApply = { ...updatesToApply, photoPath: undefined }
           }
           if ('thumbnailPhoto' in updates) {
-            updates.thumbnailPhotoPath = undefined
+            updatesToApply = { ...updatesToApply, thumbnailPhotoPath: undefined }
           }
 
-          await db.updateTravelLog(id, updates)
+          await db.updateTravelLog(id, updatesToApply)
 
           const log = await db.getTravelLog(id)
           if (log) {
@@ -198,15 +199,19 @@ export const useTravelLogStore = create<TravelLogState>()(
                 undoController.abort()
                 clearTimeout(timer)
                 if (firebaseId) syncManager.removePendingDelete(firebaseId)
-                // Restore from snapshot
+                // Restore from snapshot with a NEW id, then re-fetch the persisted row
+                // so in-memory state matches IndexedDB (keeps later update/delete + sync consistent)
                 const { id: _id, ...rest } = snapshot
-                await db.addTravelLog(rest as Omit<TravelLog, 'id'>)
-                // Partial update: re-insert restored log and re-sort
-                set(state => {
-                  const updated = [...state.logs, snapshot as TravelLog]
-                  updated.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                  return { logs: updated }
-                })
+                const newId = await db.addTravelLog(rest as Omit<TravelLog, 'id'>)
+                const restored = await db.getTravelLog(newId)
+                if (restored) {
+                  // Partial update: re-insert restored log and re-sort
+                  set(state => {
+                    const updated = [...state.logs, restored]
+                    updated.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                    return { logs: updated }
+                  })
+                }
                 useUIStore.getState().showToast({
                   type: 'success',
                   title: '기록이 복원되었습니다',

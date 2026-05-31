@@ -45,10 +45,17 @@ export async function extractExif(file: File): Promise<ExifMetadata | null> {
 
     // GPS coordinates (exifr auto-resolves to decimal degrees with gps:true)
     // Guard against NaN from corrupted/partial GPS tags (typeof NaN === 'number')
-    if (typeof data.latitude === 'number' && typeof data.longitude === 'number' &&
-        isFinite(data.latitude) && isFinite(data.longitude)) {
-      result.latitude = data.latitude
-      result.longitude = data.longitude
+    const lat = data.latitude
+    const lng = data.longitude
+    if (
+      typeof lat === 'number' && typeof lng === 'number' &&
+      isFinite(lat) && isFinite(lng) &&
+      lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 &&
+      // (0,0)은 실패/제로화된 GPS 태그의 흔한 결과 — '위치 없음'으로 취급
+      !(lat === 0 && lng === 0)
+    ) {
+      result.latitude = lat
+      result.longitude = lng
     }
 
     // Camera info

@@ -15,7 +15,7 @@ interface Waypoint {
 
 function plansToWaypoints(plans: Plan[]): Waypoint[] {
   return plans
-    .filter((p) => p.latitude && p.longitude)
+    .filter((p) => p.latitude != null && p.longitude != null)
     .map((p) => ({
       name: p.placeName,
       lat: p.latitude!,

@@ -4,7 +4,7 @@
 // that were imported from travel log records
 // ============================================
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Expense } from '@/types'
 import { getTravelLogsByIds } from '@/services/database'
 
@@ -28,12 +28,23 @@ export function useExpenseThumbnails(expenses: Expense[]): Record<number, string
     return map
   }, [expenses])
 
-  const logIds = useMemo(
-    () => Array.from(logIdToExpenseIds.keys()),
+  // 항상 최신 매핑을 가리키는 ref (effect 의존성에서 제외해 불필요한 재실행 방지)
+  const logIdToExpenseIdsRef = useRef(logIdToExpenseIds)
+  logIdToExpenseIdsRef.current = logIdToExpenseIds
+
+  // 매핑 "내용"의 안정적 시그니처 — expenses 배열이 재생성돼도 내용이 같으면 DB 재조회 안 함
+  const mappingSig = useMemo(
+    () =>
+      Array.from(logIdToExpenseIds.entries())
+        .sort((a, b) => a[0] - b[0])
+        .map(([k, v]) => `${k}:${v.join('.')}`)
+        .join(','),
     [logIdToExpenseIds],
   )
 
   useEffect(() => {
+    const map = logIdToExpenseIdsRef.current
+    const logIds = Array.from(map.keys())
     if (logIds.length === 0) {
       setThumbnailMap({})
       return
@@ -47,7 +58,7 @@ export function useExpenseThumbnails(expenses: Expense[]): Record<number, string
       for (const log of logs) {
         const thumb = log.thumbnailPhoto || log.photo
         if (!log.id || !thumb) continue
-        const expenseIds = logIdToExpenseIds.get(log.id)
+        const expenseIds = map.get(log.id)
         if (expenseIds) {
           for (const eid of expenseIds) {
             result[eid] = thumb
@@ -58,7 +69,7 @@ export function useExpenseThumbnails(expenses: Expense[]): Record<number, string
     }).catch(console.error)
 
     return () => { cancelled = true }
-  }, [logIds, logIdToExpenseIds])
+  }, [mappingSig])
 
   return thumbnailMap
 }

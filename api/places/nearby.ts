@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface NearbyRequestBody {
   latitude: number
   longitude: number
@@ -45,6 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!enforceRateLimit(req, res, 'places-nearby', 30)) return
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     console.error('[Places Nearby] GOOGLE_PLACES_API_KEY not configured')
@@ -58,9 +62,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     types,
     language = 'ko',
     maxResults = 10,
-  } = req.body as NearbyRequestBody
+  } = (req.body ?? {}) as NearbyRequestBody
 
-  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+  if (
+    typeof latitude !== 'number' ||
+    typeof longitude !== 'number' ||
+    !Number.isFinite(latitude) ||
+    !Number.isFinite(longitude)
+  ) {
     return res.status(400).json({ error: 'Valid latitude and longitude are required' })
   }
 

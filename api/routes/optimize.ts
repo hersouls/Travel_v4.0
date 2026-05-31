@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface Waypoint {
   lat: number
   lng: number
@@ -72,21 +74,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!enforceRateLimit(req, res, 'routes-optimize', 20)) return
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     console.error('[Route Optimize] GOOGLE_PLACES_API_KEY not configured')
     return res.status(500).json({ error: 'API key not configured' })
   }
 
-  const { waypoints, travelMode, language = 'ko' } = req.body as OptimizeRequestBody
+  const { waypoints, travelMode, language = 'ko' } = (req.body ?? {}) as OptimizeRequestBody
 
   if (!waypoints || !Array.isArray(waypoints) || waypoints.length < 2) {
     return res.status(400).json({ error: 'At least 2 waypoints are required' })
   }
 
+  // origin + 25 intermediates + destination (Routes API optimizeWaypointOrder 상한)
+  const MAX_WAYPOINTS = 27
+  if (waypoints.length > MAX_WAYPOINTS) {
+    return res.status(400).json({ error: `At most ${MAX_WAYPOINTS} waypoints are allowed` })
+  }
+
   for (const wp of waypoints) {
-    if (typeof wp.lat !== 'number' || typeof wp.lng !== 'number' || typeof wp.planId !== 'number') {
-      return res.status(400).json({ error: 'Each waypoint must have lat, lng, and planId as numbers' })
+    if (
+      typeof wp.lat !== 'number' ||
+      typeof wp.lng !== 'number' ||
+      typeof wp.planId !== 'number' ||
+      !Number.isFinite(wp.lat) ||
+      !Number.isFinite(wp.lng)
+    ) {
+      return res.status(400).json({ error: 'Each waypoint must have valid lat, lng, and planId as numbers' })
     }
   }
 
@@ -157,11 +173,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const route = data.routes[0]
 
-    // Map optimized order back to planId order
-    const optimizedIndices: number[] = route.optimizedIntermediateWaypointIndex || []
+    // Map optimized order back to planId order.
+    // optimizedIntermediateWaypointIndex가 없거나 길이가 안 맞으면(API가 재정렬 메타를 생략하는 경우)
+    // 원래 순서로 폴백하여 중간 경유지가 통째로 누락되는 것을 방지하고, 범위를 벗어난 인덱스는 건너뛴다.
+    const rawIndices: unknown = route.optimizedIntermediateWaypointIndex
+    const optimizedIndices: number[] =
+      Array.isArray(rawIndices) && rawIndices.length === intermediates.length
+        ? (rawIndices as number[])
+        : intermediates.map((_, i) => i)
     const optimizedOrder: number[] = [origin.planId]
     for (const idx of optimizedIndices) {
-      optimizedOrder.push(intermediates[idx].planId)
+      const wp = intermediates[idx]
+      if (wp) optimizedOrder.push(wp.planId)
     }
     optimizedOrder.push(destination.planId)
 

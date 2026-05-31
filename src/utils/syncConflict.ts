@@ -90,7 +90,8 @@ function getMergeableFields(entityType: SyncEntityType): readonly string[] {
 }
 
 function normalize(val: unknown): unknown {
-  if (val === null || val === undefined || val === '' || val === 0) return undefined
+  // 0/false는 유효 값(order:0, lat/lng:0, rating:0 등)이므로 'unset'으로 접지 않는다
+  if (val === null || val === undefined || val === '') return undefined
   // Treat empty arrays as undefined ([] vs undefined shouldn't be a conflict)
   if (Array.isArray(val) && val.length === 0) return undefined
   return val

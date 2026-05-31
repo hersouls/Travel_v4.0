@@ -4,10 +4,13 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from './_lib/rateLimit'
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS 헤더
   const ALLOWED_ORIGINS = ['https://travel1.moonwave.kr','https://moonwave-travel.vercel.app','http://localhost:5173','http://localhost:4173']
   const origin = req.headers.origin || ''
+  res.setHeader('Vary', 'Origin')
   res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0])
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
@@ -19,6 +22,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  // 공개 프록시이므로 IP 기반 레이트리밋으로 무제한 릴레이 남용 차단
+  if (!enforceRateLimit(req, res, 'tts', 20)) return
 
   const { text, lang = 'ko' } = req.query
 

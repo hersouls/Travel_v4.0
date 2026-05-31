@@ -29,6 +29,7 @@ interface BroadcastMessage {
   payload?: unknown
   tabId: string
   timestamp: number
+  seq?: number // per-tab monotonic sequence for duplicate-suppression identity
 }
 
 type MessageHandler = (message: BroadcastMessage) => void
@@ -43,7 +44,9 @@ class BroadcastService {
   private channel: BroadcastChannel | null = null
   private handlers: Set<MessageHandler> = new Set()
   private useFallback: boolean = false
-  private lastProcessedTimestamp: number = 0
+  private seq: number = 0
+  // 짧은 시간 동안 본 메시지 식별자(중복 발화 억제용). 메모리 누수 방지를 위해 곧 제거됨.
+  private recentMessageKeys: Set<string> = new Set()
 
   constructor() {
     this.init()
@@ -87,9 +90,13 @@ class BroadcastService {
     // Ignore messages from this tab
     if (message.tabId === TAB_ID) return
 
-    // Ignore already processed messages (for localStorage which may fire multiple times)
-    if (message.timestamp <= this.lastProcessedTimestamp) return
-    this.lastProcessedTimestamp = message.timestamp
+    // 진짜 중복 메시지(특히 localStorage storage 이벤트의 반복 발화)만 억제한다.
+    // 기존의 timestamp 단조 증가 필터는 같은 ms에 발생한 서로 다른 메시지를 누락시켜
+    // 다른 탭의 UI가 갱신되지 않게 했으므로, 메시지 식별자 기반 dedup으로 교체.
+    const key = `${message.tabId}:${message.seq ?? message.timestamp}:${message.type}`
+    if (this.recentMessageKeys.has(key)) return
+    this.recentMessageKeys.add(key)
+    setTimeout(() => this.recentMessageKeys.delete(key), 1000)
 
     console.log('[Broadcast] Received:', message.type)
 
@@ -112,6 +119,7 @@ class BroadcastService {
       payload,
       tabId: TAB_ID,
       timestamp: Date.now(),
+      seq: this.seq++,
     }
 
     if (this.channel) {

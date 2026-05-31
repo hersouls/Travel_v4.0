@@ -126,6 +126,7 @@ export const useChatStore = create<ChatState>()(
 
           const decoder = new TextDecoder()
           let buffer = ''
+          let streamError: string | null = null
 
           while (true) {
             const { done, value } = await reader.read()
@@ -141,6 +142,11 @@ export const useChatStore = create<ChatState>()(
               if (data === '[DONE]') break
               try {
                 const parsed = JSON.parse(data)
+                if (parsed.error) {
+                  // 서버가 스트리밍 중 보낸 에러를 외부 catch로 전달 (기존엔 무시되어 부분/빈 응답으로 처리됨)
+                  streamError = typeof parsed.error === 'string' ? parsed.error : '생성 중 오류가 발생했습니다'
+                  break
+                }
                 if (parsed.text) {
                   accumulated += parsed.text
                   // Update the assistant message in place
@@ -154,7 +160,11 @@ export const useChatStore = create<ChatState>()(
                 // skip malformed chunks
               }
             }
+            if (streamError) break
           }
+
+          // 서버 스트리밍 에러를 외부 catch로 라우팅 (오류 메시지 렌더 + isLoading 해제)
+          if (streamError) throw new Error(streamError)
 
           // If no content was received, show fallback
           if (!accumulated) {

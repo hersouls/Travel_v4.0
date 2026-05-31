@@ -174,8 +174,8 @@ export function PlanForm() {
         placeName: extracted.placeName || prev.placeName,
         address: extracted.address || prev.address,
         website: extracted.website || prev.website,
-        latitude: extracted.latitude || prev.latitude,
-        longitude: extracted.longitude || prev.longitude,
+        latitude: extracted.latitude ?? prev.latitude,
+        longitude: extracted.longitude ?? prev.longitude,
         googlePlaceId: extracted.googleInfo.placeId,
         googleInfo: extracted.googleInfo,
         // Auto-fill opening hours to memo if available
@@ -244,15 +244,19 @@ export function PlanForm() {
         openingHoursList.push(trimmed.replace('운영시간:', '').trim())
         currentSection = 'structured'
       } else if (trimmed.startsWith('평점:')) {
-        const ratingMatch = trimmed.match(/(\d+\.?\d*)\//)
+        // '4.5/5' 형태만, 그리고 0~5 범위 값만 평점으로 수용 (날짜/분수 오인 방지)
+        const ratingMatch = trimmed.match(/(\d+(?:\.\d+)?)\s*\/\s*5/)
         if (ratingMatch) {
-          if (!updates.googleInfo) {
-            updates.googleInfo = { extractedAt: new Date() }
-          }
-          updates.googleInfo.rating = Number.parseFloat(ratingMatch[1])
-          const reviewMatch = trimmed.match(/(\d{1,3}(,\d{3})*|\d+)개/)
-          if (reviewMatch) {
-            updates.googleInfo.reviewCount = Number.parseInt(reviewMatch[1].replace(/,/g, ''))
+          const parsedRating = Number.parseFloat(ratingMatch[1])
+          if (Number.isFinite(parsedRating) && parsedRating >= 0 && parsedRating <= 5) {
+            if (!updates.googleInfo) {
+              updates.googleInfo = { extractedAt: new Date() }
+            }
+            updates.googleInfo.rating = parsedRating
+            const reviewMatch = trimmed.match(/(\d{1,3}(,\d{3})*|\d+)개/)
+            if (reviewMatch) {
+              updates.googleInfo.reviewCount = Number.parseInt(reviewMatch[1].replace(/,/g, ''))
+            }
           }
         }
         currentSection = 'structured'
@@ -334,8 +338,9 @@ export function PlanForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validate(formData)) {
-      const firstError = Object.values(errors)[0]
+    const validationErrors = validate(formData)
+    if (validationErrors) {
+      const firstError = Object.values(validationErrors)[0]
       if (firstError) toast.error(firstError)
       return
     }
@@ -609,7 +614,7 @@ export function PlanForm() {
                 </div>
               )}
               {/* 추출된 좌표 표시 */}
-              {(formData.latitude && formData.longitude) && (
+              {(formData.latitude !== undefined && formData.longitude !== undefined) && (
                 <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
                   <div className="flex items-center gap-2 sm:gap-4">
                     <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
@@ -975,7 +980,7 @@ export function PlanForm() {
               </div>
               <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                 {formData.photos.map((photo, index) => (
-                  <div key={index} className="relative aspect-square rounded-lg overflow-hidden">
+                  <div key={photo} className="relative aspect-square rounded-lg overflow-hidden">
                     <img src={photo} alt="" className="w-full h-full object-cover" />
                     <IconButton
                       type="button"

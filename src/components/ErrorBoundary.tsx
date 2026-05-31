@@ -4,7 +4,7 @@
 
 import { Component, type ReactNode } from 'react'
 import { Button } from '@/components/ui/Button'
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
+import { AlertTriangle, RefreshCw, Home, RotateCcw } from 'lucide-react'
 import { captureError } from '@/services/sentry'
 
 interface Props {
@@ -36,6 +36,12 @@ export class ErrorBoundary extends Component<Props, State> {
 
   handleReload = () => {
     window.location.reload()
+  }
+
+  // 전체 새로고침 없이 in-place 복구 — 일시적 렌더 오류(전환 중 undefined prop 등)에서
+  // 미저장 상태/스크롤을 잃지 않고 서브트리만 다시 마운트한다
+  handleReset = () => {
+    this.setState({ hasError: false, error: undefined, errorInfo: undefined })
   }
 
   handleGoHome = () => {
@@ -81,6 +87,13 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button
                 color="primary"
+                onClick={this.handleReset}
+                leftIcon={<RotateCcw className="size-4" />}
+              >
+                다시 시도
+              </Button>
+              <Button
+                color="secondary"
                 onClick={this.handleReload}
                 leftIcon={<RefreshCw className="size-4" />}
               >

@@ -125,6 +125,18 @@ class TTSService {
           const words = sentence.split(/\s+/)
           let wordChunk = ''
           for (const word of words) {
+            // 공백·문장부호 없는 긴 CJK 런(한국어 흔함)은 글자 단위로 강제 분할.
+            // 그렇지 않으면 단일 청크가 200자 제한을 넘어 /api/tts가 400을 반환하고 재생 전체가 중단됨.
+            if (word.length > maxLength) {
+              if (wordChunk) {
+                chunks.push(wordChunk.trim())
+                wordChunk = ''
+              }
+              for (let i = 0; i < word.length; i += maxLength) {
+                chunks.push(word.slice(i, i + maxLength))
+              }
+              continue
+            }
             if ((wordChunk + ' ' + word).length > maxLength) {
               if (wordChunk) chunks.push(wordChunk.trim())
               wordChunk = word
@@ -263,7 +275,8 @@ class TTSService {
     // 기존 재생 중지
     this.stop()
 
-    this.fallbackRate = options.rate ?? 1.0
+    // rate 미지정 시 직전에 setRate로 저장된 값을 유지 (1.0으로 리셋하지 않음)
+    this.fallbackRate = options.rate ?? this.fallbackRate
 
     // Web Speech API가 없거나 음성이 없으면 바로 fallback
     if (!this.synth || this.voices.length === 0 || this.useFallback) {
@@ -274,7 +287,8 @@ class TTSService {
 
     // Web Speech API 시도
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = options.rate ?? 1.0
+    // Web Speech utterance.rate는 시작 후 변경 불가하므로, 저장된 rate를 시작 시점에 반영
+    utterance.rate = options.rate ?? this.fallbackRate ?? 1.0
     utterance.pitch = options.pitch ?? 1.0
     utterance.volume = options.volume ?? 1.0
 
@@ -355,7 +369,13 @@ class TTSService {
     if (this.isPlayingFallback && this.isPausedFallback) {
       this.isPausedFallback = false
       if (this.audioElement?.paused) {
-        this.audioElement.play()
+        // play()는 거부될 수 있으므로(자동재생 정책/요소 제거/stop과의 경합) 다른 호출부와 동일하게 catch
+        this.audioElement.play().catch((err) => {
+          console.error('[TTS] Resume play error:', err)
+          this.isPlayingFallback = false
+          this.isPausedFallback = false
+          this.callbacks.onError?.('음성 재생 실패')
+        })
       } else {
         this.playNextChunk()
       }

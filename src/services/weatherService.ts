@@ -84,14 +84,22 @@ export async function fetchWeatherForecast(
 
   const data = await response.json()
 
-  const daily: DayWeather[] = data.daily.time.map((date: string, i: number) => ({
-    date,
-    temperatureMax: Math.round(data.daily.temperature_2m_max[i]),
-    temperatureMin: Math.round(data.daily.temperature_2m_min[i]),
-    weatherCode: data.daily.weather_code[i],
-    precipitationProbability: data.daily.precipitation_probability_max[i] || 0,
-    windSpeedMax: Math.round(data.daily.wind_speed_10m_max[i]),
-  }))
+  const daily: DayWeather[] = (data.daily.time as string[])
+    .map((date: string, i: number): DayWeather | null => {
+      const tMax = data.daily.temperature_2m_max[i]
+      const tMin = data.daily.temperature_2m_min[i]
+      // null(예보 없는 날)을 0°C로 강제 변환하지 않고 해당 날짜를 제외
+      if (tMax == null || tMin == null) return null
+      return {
+        date,
+        temperatureMax: Math.round(tMax),
+        temperatureMin: Math.round(tMin),
+        weatherCode: data.daily.weather_code[i] ?? 0,
+        precipitationProbability: data.daily.precipitation_probability_max[i] || 0,
+        windSpeedMax: Math.round(data.daily.wind_speed_10m_max[i] ?? 0),
+      }
+    })
+    .filter((d): d is DayWeather => d !== null)
 
   return { daily, timezone: data.timezone }
 }

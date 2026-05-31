@@ -71,7 +71,11 @@ export function AIChatPanel({ isOpen, onClose, tripId, tripTitle, tripCountry }:
     const trimmed = input.trim()
     if (!trimmed || isLoading) return
     setInput('')
-    await sendMessage(trimmed)
+    try {
+      await sendMessage(trimmed)
+    } catch {
+      setInput(trimmed) // 전송 실패 시 입력 복원 (재입력 방지)
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

@@ -37,7 +37,8 @@ export function useNearbyPlaces({
   const typesKey = useMemo(() => JSON.stringify(types), [types])
 
   const fetchPlaces = useCallback(async () => {
-    if (!enabled || !latitude || !longitude) return
+    // Number.isFinite는 0을 허용하면서 NaN/undefined/Infinity는 거부 (좌표 0이 유효)
+    if (!enabled || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return
 
     // 이전 요청 취소
     abortRef.current?.abort()
@@ -53,6 +54,7 @@ export function useNearbyPlaces({
         radiusMeters,
         types,
         maxResults,
+        controller.signal,
       )
       // 취소된 요청의 결과 무시
       if (!controller.signal.aborted) {

@@ -241,11 +241,14 @@ export async function processImages(
   const fileArray = Array.from(files)
   const imageFiles = fileArray.filter((file) => file.type.startsWith('image/'))
 
-  const results = await Promise.all(
+  // 읽기 실패한 파일 1개가 전체 배치를 버리지 않도록 allSettled — 읽힌 것만 첨부
+  const settled = await Promise.allSettled(
     imageFiles.map((file) => fileToBase64(file))
   )
 
-  return results
+  return settled
+    .filter((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled')
+    .map((r) => r.value)
 }
 
 /**

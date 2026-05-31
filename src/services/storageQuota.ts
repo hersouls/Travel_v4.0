@@ -173,9 +173,10 @@ export async function getStorageInfo(): Promise<StorageInfo> {
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B'
 
-  const units = ['B', 'KB', 'MB', 'GB']
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
   const k = 1024
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  // 인덱스를 마지막 단위로 클램프하여 >= 1TB에서 'undefined' 단위가 나오지 않게 함
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), units.length - 1)
 
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${units[i]}`
 }

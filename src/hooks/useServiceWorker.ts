@@ -2,7 +2,7 @@
 // Service Worker Hook - PWA Update Management
 // ============================================
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface ServiceWorkerState {
   isUpdateAvailable: boolean
@@ -48,6 +48,19 @@ export function useServiceWorker() {
     }
   }, [])
 
+  // applyUpdate의 fallback 타이머/리스너를 추적해 언마운트 시 정리 (예기치 않은 reload·리스너 누수 방지)
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const controllerChangeHandlerRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current)
+      if (controllerChangeHandlerRef.current && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeHandlerRef.current)
+      }
+    }
+  }, [])
+
   const applyUpdate = useCallback(() => {
     const { waitingWorker } = state
     if (!waitingWorker) {
@@ -64,18 +77,20 @@ export function useServiceWorker() {
       if (reloading) return
       reloading = true
       console.log('[useServiceWorker] Controller changed, reloading...')
+      if (reloadTimerRef.current) clearTimeout(reloadTimerRef.current) // 실제 변경 시 fallback 타이머 취소
       // 리스너 정리 후 리로드
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)
       window.location.reload()
     }
 
+    controllerChangeHandlerRef.current = handleControllerChange
     navigator.serviceWorker.addEventListener('controllerchange', handleControllerChange)
 
     // Send SKIP_WAITING to the waiting worker
     waitingWorker.postMessage({ type: 'SKIP_WAITING' })
 
     // Fallback: if controllerchange doesn't fire within 3 seconds
-    setTimeout(() => {
+    reloadTimerRef.current = setTimeout(() => {
       if (!reloading) {
         console.warn('[useServiceWorker] controllerchange timeout, forcing reload')
         navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange)

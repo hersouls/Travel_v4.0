@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface StreetViewResponse {
   imageUrl: string | null
   available: boolean
@@ -28,6 +30,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  if (!enforceRateLimit(req, res, 'maps-streetview', 30)) return
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
@@ -78,7 +82,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // API 키를 프록시 경로로 대체
-    const imageUrl = `/api/maps/streetview-image?lat=${latNum}&lng=${lngNum}&size=${sizeStr}&heading=${headingStr}`
+    const imageUrl = `/api/maps/streetview-image?lat=${latNum}&lng=${lngNum}&size=${encodeURIComponent(sizeStr)}&heading=${encodeURIComponent(headingStr)}`
 
     const result: StreetViewResponse = {
       imageUrl,

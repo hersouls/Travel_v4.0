@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface ElevationPoint {
   lat: number
   lng: number
@@ -33,13 +35,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!enforceRateLimit(req, res, 'routes-elevation', 30)) return
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     console.error('[Elevation] GOOGLE_PLACES_API_KEY not configured')
     return res.status(500).json({ error: 'API key not configured' })
   }
 
-  const { encodedPolyline, samples = 100, locations } = req.body as ElevationRequestBody
+  const { encodedPolyline, samples = 100, locations } = (req.body ?? {}) as ElevationRequestBody
 
   // Support both encodedPolyline (path sampling) and locations (individual points)
   let apiUrl: string

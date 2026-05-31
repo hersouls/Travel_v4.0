@@ -25,8 +25,17 @@ const categoryIcons: Record<ExpenseCategory, typeof Utensils> = {
   shopping: ShoppingBag, attraction: Camera, other: MoreHorizontal,
 }
 
-function formatAmount(amount: number): string {
-  return `₩${Math.round(amount).toLocaleString()}`
+function formatAmount(amount: number, currency: string): string {
+  const rounded = Math.round(amount)
+  try {
+    return new Intl.NumberFormat('ko-KR', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 0,
+    }).format(rounded)
+  } catch {
+    return `${rounded.toLocaleString()} ${currency}`
+  }
 }
 
 function getBarColor(percentage: number): string {
@@ -52,31 +61,41 @@ export function ExpenseBudgetBar({ budget, currencyTotals, categoryTotals, excha
       if (currency === budgetCur) {
         spent += total
       } else if (exchangeRates) {
-        // Convert to budget currency via KRW
+        // KRW로 변환 후, 1-unit 변환(convertToKRW(1,...))의 Math.round 정밀도 손실을 피하려
+        // raw rate(budgetCur per KRW)를 곱해 예산 통화로 변환
         const krw = convertToKRW(total, currency, exchangeRates)
-        const budgetKrw = convertToKRW(1, budgetCur, exchangeRates)
-        if (krw != null && budgetKrw != null && budgetKrw > 0) {
-          spent += krw / budgetKrw
+        const budgetRate = budgetCur === 'KRW' ? 1 : exchangeRates[budgetCur]
+        if (krw != null && budgetRate) {
+          spent += krw * budgetRate
         }
       }
     }
     return spent
   }, [budget.budgetCurrency, currencyTotals, exchangeRates])
 
-  // Category spending in KRW for comparison with category budgets
+  // Category spending in BUDGET CURRENCY (must match catBudget unit, not KRW),
+  // computed the same way as totalSpent — otherwise catPct is off by the exchange rate.
   const categorySpending = useMemo(() => {
     if (!categoryTotals || !budget.categoryBudgets) return null
+    const budgetCur = budget.budgetCurrency
     const result: Record<string, number> = {}
     for (const { category, totals } of categoryTotals) {
-      let krwTotal = 0
+      let spent = 0
       for (const [cur, amt] of Object.entries(totals)) {
-        const krw = exchangeRates ? convertToKRW(amt, cur, exchangeRates) : null
-        krwTotal += krw ?? amt
+        if (cur === budgetCur) {
+          spent += amt
+        } else if (exchangeRates) {
+          const krw = convertToKRW(amt, cur, exchangeRates)
+          const budgetRate = budgetCur === 'KRW' ? 1 : exchangeRates[budgetCur]
+          if (krw != null && budgetRate) {
+            spent += krw * budgetRate
+          }
+        }
       }
-      result[category] = krwTotal
+      result[category] = spent
     }
     return result
-  }, [categoryTotals, budget.categoryBudgets, exchangeRates])
+  }, [categoryTotals, budget.categoryBudgets, budget.budgetCurrency, exchangeRates])
 
   const percentage = budget.totalBudget > 0
     ? Math.min((totalSpent / budget.totalBudget) * 100, 100)
@@ -93,7 +112,7 @@ export function ExpenseBudgetBar({ budget, currencyTotals, categoryTotals, excha
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">예산</span>
         <span className="text-xs text-zinc-500">
-          {formatAmount(budget.totalBudget)}
+          {formatAmount(budget.totalBudget, budget.budgetCurrency)}
         </span>
       </div>
 
@@ -108,12 +127,12 @@ export function ExpenseBudgetBar({ budget, currencyTotals, categoryTotals, excha
       {/* Stats */}
       <div className="flex items-center justify-between mt-2">
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
-          사용: {formatAmount(totalSpent)} ({percentage.toFixed(1)}%)
+          사용: {formatAmount(totalSpent, budget.budgetCurrency)} ({percentage.toFixed(1)}%)
         </span>
         <span className={clsx('text-xs font-medium', textColor)}>
           {remaining >= 0
-            ? `남은 예산: ${formatAmount(remaining)}`
-            : `초과: ${formatAmount(Math.abs(remaining))}`}
+            ? `남은 예산: ${formatAmount(remaining, budget.budgetCurrency)}`
+            : `초과: ${formatAmount(Math.abs(remaining), budget.budgetCurrency)}`}
         </span>
       </div>
 
@@ -138,7 +157,7 @@ export function ExpenseBudgetBar({ budget, currencyTotals, categoryTotals, excha
                     </span>
                   </div>
                   <span className="text-[10px] text-zinc-400">
-                    {formatAmount(spent)} / {formatAmount(catBudget)}
+                    {formatAmount(spent, budget.budgetCurrency)} / {formatAmount(catBudget, budget.budgetCurrency)}
                   </span>
                 </div>
                 <div className="h-1.5 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">

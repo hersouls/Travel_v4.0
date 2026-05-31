@@ -33,19 +33,21 @@ type DownloadTask = () => Promise<void>
 class DownloadQueue {
   private running = 0
   private queue: Array<{ key: string; task: DownloadTask; resolve: () => void; reject: (e: unknown) => void }> = []
-  private inflight = new Set<string>()
+  private inflight = new Map<string, Promise<void>>()
 
   enqueue(key: string, task: DownloadTask): Promise<void> {
-    // Deduplicate: skip if already queued or running
-    if (this.inflight.has(key)) {
-      return Promise.resolve()
-    }
-    this.inflight.add(key)
+    // Deduplicate: 이미 같은 key가 큐/실행 중이면 그 promise를 그대로 반환한다.
+    // 기존엔 Promise.resolve()를 반환해 호출부의 onComplete가 실제 다운로드 완료 전에
+    // 즉시 발화되고, 두 번째(더 최신일 수 있는) task가 통째로 누락됐다.
+    const existing = this.inflight.get(key)
+    if (existing) return existing
 
-    return new Promise<void>((resolve, reject) => {
+    const p = new Promise<void>((resolve, reject) => {
       this.queue.push({ key, task, resolve, reject })
       this.flush()
     })
+    this.inflight.set(key, p)
+    return p
   }
 
   private flush(): void {

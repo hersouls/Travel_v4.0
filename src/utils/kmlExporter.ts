@@ -5,6 +5,7 @@
 // ============================================
 
 import type { TravelLog } from '@/types'
+import { safeIsoString } from '@/utils/format'
 
 function escapeXml(str: string): string {
   return str
@@ -55,7 +56,7 @@ export function exportToKML(logs: TravelLog[], tripTitle: string): string {
       (log.expense
         ? `${log.expense.storeName}: ${log.expense.totalAmount} ${log.expense.currency}`
         : '')
-    const time = new Date(log.timestamp).toISOString()
+    const time = safeIsoString(log.timestamp)
 
     lines.push('    <Placemark>')
     lines.push(`      <name>${escapeXml(name)}</name>`)

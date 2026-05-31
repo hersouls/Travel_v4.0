@@ -202,7 +202,7 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       if (context.startDate) parts.push(`출발일: ${context.startDate}`)
       if (context.endDate) parts.push(`종료일: ${context.endDate}`)
       if (context.totalDays) parts.push(`총 일수: ${context.totalDays}일`)
-      if (context.interests) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
+      if (Array.isArray(context.interests) && context.interests.length > 0) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
       if (context.style) parts.push(`여행 스타일: ${context.style}`)
       if (context.budget) parts.push(`예산: ${context.budget}`)
       parts.push('\n위 조건에 맞는 여행 일정을 생성해주세요.')
@@ -215,7 +215,7 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       if (context.dayDate) parts.push(`날짜: ${context.dayDate}`)
       if (context.totalDays) parts.push(`전체 여행: ${context.totalDays}일 중`)
       if (context.keywords) parts.push(`관심 키워드/장소: ${context.keywords}`)
-      if (context.interests) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
+      if (Array.isArray(context.interests) && context.interests.length > 0) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
       if (context.style) parts.push(`여행 스타일: ${context.style}`)
       parts.push('\n위 키워드를 중심으로 이 날의 하루 일정을 생성해주세요.')
       return parts.join('\n')
@@ -225,11 +225,11 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       const parts = [`여행지: ${context.country || '알 수 없음'}`]
       parts.push(`Day ${context.dayNumber || 1}`)
       if (context.dayDate) parts.push(`날짜: ${context.dayDate}`)
-      const existingPlans = context.existingPlans as Array<{
+      const existingPlans = (Array.isArray(context.existingPlans) ? context.existingPlans : []) as Array<{
         placeName: string; startTime: string; endTime?: string;
         type: string; address?: string
       }>
-      if (existingPlans && existingPlans.length > 0) {
+      if (existingPlans.length > 0) {
         parts.push('\n현재 일정:')
         existingPlans.forEach((p, i) => {
           parts.push(`${i + 1}. ${p.startTime}${p.endTime ? '-' + p.endTime : ''} ${p.placeName} (${p.type})${p.address ? ' - ' + p.address : ''}`)
@@ -294,6 +294,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (contentLength > MAX_BODY_SIZE) {
     return res.status(413).json({ error: 'Request body too large (max 2MB)' })
   }
+  // content-length 헤더는 위조 가능하므로 실제 파싱된 본문 크기로 한 번 더 검증
+  if (Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8') > MAX_BODY_SIZE) {
+    return res.status(413).json({ error: 'Request body too large (max 2MB)' })
+  }
 
   const { type, context = {}, image, imageFormat, model, stream = true, provider = 'claude' } = req.body || {}
 
@@ -349,7 +353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const userText = buildUserMessage(type, context)
     let humanMessage: HumanMessage
 
-    if (image && ['analyze-image', 'analyze-photo-location', 'receipt-food', 'receipt-general'].includes(type)) {
+    if (typeof image === 'string' && image.length > 0 && ['analyze-image', 'analyze-photo-location', 'receipt-food', 'receipt-general'].includes(type)) {
       const validMediaTypes = ['image/jpeg', 'image/webp', 'image/png', 'image/gif'] as const
       const mediaType = (imageFormat && validMediaTypes.includes(imageFormat))
         ? imageFormat as typeof validMediaTypes[number]
@@ -372,6 +376,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const schema = STRUCTURED_SCHEMAS[type]
     const isStreamingTextType = STREAMING_TEXT_TYPES.includes(type) || !schema
 
+    // 클라이언트 연결 종료 시 상류 LLM 요청 취소 (토큰/리소스 낭비 방지)
+    const abortController = new AbortController()
+    res.on('close', () => abortController.abort())
+
+    // 응답 메타데이터로 토큰 한도 절단 여부 판별 (하드코딩 false 대신)
+    const isTruncated = (resp: unknown): boolean => {
+      const meta = (resp as { response_metadata?: Record<string, unknown> })?.response_metadata
+      return meta?.stop_reason === 'max_tokens' || meta?.finishReason === 'MAX_TOKENS'
+    }
+
     if (stream && isStreamingTextType) {
       // === Streaming text mode (guide, memo, travel-diary, test, unknown) ===
       res.setHeader('Content-Type', 'text/event-stream')
@@ -381,7 +395,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let clientConnected = true
       res.on('close', () => { clientConnected = false })
 
-      const streamResponse = await chatModel.stream(messages)
+      const streamResponse = await chatModel.stream(messages, { signal: abortController.signal })
 
       for await (const chunk of streamResponse) {
         if (!clientConnected) break
@@ -404,7 +418,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Use withStructuredOutput for validated JSON responses
       try {
         const structuredModel = chatModel.withStructuredOutput(schema)
-        const result = await structuredModel.invoke(messages)
+        const result = await structuredModel.invoke(messages, { signal: abortController.signal })
 
         res.status(200).json({
           content: JSON.stringify(result),
@@ -414,7 +428,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } catch (structuredError) {
         // Fallback: if structured output fails, try plain invoke + manual parse
         console.warn('[LangChain Generate] Structured output failed, falling back to plain invoke:', structuredError)
-        const response = await chatModel.invoke(messages)
+        const response = await chatModel.invoke(messages, { signal: abortController.signal })
         const rawText = typeof response.content === 'string'
           ? response.content
           : Array.isArray(response.content)
@@ -438,12 +452,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         res.status(200).json({
           content: parsedContent,
           model: resolvedModel,
-          truncated: false,
+          truncated: isTruncated(response),
         })
       }
     } else {
       // === Non-streaming text (fallback) ===
-      const response = await chatModel.invoke(messages)
+      const response = await chatModel.invoke(messages, { signal: abortController.signal })
       const text = typeof response.content === 'string'
         ? response.content
         : Array.isArray(response.content)
@@ -453,7 +467,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({
         content: text,
         model: resolvedModel,
-        truncated: false,
+        truncated: isTruncated(response),
       })
     }
   } catch (err: unknown) {

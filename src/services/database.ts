@@ -96,7 +96,8 @@ export async function getAllTrips(): Promise<Trip[]> {
 }
 
 export async function getFavoriteTrips(): Promise<Trip[]> {
-  return db.trips.where('isFavorite').equals(1).toArray()
+  // isFavorite는 boolean이라 IndexedDB 인덱스 키로 신뢰할 수 없음(.equals(1) 미매치) → predicate filter
+  return db.trips.filter((t) => t.isFavorite === true).toArray()
 }
 
 export async function getTrip(id: number): Promise<Trip | undefined> {
@@ -333,7 +334,7 @@ export async function getAllPlaces(): Promise<Place[]> {
 }
 
 export async function getFavoritePlaces(): Promise<Place[]> {
-  return db.places.where('isFavorite').equals(1).toArray()
+  return db.places.filter((p) => p.isFavorite === true).toArray()
 }
 
 export async function getPlace(id: number): Promise<Place | undefined> {
@@ -353,23 +354,18 @@ export async function deletePlace(id: number): Promise<void> {
 }
 
 export async function incrementPlaceUsage(id: number): Promise<void> {
-  const place = await db.places.get(id)
-  if (place) {
-    await db.places.update(id, {
-      usageCount: (place.usageCount || 0) + 1,
-      updatedAt: new Date(),
-    })
-  }
+  // modify()는 암묵적 rw 트랜잭션에서 실행되어 read-modify-write가 원자적
+  await db.places.where('id').equals(id).modify((place) => {
+    place.usageCount = (place.usageCount || 0) + 1
+    place.updatedAt = new Date()
+  })
 }
 
 export async function togglePlaceFavorite(id: number): Promise<void> {
-  const place = await db.places.get(id)
-  if (place) {
-    await db.places.update(id, {
-      isFavorite: !place.isFavorite,
-      updatedAt: new Date(),
-    })
-  }
+  await db.places.where('id').equals(id).modify((place) => {
+    place.isFavorite = !place.isFavorite
+    place.updatedAt = new Date()
+  })
 }
 
 export async function findPlaceByName(name: string): Promise<Place | undefined> {
@@ -390,8 +386,11 @@ export async function getSettings(): Promise<Settings> {
 }
 
 export async function updateSettings(updates: Partial<Settings>): Promise<void> {
-  const current = await getSettings()
-  await db.settings.put({ ...current, ...updates, id: 'main' })
+  // read-modify-write를 트랜잭션으로 감싸 동시 부분 업데이트 유실(last-write-wins) 방지
+  await db.transaction('rw', db.settings, async () => {
+    const current = await getSettings()
+    await db.settings.put({ ...current, ...updates, id: 'main' })
+  })
 }
 
 // ============================================
@@ -509,29 +508,43 @@ export async function importAllData(data: BackupData): Promise<void> {
   const PLAN_DATE_FIELDS = ['createdAt', 'updatedAt', 'extractedAt']
   const TIMESTAMP_FIELDS = ['createdAt', 'updatedAt', 'lastBackupDate']
 
+  // 가져온(import) 레코드에서 클라우드 동기화 식별자를 제거한다.
+  // firebaseId를 가진 채 import하면, 다음 초기 동기화가 "원격에 없는 firebaseId =
+  // 원격에서 삭제됨"으로 판단해 가져온 데이터를 전부 삭제한다(특히 새 기기/빈 클라우드).
+  // 제거하면 local-only로 취급되어 다음 동기화 때 클라우드로 정상 push 된다.
+  // 로컬 숫자 id(++id)와 tripId 등 백업 내부 관계는 유지한다.
+  const stripSyncIds = <T>(rows: T[]): T[] =>
+    rows.map((row) => {
+      const rest = { ...(row as Record<string, unknown>) }
+      delete rest.firebaseId
+      delete rest.tripFirebaseId
+      delete rest.sourceLogFirebaseId
+      return rest as T
+    })
+
   // Trip 날짜 처리: startDate/endDate를 문자열로 정규화
-  const trips = data.trips.map(trip => ({
+  const trips = stripSyncIds(data.trips.map(trip => ({
     ...deserializeDates(trip, TRIP_DATE_FIELDS),
     startDate: normalizeToDateString(trip.startDate),
     endDate: normalizeToDateString(trip.endDate),
-  }))
-  const plans = deserializeDates(data.plans, PLAN_DATE_FIELDS)
-  const places = deserializeDates(data.places, TIMESTAMP_FIELDS)
+  })))
+  const plans = stripSyncIds(deserializeDates(data.plans, PLAN_DATE_FIELDS))
+  const places = stripSyncIds(deserializeDates(data.places, TIMESTAMP_FIELDS))
   const settings = deserializeDates(data.settings, TIMESTAMP_FIELDS)
 
   const ROUTE_DATE_FIELDS = ['cachedAt', 'updatedAt']
   const routeSegments = data.routeSegments
-    ? deserializeDates(data.routeSegments, ROUTE_DATE_FIELDS)
+    ? stripSyncIds(deserializeDates(data.routeSegments, ROUTE_DATE_FIELDS))
     : []
 
   const LOG_DATE_FIELDS = ['createdAt', 'updatedAt']
   const travelLogs = data.travelLogs
-    ? deserializeDates(data.travelLogs, LOG_DATE_FIELDS)
+    ? stripSyncIds(deserializeDates(data.travelLogs, LOG_DATE_FIELDS))
     : []
 
   const EXPENSE_DATE_FIELDS = ['createdAt', 'updatedAt']
   const expenses = data.expenses
-    ? deserializeDates(data.expenses, EXPENSE_DATE_FIELDS)
+    ? stripSyncIds(deserializeDates(data.expenses, EXPENSE_DATE_FIELDS))
     : []
 
   try {
@@ -562,6 +575,17 @@ export async function importAllData(data: BackupData): Promise<void> {
     if (safetyBackup) {
       try {
         const backup = JSON.parse(safetyBackup) as BackupData
+        // 성공 경로와 동일하게 날짜를 Date로 역직렬화 (ISO 문자열로 저장 시 정렬/getTime 비교가 깨짐)
+        const bTrips = backup.trips.map(t => ({
+          ...deserializeDates(t, TRIP_DATE_FIELDS),
+          startDate: normalizeToDateString(t.startDate),
+          endDate: normalizeToDateString(t.endDate),
+        }))
+        const bPlans = deserializeDates(backup.plans, PLAN_DATE_FIELDS)
+        const bPlaces = deserializeDates(backup.places, TIMESTAMP_FIELDS)
+        const bRouteSegments = backup.routeSegments ? deserializeDates(backup.routeSegments, ROUTE_DATE_FIELDS) : []
+        const bTravelLogs = backup.travelLogs ? deserializeDates(backup.travelLogs, LOG_DATE_FIELDS) : []
+        const bExpenses = backup.expenses ? deserializeDates(backup.expenses, EXPENSE_DATE_FIELDS) : []
         await db.transaction('rw', [db.trips, db.plans, db.places, db.settings, db.routeSegments, db.travelLogs, db.expenses], async () => {
           await db.trips.clear()
           await db.plans.clear()
@@ -569,13 +593,13 @@ export async function importAllData(data: BackupData): Promise<void> {
           await db.routeSegments.clear()
           await db.travelLogs.clear()
           await db.expenses.clear()
-          if (backup.trips.length > 0) await db.trips.bulkAdd(backup.trips)
-          if (backup.plans.length > 0) await db.plans.bulkAdd(backup.plans)
-          if (backup.places.length > 0) await db.places.bulkAdd(backup.places)
-          if (backup.routeSegments && backup.routeSegments.length > 0) await db.routeSegments.bulkAdd(backup.routeSegments)
-          if (backup.travelLogs && backup.travelLogs.length > 0) await db.travelLogs.bulkAdd(backup.travelLogs)
-          if (backup.expenses && backup.expenses.length > 0) await db.expenses.bulkAdd(backup.expenses)
-          if (backup.settings) await db.settings.put(backup.settings)
+          if (bTrips.length > 0) await db.trips.bulkAdd(bTrips)
+          if (bPlans.length > 0) await db.plans.bulkAdd(bPlans)
+          if (bPlaces.length > 0) await db.places.bulkAdd(bPlaces)
+          if (bRouteSegments.length > 0) await db.routeSegments.bulkAdd(bRouteSegments)
+          if (bTravelLogs.length > 0) await db.travelLogs.bulkAdd(bTravelLogs)
+          if (bExpenses.length > 0) await db.expenses.bulkAdd(bExpenses)
+          if (backup.settings) await db.settings.put(deserializeDates(backup.settings, TIMESTAMP_FIELDS))
         })
         console.log('[importAllData] Restored from safety backup')
       } catch (restoreError) {

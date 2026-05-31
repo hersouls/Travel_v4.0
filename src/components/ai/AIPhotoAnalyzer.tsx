@@ -59,6 +59,11 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
       setResult(null)
       setError(null)
     }
+    reader.onerror = () => {
+      setError('사진을 불러오지 못했습니다. 다른 파일을 선택해 주세요.')
+      setImagePreview(null)
+      setImageBase64(null)
+    }
     reader.readAsDataURL(file)
   }
 
@@ -181,7 +186,7 @@ export function AIPhotoAnalyzer({ onApply, onClose, open }: AIPhotoAnalyzerProps
                       <p className="text-sm text-zinc-700 dark:text-zinc-300">{result.description}</p>
                     </div>
                   )}
-                  {result.tips && result.tips.length > 0 && (
+                  {Array.isArray(result.tips) && result.tips.length > 0 && (
                     <div>
                       <span className="text-xs font-medium text-zinc-500">팁</span>
                       <ul className="mt-1 space-y-1">

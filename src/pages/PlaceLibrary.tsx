@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { Search, Plus, Star, MapPin, Trash2, Loader2, Sparkles, Globe, Edit, ExternalLink, ChevronDown, ChevronUp, Copy, Volume2, Download, Upload, FileJson, X, ArrowUpDown } from 'lucide-react'
 import { Card } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
@@ -28,7 +29,24 @@ const planTypes: Array<PlanType | 'all'> = ['all', 'attraction', 'restaurant', '
 export function PlaceLibrary() {
   const _places = usePlaces()
   const isLoading = usePlaceLoading()
-  const { searchQuery, filterType, sortBy, sortOrder, setSearchQuery, setFilterType, setSortBy, setSortOrder, getFilteredPlaces, toggleFavorite, deletePlace, addPlace, updatePlace } = usePlaceStore()
+  // 무-셀렉터 구독은 store의 모든 변경마다 재렌더 + getFilteredPlaces()가 매 렌더 새 배열을 만들어
+  // 하위 메모를 무력화한다. 필요한 필드만 useShallow로 구독하고 목록은 useMemo로 파생한다.
+  const { searchQuery, filterType, sortBy, sortOrder, setSearchQuery, setFilterType, setSortBy, setSortOrder, toggleFavorite, deletePlace, addPlace, updatePlace } = usePlaceStore(
+    useShallow((s) => ({
+      searchQuery: s.searchQuery,
+      filterType: s.filterType,
+      sortBy: s.sortBy,
+      sortOrder: s.sortOrder,
+      setSearchQuery: s.setSearchQuery,
+      setFilterType: s.setFilterType,
+      setSortBy: s.setSortBy,
+      setSortOrder: s.setSortOrder,
+      toggleFavorite: s.toggleFavorite,
+      deletePlace: s.deletePlace,
+      addPlace: s.addPlace,
+      updatePlace: s.updatePlace,
+    }))
+  )
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingPlaceId, setEditingPlaceId] = useState<number | null>(null)
@@ -55,12 +73,43 @@ export function PlaceLibrary() {
     googleInfo: undefined as GooglePlaceInfo | undefined,
   })
 
-  const filteredPlaces = getFilteredPlaces()
+  const filteredPlaces = useMemo(() => {
+    const filtered = _places.filter((place) => {
+      const matchesSearch =
+        searchQuery === '' ||
+        place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        place.address?.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesType = filterType === 'all' || place.type === filterType
+      return matchesSearch && matchesType
+    })
+    return [...filtered].sort((a, b) => {
+      let cmp = 0
+      switch (sortBy) {
+        case 'name':
+          cmp = a.name.localeCompare(b.name, 'ko')
+          break
+        case 'date':
+          cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          break
+        case 'usage':
+          cmp = (a.usageCount || 0) - (b.usageCount || 0)
+          break
+        case 'rating':
+          cmp = (a.rating || 0) - (b.rating || 0)
+          break
+      }
+      return sortOrder === 'asc' ? cmp : -cmp
+    })
+  }, [_places, searchQuery, filterType, sortBy, sortOrder])
 
-  const handleCopyJSON = () => {
+  const handleCopyJSON = async () => {
     const json = JSON.stringify(formData, null, 2)
-    navigator.clipboard.writeText(json)
-    toast.success('JSON데이터가 복사되었습니다')
+    try {
+      await navigator.clipboard.writeText(json)
+      toast.success('JSON데이터가 복사되었습니다')
+    } catch {
+      toast.error('클립보드 복사에 실패했습니다')
+    }
   }
 
   const handleExtractInfo = async () => {
@@ -568,7 +617,7 @@ export function PlaceLibrary() {
               </p>
 
               {/* 추출된 좌표 표시 */}
-              {(formData.latitude && formData.longitude) && (
+              {(formData.latitude != null && formData.longitude != null) && (
                 <div className="flex items-center justify-between p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
                   <div className="flex items-center gap-2 sm:gap-4">
                     <span className="text-sm font-medium text-blue-700 dark:text-blue-300">

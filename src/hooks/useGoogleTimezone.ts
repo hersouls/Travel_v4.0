@@ -23,6 +23,9 @@ export function useGoogleTimezone(
     if (latitude == null || longitude == null) return
 
     let cancelled = false
+    // 좌표 변경 시 직전 좌표의 시간대를 먼저 비워, 실패 시 잘못된 시간대로
+    // 시각을 렌더링하는 것을 방지
+    setTimezone(null)
     setIsLoading(true)
 
     const timestamp = Math.floor(Date.now() / 1000)
@@ -44,6 +47,7 @@ export function useGoogleTimezone(
       })
       .catch((err) => {
         console.warn('[GoogleTimezone] Error:', err)
+        if (!cancelled) setTimezone(null)
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false)

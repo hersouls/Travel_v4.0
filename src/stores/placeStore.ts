@@ -40,7 +40,6 @@ interface PlaceState {
   setFilterType: (type: PlanType | 'all') => void
   setSortBy: (sortBy: PlaceSortBy) => void
   setSortOrder: (sortOrder: PlaceSortOrder) => void
-  getFilteredPlaces: () => Place[]
 
   // Duplicate check
   findPlaceByNameOrGoogleId: (name: string, googlePlaceId?: string) => Place | null
@@ -133,11 +132,11 @@ export const usePlaceStore = create<PlaceState>()(
       updatePlace: async (id, updates) => {
         set({ isLoading: true, error: null })
         try {
-          // If photos changed, clear storage paths to trigger re-upload
-          if ('photos' in updates) {
-            (updates as Partial<Place>).photoPaths = undefined
-          }
-          await db.updatePlace(id, updates)
+          // photos 변경 시 재업로드 트리거를 위해 storage paths를 비운다 (호출자 인자 비변형)
+          const updatesToApply = 'photos' in updates
+            ? ({ ...updates, photoPaths: undefined } as Partial<Place>)
+            : updates
+          await db.updatePlace(id, updatesToApply)
 
           // Sync to Firestore
           if (syncManager.isActive()) {
@@ -323,41 +322,6 @@ export const usePlaceStore = create<PlaceState>()(
       // Set sort order
       setSortOrder: (sortOrder) => {
         set({ sortOrder })
-      },
-
-      // Get filtered and sorted places
-      getFilteredPlaces: () => {
-        const { places, searchQuery, filterType, sortBy, sortOrder } = get()
-
-        const filtered = places.filter((place) => {
-          const matchesSearch =
-            searchQuery === '' ||
-            place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            place.address?.toLowerCase().includes(searchQuery.toLowerCase())
-          const matchesType = filterType === 'all' || place.type === filterType
-          return matchesSearch && matchesType
-        })
-
-        const sorted = [...filtered].sort((a, b) => {
-          let cmp = 0
-          switch (sortBy) {
-            case 'name':
-              cmp = a.name.localeCompare(b.name, 'ko')
-              break
-            case 'date':
-              cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-              break
-            case 'usage':
-              cmp = (a.usageCount || 0) - (b.usageCount || 0)
-              break
-            case 'rating':
-              cmp = (a.rating || 0) - (b.rating || 0)
-              break
-          }
-          return sortOrder === 'asc' ? cmp : -cmp
-        })
-
-        return sorted
       },
 
       // Find place by name or Google Place ID (for duplicate check)

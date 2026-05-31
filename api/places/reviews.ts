@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface ReviewResult {
   author: string
   rating: number
@@ -34,6 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!enforceRateLimit(req, res, 'places-reviews', 30)) return
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     console.error('[Places Reviews] GOOGLE_PLACES_API_KEY not configured')
@@ -42,13 +46,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { placeId, language = 'ko' } = req.query
 
-  if (!placeId || typeof placeId !== 'string') {
-    return res.status(400).json({ error: 'placeId parameter is required' })
+  if (!placeId || typeof placeId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(placeId)) {
+    return res.status(400).json({ error: 'valid placeId parameter is required' })
   }
+  // 언어 코드도 화이트리스트하여 URL 경로/쿼리 주입을 차단
+  const lang = typeof language === 'string' && /^[a-zA-Z-]{2,10}$/.test(language) ? language : 'ko'
 
   try {
     const response = await fetch(
-      `https://places.googleapis.com/v1/places/${placeId}?languageCode=${language}`,
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}?languageCode=${encodeURIComponent(lang)}`,
       {
         method: 'GET',
         headers: {

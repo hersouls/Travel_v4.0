@@ -233,7 +233,10 @@ function MemoBlock({ content }: { content: string }) {
       return (
         <div className="space-y-3">
           <SectionHeaderBlock title={lines[0]} rule={sectionHeader} />
-          <ChecklistBlock items={checklistItems} />
+          <ChecklistBlock
+            key={checklistItems.map((i) => `${i.checked ? 1 : 0}:${i.text}`).join('|')}
+            items={checklistItems}
+          />
         </div>
       )
     }
@@ -258,7 +261,8 @@ function MemoBlock({ content }: { content: string }) {
       const parsed = parseChecklistItem(line)!
       return { id: `${idx}`, ...parsed }
     })
-    return <ChecklistBlock items={items} />
+    // content가 바뀌면 remount되도록 content 파생 key 부여 (ChecklistBlock 내부 useState가 stale로 고정되는 것 방지)
+    return <ChecklistBlock key={items.map((i) => `${i.checked ? 1 : 0}:${i.text}`).join('|')} items={items} />
   }
 
   // 3. 첫 줄이 라벨:값 형식인지 확인

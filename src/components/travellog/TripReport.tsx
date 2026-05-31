@@ -112,9 +112,9 @@ export function TripReport({ logs, tripTitle, totalDays, startDate }: TripReport
       }
     }
 
-    navigator.clipboard.writeText(lines.join('\n')).then(() => {
-      toast.success('리포트가 클립보드에 복사되었습니다')
-    })
+    navigator.clipboard.writeText(lines.join('\n'))
+      .then(() => toast.success('리포트가 클립보드에 복사되었습니다'))
+      .catch(() => toast.error('클립보드 복사에 실패했습니다'))
   }, [
     tripTitle,
     startDate,

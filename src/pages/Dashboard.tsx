@@ -10,6 +10,7 @@ import { usePullToRefresh } from '@/hooks/usePullToRefresh'
 import { useTripLoading, useTripStore, useTrips } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import { formatDateRange, getTripDuration } from '@/utils/format'
+import { parseDateAsLocal } from '@/utils/timezone'
 import {
   Calendar,
   CheckSquare,
@@ -55,7 +56,7 @@ export function Dashboard() {
   // Calculate stats
   const stats = useMemo(() => {
     const now = new Date()
-    const upcoming = trips.filter((t) => new Date(t.startDate) > now).length
+    const upcoming = trips.filter((t) => parseDateAsLocal(t.startDate) > now).length
     const totalPlans = trips.reduce((sum, t) => sum + (t.plansCount || 0), 0)
     return { total: trips.length, upcoming, totalPlans }
   }, [trips])

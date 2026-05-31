@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface AutocompleteRequest {
   input: string
   language?: string
@@ -32,13 +34,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!enforceRateLimit(req, res, 'places-autocomplete', 60)) return
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     console.error('[Places Autocomplete] GOOGLE_PLACES_API_KEY not configured')
     return res.status(500).json({ error: 'API key not configured' })
   }
 
-  const { input, language = 'ko' } = req.body as AutocompleteRequest
+  const { input, language = 'ko' } = (req.body ?? {}) as AutocompleteRequest
 
   if (!input || typeof input !== 'string') {
     return res.status(400).json({ error: 'input parameter is required' })

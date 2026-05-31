@@ -152,6 +152,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (contentLength > MAX_BODY_SIZE) {
     return res.status(413).json({ error: 'Request body too large (max 512KB)' })
   }
+  // content-length 헤더는 위조 가능하므로 실제 파싱된 본문 크기로 한 번 더 검증
+  if (Buffer.byteLength(req.body ? JSON.stringify(req.body) : '', 'utf8') > MAX_BODY_SIZE) {
+    return res.status(413).json({ error: 'Request body too large (max 512KB)' })
+  }
 
   const { message, tripContext, history = [], model, provider = 'claude' } = req.body || {}
 
@@ -185,6 +189,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Message is required' })
   }
 
+  // catch 블록에서도 접근할 수 있도록 try 바깥에 선언
+  let clientConnected = true
+
   try {
     let chatModel: BaseChatModel
     if (provider === 'gemini') {
@@ -207,9 +214,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const langchainMessages: (HumanMessage | AIMessage)[] = []
     if (Array.isArray(history)) {
       for (const msg of history.slice(-10)) {
-        if (msg.role === 'user' && msg.content?.trim()) {
+        // 비-객체/비-문자열 content는 건너뛴다(throw → 500 방지)
+        if (!msg || typeof msg !== 'object' || typeof msg.content !== 'string' || !msg.content.trim()) continue
+        if (msg.role === 'user') {
           langchainMessages.push(new HumanMessage(msg.content))
-        } else if (msg.role === 'assistant' && msg.content?.trim()) {
+        } else if (msg.role === 'assistant') {
           langchainMessages.push(new AIMessage(msg.content))
         }
       }
@@ -234,8 +243,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
 
-    let clientConnected = true
-    res.on('close', () => { clientConnected = false })
+    // 클라이언트가 연결을 끊으면 상류 LLM 스트림 요청까지 취소하여 토큰/리소스 낭비 방지
+    const abortController = new AbortController()
+    res.on('close', () => {
+      clientConnected = false
+      abortController.abort()
+    })
 
     const tools = getAvailableTools()
     const graph = buildChatGraph(chatModel, tools)
@@ -249,7 +262,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // LangGraph agent with tools
       const eventStream = graph.streamEvents(
         { messages: allMessages },
-        { version: 'v2', recursionLimit: 6 },
+        { version: 'v2', recursionLimit: 6, signal: abortController.signal },
       )
 
       for await (const event of eventStream) {
@@ -270,14 +283,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Send tool results to client
         if (event.event === 'on_tool_end' && event.data?.output) {
+          // 도구 출력은 문자열이 아니라 ToolMessage/객체일 수 있어 String()이 '[object Object]'를 내므로 content를 추출
+          const out = event.data.output
+          const result =
+            typeof out === 'string'
+              ? out
+              : out && typeof out === 'object' && 'content' in out
+                ? typeof (out as { content: unknown }).content === 'string'
+                  ? (out as { content: string }).content
+                  : JSON.stringify((out as { content: unknown }).content)
+                : String(out)
           res.write(`data: ${JSON.stringify({
-            toolUse: { name: event.name, result: String(event.data.output) },
+            toolUse: { name: event.name, result },
           })}\n\n`)
         }
       }
     } else {
       // Simple streaming without tools
-      const stream = await chatModel.stream(allMessages)
+      const stream = await chatModel.stream(allMessages, { signal: abortController.signal })
 
       for await (const chunk of stream) {
         if (!clientConnected) break
@@ -297,6 +320,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     res.end()
   } catch (err: unknown) {
+    // 클라이언트 연결 종료로 인한 의도된 중단이면 별도 보고 없이 종료
+    if (!clientConnected) {
+      try { res.end() } catch { /* already closed */ }
+      return
+    }
     console.error('[LangChain Chat] Error:', err)
     const errMsg = err instanceof Error ? err.message : 'LangChain chat error'
     const status = errMsg.includes('authentication') || errMsg.includes('api_key') ? 401 : 500

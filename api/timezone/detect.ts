@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface TimezoneResponse {
   timeZoneId: string
   timeZoneName: string
@@ -26,6 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  if (!enforceRateLimit(req, res, 'timezone-detect', 30)) return
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
@@ -50,9 +54,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'Coordinates out of range (lat: -90~90, lng: -180~180)' })
   }
 
-  const ts = timestamp && typeof timestamp === 'string'
-    ? parseInt(timestamp, 10)
-    : Math.floor(Date.now() / 1000)
+  let ts = Math.floor(Date.now() / 1000)
+  if (timestamp !== undefined) {
+    if (typeof timestamp !== 'string' || Number.isNaN(parseInt(timestamp, 10))) {
+      return res.status(400).json({ error: 'timestamp must be a valid integer (Unix seconds)' })
+    }
+    ts = parseInt(timestamp, 10)
+  }
 
   try {
     const response = await fetch(

@@ -8,6 +8,7 @@ import { Download, FileSpreadsheet, FileText } from 'lucide-react'
 import { IconButton } from '@/components/ui/Button'
 import type { Expense } from '@/types'
 import { generateExpenseCSV, generateExpenseXLSX } from '@/utils/expenseExport'
+import { toast } from '@/stores/uiStore'
 
 interface ExpenseExportButtonProps {
   expenses: Expense[]
@@ -37,9 +38,15 @@ export function ExpenseExportButton({ expenses, tripTitle }: ExpenseExportButton
   }
 
   const handleXLSX = async () => {
-    const blob = await generateExpenseXLSX(expenses)
-    download(blob, `${tripTitle}_경비_${dateStr}.xlsx`)
-    setOpen(false)
+    try {
+      const blob = await generateExpenseXLSX(expenses)
+      download(blob, `${tripTitle}_경비_${dateStr}.xlsx`)
+    } catch (err) {
+      console.error('XLSX export failed', err)
+      toast.error('Excel 내보내기에 실패했습니다')
+    } finally {
+      setOpen(false)
+    }
   }
 
   const download = (blob: Blob, filename: string) => {
@@ -47,8 +54,11 @@ export function ExpenseExportButton({ expenses, tripTitle }: ExpenseExportButton
     const link = document.createElement('a')
     link.href = url
     link.download = filename
+    // Firefox 등은 anchor가 document에 있어야 click이 동작 / 동기 revoke는 다운로드를 중단시킬 수 있음
+    document.body.appendChild(link)
     link.click()
-    URL.revokeObjectURL(url)
+    link.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
   return (

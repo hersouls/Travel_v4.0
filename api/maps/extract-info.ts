@@ -152,6 +152,90 @@ function extractFromHtml(html: string): Partial<ExtractedInfo['data']> {
   return result
 }
 
+// ============================================
+// SSRF 방어 유틸리티
+// ============================================
+
+const ALLOWED_HOSTS = new Set([
+  'www.google.com',
+  'google.com',
+  'maps.google.com',
+  'maps.app.goo.gl',
+  'goo.gl',
+])
+
+// 사설/루프백/링크로컬 IP 리터럴 차단 (심층 방어)
+function isPrivateIp(host: string): boolean {
+  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (v4) {
+    const a = Number(v4[1])
+    const b = Number(v4[2])
+    if (a === 0 || a === 10 || a === 127) return true
+    if (a === 169 && b === 254) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    return false
+  }
+  const h = host.replace(/^\[|\]$/g, '').toLowerCase()
+  if (h === '::1' || h === '::') return true
+  if (h.startsWith('fc') || h.startsWith('fd')) return true // fc00::/7 unique-local
+  if (h.startsWith('fe80')) return true // link-local
+  return false
+}
+
+function isHostAllowed(host: string): boolean {
+  const h = host.toLowerCase()
+  if (isPrivateIp(h)) return false
+  return ALLOWED_HOSTS.has(h)
+}
+
+const FETCH_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+}
+
+// 리다이렉트를 수동으로 따라가며 각 홉의 호스트를 화이트리스트로 재검증한다.
+// goo.gl / maps.app.goo.gl 단축 링크가 google.com/maps로 리다이렉트되는 정상 경로는 허용하되,
+// 내부/사설 호스트로의 리다이렉트는 차단한다.
+async function fetchGoogleMapsWithRedirects(
+  initialUrl: string,
+): Promise<{ response: Awaited<ReturnType<typeof fetch>>; finalUrl: string }> {
+  let currentUrl = initialUrl
+  const maxHops = 5
+
+  for (let hop = 0; hop <= maxHops; hop++) {
+    const parsed = new URL(currentUrl)
+    if (parsed.protocol !== 'https:') {
+      throw new Error('Blocked: only https URLs are allowed')
+    }
+    if (!isHostAllowed(parsed.hostname)) {
+      throw new Error('Blocked: URL host is not an allowed Google Maps host')
+    }
+
+    const response = await fetch(currentUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: FETCH_HEADERS,
+    })
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location')
+      if (!location) {
+        return { response, finalUrl: currentUrl }
+      }
+      // 상대 경로 리다이렉트도 절대 URL로 해석
+      currentUrl = new URL(location, currentUrl).toString()
+      continue
+    }
+
+    return { response, finalUrl: currentUrl }
+  }
+
+  throw new Error('Blocked: too many redirects')
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS 헤더
   const ALLOWED_ORIGINS = ['https://travel1.moonwave.kr','https://moonwave-travel.vercel.app','http://localhost:5173','http://localhost:4173']
@@ -168,7 +252,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { mapUrl } = req.body as { mapUrl?: string }
+  const { mapUrl } = (req.body ?? {}) as { mapUrl?: string }
 
   if (!mapUrl || typeof mapUrl !== 'string') {
     return res.status(400).json({ error: 'mapUrl is required' })
@@ -178,18 +262,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'mapUrl must be under 2000 characters' })
   }
 
+  let parsedUrl: URL
   try {
-    new URL(mapUrl)
+    parsedUrl = new URL(mapUrl)
   } catch {
     return res.status(400).json({ error: 'mapUrl must be a valid URL' })
   }
 
-  // Google Maps URL 검증
+  // SSRF 방어: 스킴은 https로 고정하고, substring이 아닌 "파싱된 호스트"를 정확히 화이트리스트로 검증
+  if (parsedUrl.protocol !== 'https:') {
+    return res.status(400).json({ error: 'Only https URLs are allowed' })
+  }
+  const initialHost = parsedUrl.hostname.toLowerCase()
   const isGoogleMapsUrl =
-    mapUrl.includes('google.com/maps') ||
-    mapUrl.includes('maps.google.com') ||
-    mapUrl.includes('maps.app.goo.gl') ||
-    mapUrl.includes('goo.gl/maps')
+    isHostAllowed(initialHost) &&
+    (initialHost === 'google.com' || initialHost === 'www.google.com'
+      ? parsedUrl.pathname.startsWith('/maps')
+      : true)
 
   if (!isGoogleMapsUrl) {
     return res.status(400).json({
@@ -198,19 +287,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // 리다이렉트 추적하여 최종 URL 획득
-    const response = await fetch(mapUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
-    })
-
-    const finalUrl = response.url
+    // 리다이렉트를 수동으로 추적하되 각 홉의 호스트를 다시 검증하여 최종 URL 획득 (SSRF 방지)
+    const { response, finalUrl } = await fetchGoogleMapsWithRedirects(mapUrl)
     const html = await response.text()
 
     // URL에서 기본 정보 추출
@@ -238,9 +316,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json(result)
   } catch (error) {
+    // 원시 fetch 에러 메시지(내부 호스트/IP/리다이렉트 체인 등)를 클라이언트에 노출하지 않는다.
+    // 상세 내용은 서버 로그에만 남긴다.
     console.error('Error extracting map info:', error)
     return res.status(500).json({
-      error: error instanceof Error ? error.message : 'Failed to extract map information',
+      error: 'Failed to extract map information',
     })
   }
 }

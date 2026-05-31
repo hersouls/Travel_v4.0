@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, List, Navigation } from 'lucide-react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
 import { Icon, divIcon } from 'leaflet'
 import { IconButton, Button } from '@/components/ui/Button'
 import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
@@ -23,6 +23,16 @@ Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 })
+
+// Leaflet의 MapContainer center는 초기 prop이라 반응형이 아니므로, day 필터 등으로
+// mapCenter가 바뀌면 useMap으로 명시적으로 재중심화한다.
+function MapRecenter({ center }: { center: { lat: number; lng: number } }) {
+  const map = useMap()
+  useEffect(() => {
+    map.setView([center.lat, center.lng])
+  }, [map, center.lat, center.lng])
+  return null
+}
 
 export function TripMap() {
   const { id } = useParams<{ id: string }>()
@@ -74,7 +84,8 @@ export function TripMap() {
 
   // Create polyline for Leaflet
   const routePositions = useMemo(() => {
-    return plansWithCoords
+    // memoized 배열을 in-place sort로 변형하지 않도록 복사본을 정렬
+    return [...plansWithCoords]
       .sort((a, b) => a.day - b.day || a.startTime.localeCompare(b.startTime))
       .map((p) => [p.latitude!, p.longitude!] as [number, number])
   }, [plansWithCoords])
@@ -216,6 +227,7 @@ export function TripMap() {
             style={{ height: '100%', width: '100%' }}
             scrollWheelZoom={true}
           >
+            <MapRecenter center={mapCenter} />
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

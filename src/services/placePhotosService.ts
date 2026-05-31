@@ -34,11 +34,8 @@ export async function getPlacePhotos(
     return photos
   } catch (err) {
     console.warn('[PlacePhotos] Error:', err)
-    if (cache.size >= MAX_CACHE_SIZE) {
-      const firstKey = cache.keys().next().value
-      if (firstKey !== undefined) cache.delete(firstKey)
-    }
-    cache.set(key, [])
+    // 일시적 실패를 빈 배열로 영구 캐시하면 재연결 후에도 사진이 안 보이므로
+    // 실패는 캐시하지 않고 다음 호출에서 재시도하도록 한다 (성공/정상-빈 결과만 캐시)
     return []
   }
 }

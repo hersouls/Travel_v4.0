@@ -70,7 +70,10 @@ function GridCell({
       )}
       onClick={handleClick}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') handleClick()
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault() // Space의 기본 페이지 스크롤 억제
+          handleClick()
+        }
       }}
     >
 

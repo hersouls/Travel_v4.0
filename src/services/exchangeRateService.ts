@@ -26,9 +26,19 @@ export function getCachedRates(): CachedRates | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return null
-    const cached: CachedRates = JSON.parse(raw)
+    const cached = JSON.parse(raw) as Partial<CachedRates>
+    // 구조 검증 — updatedAt/rates가 깨진 캐시를 유효한 것처럼 반환하면 네트워크 갱신이 영구 스킵됨
+    if (
+      !cached ||
+      typeof cached.updatedAt !== 'number' ||
+      !Number.isFinite(cached.updatedAt) ||
+      typeof cached.rates !== 'object' ||
+      cached.rates === null
+    ) {
+      return null
+    }
     if (Date.now() - cached.updatedAt > CACHE_DURATION) return null
-    return cached
+    return cached as CachedRates
   } catch {
     return null
   }

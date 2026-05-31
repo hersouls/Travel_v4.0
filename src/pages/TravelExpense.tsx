@@ -30,6 +30,8 @@ import { toast } from '@/stores/uiStore'
 import type { Expense, ExpenseCategory, ExpenseSubCategory, PaymentMethod } from '@/types'
 import { EXPENSE_CATEGORY_LABELS } from '@/utils/constants'
 import { getTripDuration } from '@/utils/format'
+import { parseDateAsLocal } from '@/utils/timezone'
+import { differenceInCalendarDays } from 'date-fns'
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -136,9 +138,12 @@ export function TravelExpense() {
   // Thumbnail map for expenses imported from travel logs
   const thumbnailMap = useExpenseThumbnails(expenses)
 
-  // Auto-expand first category with expenses
+  // Auto-expand first category with expenses — 최초 1회만.
+  // size===0 조건만 쓰면 '전체 접기'로 비운 직후 다시 첫 카테고리를 펼쳐 collapse-all이 불가능했음.
+  const hasAutoExpandedRef = useRef(false)
   useEffect(() => {
-    if (filteredCategoryGroups.length > 0 && expandedCategories.size === 0) {
+    if (!hasAutoExpandedRef.current && filteredCategoryGroups.length > 0 && expandedCategories.size === 0) {
+      hasAutoExpandedRef.current = true
       setExpandedCategories(new Set([filteredCategoryGroups[0].category]))
     }
   }, [filteredCategoryGroups, expandedCategories.size])
@@ -164,13 +169,15 @@ export function TravelExpense() {
     }
   }, [expandedCategories.size, filteredCategoryGroups])
 
-  // Compute current trip day based on today's date
+  // Compute current trip day based on today's date.
+  // 캘린더 일자 기준(로컬 정오)으로 계산해야 UTC 자정 파싱 + 로컬 now 혼용으로 인한
+  // 사용자 타임존별 off-by-one(경비가 잘못된 day로 분류)을 방지한다.
   const currentTripDay = useMemo(() => {
     if (!trip) return 1
-    const start = new Date(trip.startDate)
+    const start = parseDateAsLocal(trip.startDate)
+    if (Number.isNaN(start.getTime())) return 1
     const now = new Date()
-    const diffMs = now.getTime() - start.getTime()
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24)) + 1
+    const diffDays = differenceInCalendarDays(now, start) + 1
     return Math.max(1, Math.min(diffDays, totalDays || 1))
   }, [trip, totalDays])
 
@@ -410,11 +417,16 @@ export function TravelExpense() {
             icon: <DownloadIcon className="size-5" />,
             label: '기록에서 가져오기',
             onClick: async () => {
-              const count = await importFromTravelLogs(tripId)
-              if (count > 0) {
-                toast.success(`${count}건의 경비를 가져왔습니다`)
-              } else {
-                toast.info('가져올 새 경비가 없습니다')
+              try {
+                const count = await importFromTravelLogs(tripId)
+                if (count > 0) {
+                  toast.success(`${count}건의 경비를 가져왔습니다`)
+                } else {
+                  toast.info('가져올 새 경비가 없습니다')
+                }
+              } catch (error) {
+                console.error('[TravelExpense] Import from logs failed:', error)
+                toast.error('기록에서 경비를 가져오지 못했습니다')
               }
             },
           },

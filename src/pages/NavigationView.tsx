@@ -69,6 +69,7 @@ export function NavigationView() {
   const [geoError, setGeoError] = useState<string | null>(null)
   const [currentTargetIndex, setCurrentTargetIndex] = useState(0)
   const watchIdRef = useRef<number | null>(null)
+  const prevDistRef = useRef<number>(Infinity)
 
   useEffect(() => {
     if (id) loadTrip(parseInt(id))
@@ -77,9 +78,18 @@ export function NavigationView() {
   // Filter plans with coords, sorted by day + time
   const sortedPlans = useMemo(() => {
     return plans
-      .filter((p) => p.latitude && p.longitude)
+      .filter((p) => p.latitude != null && p.longitude != null)
       .sort((a, b) => a.day - b.day || a.startTime.localeCompare(b.startTime))
   }, [plans])
+
+  // sortedPlans 길이 변경(동기화 삭제/재정렬) 시 currentTargetIndex가 범위를 벗어나면 클램프
+  useEffect(() => {
+    if (sortedPlans.length === 0) {
+      if (currentTargetIndex !== 0) setCurrentTargetIndex(0)
+    } else if (currentTargetIndex > sortedPlans.length - 1) {
+      setCurrentTargetIndex(sortedPlans.length - 1)
+    }
+  }, [sortedPlans.length, currentTargetIndex])
 
   // Start geolocation tracking
   useEffect(() => {
@@ -137,7 +147,11 @@ export function NavigationView() {
       target.longitude!,
     )
 
-    if (dist < 50 && currentTargetIndex < sortedPlans.length - 1) {
+    // 50m 안으로 "진입하는 순간"에만 자동 advance (이미 안에 있을 때 매 렌더 advance하여
+    // 사용자가 과거 stop을 탭한 직후 즉시 덮어쓰는 문제 방지 — edge-trigger)
+    const prevDist = prevDistRef.current
+    prevDistRef.current = dist
+    if (prevDist >= 50 && dist < 50 && currentTargetIndex < sortedPlans.length - 1) {
       setCurrentTargetIndex((prev) => prev + 1)
     }
   }, [position, sortedPlans, currentTargetIndex])

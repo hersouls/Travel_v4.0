@@ -3,7 +3,7 @@
 // Detects long-press gesture for context menus
 // ============================================
 
-import { useRef, useCallback } from 'react'
+import { useRef, useCallback, useEffect } from 'react'
 
 interface LongPressOptions {
   onLongPress: () => void
@@ -26,6 +26,16 @@ export function useLongPress({ onLongPress, delay = 500 }: LongPressOptions) {
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
+    }
+  }, [])
+
+  // 언마운트 시 진행 중인 타이머를 정리하여 언마운트 후 onLongPress 발화 방지
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
     }
   }, [])
 
