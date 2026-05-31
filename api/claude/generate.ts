@@ -202,7 +202,7 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       if (context.startDate) parts.push(`출발일: ${context.startDate}`)
       if (context.endDate) parts.push(`종료일: ${context.endDate}`)
       if (context.totalDays) parts.push(`총 일수: ${context.totalDays}일`)
-      if (context.interests) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
+      if (Array.isArray(context.interests) && context.interests.length > 0) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
       if (context.style) parts.push(`여행 스타일: ${context.style}`)
       if (context.budget) parts.push(`예산: ${context.budget}`)
       parts.push('\n위 조건에 맞는 여행 일정을 생성해주세요.')
@@ -215,7 +215,7 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       if (context.dayDate) parts.push(`날짜: ${context.dayDate}`)
       if (context.totalDays) parts.push(`전체 여행: ${context.totalDays}일 중`)
       if (context.keywords) parts.push(`관심 키워드/장소: ${context.keywords}`)
-      if (context.interests) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
+      if (Array.isArray(context.interests) && context.interests.length > 0) parts.push(`관심사: ${(context.interests as string[]).join(', ')}`)
       if (context.style) parts.push(`여행 스타일: ${context.style}`)
       parts.push('\n위 키워드를 중심으로 이 날의 하루 일정을 생성해주세요.')
       return parts.join('\n')
@@ -225,11 +225,11 @@ function buildUserMessage(type: string, context: Record<string, unknown>): strin
       const parts = [`여행지: ${context.country || '알 수 없음'}`]
       parts.push(`Day ${context.dayNumber || 1}`)
       if (context.dayDate) parts.push(`날짜: ${context.dayDate}`)
-      const existingPlans = context.existingPlans as Array<{
+      const existingPlans = (Array.isArray(context.existingPlans) ? context.existingPlans : []) as Array<{
         placeName: string; startTime: string; endTime?: string;
         type: string; address?: string
       }>
-      if (existingPlans && existingPlans.length > 0) {
+      if (existingPlans.length > 0) {
         parts.push('\n현재 일정:')
         existingPlans.forEach((p, i) => {
           parts.push(`${i + 1}. ${p.startTime}${p.endTime ? '-' + p.endTime : ''} ${p.placeName} (${p.type})${p.address ? ' - ' + p.address : ''}`)
@@ -292,6 +292,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const contentLength = Number(req.headers['content-length'] || 0)
   if (contentLength > MAX_BODY_SIZE) {
+    return res.status(413).json({ error: 'Request body too large (max 2MB)' })
+  }
+  // content-length 헤더는 위조 가능하므로 실제 파싱된 본문 크기로 한 번 더 검증
+  if (Buffer.byteLength(JSON.stringify(req.body || {}), 'utf8') > MAX_BODY_SIZE) {
     return res.status(413).json({ error: 'Request body too large (max 2MB)' })
   }
 

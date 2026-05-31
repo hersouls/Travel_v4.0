@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface TimezoneResponse {
   timeZoneId: string
   timeZoneName: string
@@ -26,6 +28,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  if (!enforceRateLimit(req, res, 'timezone-detect', 30)) return
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {

@@ -5,6 +5,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const ALLOWED_ORIGINS = ['https://travel1.moonwave.kr','https://moonwave-travel.vercel.app','http://localhost:5173','http://localhost:4173']
   const origin = req.headers.origin || ''
@@ -18,6 +20,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  if (!enforceRateLimit(req, res, 'places-photo-proxy', 60)) return
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {

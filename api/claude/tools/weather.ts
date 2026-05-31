@@ -26,11 +26,15 @@ export function createWeatherTool() {
         const data = await res.json()
 
         const current = data.current
+        const location = data.location
+        if (!current || !location) {
+          return `${city}의 날씨 정보를 해석할 수 없습니다.`
+        }
         const forecast = data.forecast?.forecastday || []
 
         const parts = [
-          `📍 ${data.location.name}, ${data.location.country}`,
-          `🌡 현재: ${current.temp_c}°C, ${current.condition.text}`,
+          `📍 ${location.name}, ${location.country}`,
+          `🌡 현재: ${current.temp_c}°C, ${current.condition?.text ?? ''}`,
           `💧 습도: ${current.humidity}%`,
           '',
           '📅 예보:',
@@ -38,7 +42,7 @@ export function createWeatherTool() {
 
         for (const day of forecast) {
           parts.push(
-            `  ${day.date}: ${day.day.mintemp_c}~${day.day.maxtemp_c}°C, ${day.day.condition.text}, 강수확률 ${day.day.daily_chance_of_rain}%`
+            `  ${day.date}: ${day.day?.mintemp_c}~${day.day?.maxtemp_c}°C, ${day.day?.condition?.text ?? ''}, 강수확률 ${day.day?.daily_chance_of_rain}%`
           )
         }
 

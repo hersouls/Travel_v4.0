@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface PhotoResult {
   url: string
   widthPx: number
@@ -31,6 +33,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!enforceRateLimit(req, res, 'places-photos', 30)) return
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     console.error('[Places Photos] GOOGLE_PLACES_API_KEY not configured')
@@ -39,8 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { placeId, maxCount = '5' } = req.query
 
-  if (!placeId || typeof placeId !== 'string') {
-    return res.status(400).json({ error: 'placeId parameter is required' })
+  if (!placeId || typeof placeId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(placeId)) {
+    return res.status(400).json({ error: 'valid placeId parameter is required' })
   }
 
   const limit = Math.min(Math.max(parseInt(String(maxCount), 10) || 5, 1), 10)
@@ -48,7 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     // Fetch place with photos field mask
     const response = await fetch(
-      `https://places.googleapis.com/v1/places/${placeId}`,
+      `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
       {
         method: 'GET',
         headers: {

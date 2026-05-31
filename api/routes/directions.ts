@@ -4,6 +4,8 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
+import { enforceRateLimit } from '../_lib/rateLimit'
+
 interface DirectionsRequestBody {
   origin: { lat: number; lng: number }
   destination: { lat: number; lng: number }
@@ -119,13 +121,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  if (!enforceRateLimit(req, res, 'routes-directions', 20)) return
+
   const apiKey = process.env.GOOGLE_PLACES_API_KEY
   if (!apiKey) {
     console.error('[Directions] GOOGLE_PLACES_API_KEY not configured')
     return res.status(500).json({ error: 'API key not configured' })
   }
 
-  const { origin, destination, travelMode, language = 'ko' } = req.body as DirectionsRequestBody
+  // 본문이 없거나 비-JSON이면 req.body가 undefined → 디스트럭처링 전 방어 (500 대신 아래 400 검증으로 처리)
+  const { origin, destination, travelMode, language = 'ko' } = (req.body ?? {}) as DirectionsRequestBody
 
   if (!origin || typeof origin.lat !== 'number' || typeof origin.lng !== 'number') {
     return res.status(400).json({ error: 'Valid origin with lat and lng is required' })
