@@ -25,7 +25,13 @@ export function loadGoogleMaps(): Promise<typeof google> {
     importLibrary('marker'),
     importLibrary('geometry'),
     importLibrary('geocoding'),
-  ]).then(() => google)
+  ])
+    .then(() => google)
+    .catch((err) => {
+      // 실패한 promise를 캐시하면 이후 모든 호출이 영구 재실패하므로 리셋하여 재시도 허용
+      googleMapsPromise = null
+      throw err
+    })
   return googleMapsPromise
 }
 

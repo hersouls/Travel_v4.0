@@ -66,9 +66,16 @@ export async function generateWithStreaming(
   onDone: () => void,
   onError: (error: Error) => void,
   provider: AIProvider = 'claude',
+  signal?: AbortSignal,
 ): Promise<void> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 120_000) // 2분 타임아웃
+  // 외부 signal이 중단되면 내부 controller도 중단하여 진행 중인 fetch를 실제로 취소
+  const onExternalAbort = () => controller.abort()
+  if (signal) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', onExternalAbort, { once: true })
+  }
 
   try {
     const response = await fetch(API_URL, {
@@ -106,6 +113,12 @@ export async function generateWithStreaming(
         }
         try {
           const parsed = JSON.parse(data)
+          // Server emitted an error mid-stream (rate limit, model overload, etc.).
+          // Surface it instead of silently treating the partial result as success.
+          if (parsed.error) {
+            onError(new Error(typeof parsed.error === 'string' ? parsed.error : '생성 중 오류가 발생했습니다'))
+            return
+          }
           if (parsed.text) onChunk(parsed.text)
         } catch {
           // skip malformed chunks
@@ -122,6 +135,7 @@ export async function generateWithStreaming(
     }
   } finally {
     clearTimeout(timeout)
+    if (signal) signal.removeEventListener('abort', onExternalAbort)
   }
 }
 

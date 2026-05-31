@@ -4,7 +4,7 @@
 
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import type { Trip, Plan } from '@/types'
+import type { Trip, Plan, RouteSegment, TravelLog, Expense } from '@/types'
 import * as db from '@/services/database'
 import { sendBroadcast } from '@/services/broadcast'
 import { getTimezoneFromCountry } from '@/utils/timezone'
@@ -159,11 +159,10 @@ export const useTripStore = create<TripState>()(
       updateTrip: async (id, updates) => {
         set({ isLoading: true, error: null })
         try {
-          // If coverImage changed, clear storage path to trigger re-upload
-          if ('coverImage' in updates) {
-            updates.coverImagePath = undefined
-          }
-          await db.updateTrip(id, updates)
+          // coverImage 변경 시 재업로드 트리거를 위해 storage path를 비운다.
+          // 호출자의 updates 객체를 변형하지 않도록 복제본에 적용한다.
+          const updatesToApply = 'coverImage' in updates ? { ...updates, coverImagePath: undefined } : updates
+          await db.updateTrip(id, updatesToApply)
 
           // Sync to Firestore
           if (syncManager.isActive()) {
@@ -215,9 +214,13 @@ export const useTripStore = create<TripState>()(
       deleteTrip: async (id) => {
         set({ isLoading: true, error: null })
         try {
-          // Snapshot before delete
+          // Snapshot before delete — include ALL dependent collections so undo can
+          // fully restore them (db.deleteTrip cascades and would otherwise lose them).
           const tripSnapshot = await db.getTrip(id)
           const plansSnapshot = await db.getPlansForTrip(id)
+          const segmentsSnapshot = await db.getRouteSegmentsForTrip(id)
+          const logsSnapshot = await db.getTravelLogsForTrip(id)
+          const expensesSnapshot = await db.getExpensesForTrip(id)
           const firebaseId = tripSnapshot?.firebaseId
 
           if (!tripSnapshot) {
@@ -279,9 +282,29 @@ export const useTripStore = create<TripState>()(
                 }
                 // Restore trip
                 const restoredId = await db.addTrip(tripSnapshot)
-                // Restore plans
+                // Restore plans, tracking old→new plan id remap for dependent records
+                const planIdMap = new Map<number, number>()
                 for (const plan of plansSnapshot) {
-                  await db.addPlan({ ...plan, tripId: restoredId, id: undefined } as Omit<Plan, 'id'>)
+                  const newPlanId = await db.addPlan({ ...plan, tripId: restoredId, id: undefined } as Omit<Plan, 'id'>)
+                  if (plan.id != null) planIdMap.set(plan.id, newPlanId)
+                }
+                // Restore route segments (re-point tripId + remapped plan FKs)
+                for (const seg of segmentsSnapshot) {
+                  const fromPlanId = planIdMap.get(seg.fromPlanId) ?? seg.fromPlanId
+                  const toPlanId = planIdMap.get(seg.toPlanId) ?? seg.toPlanId
+                  await db.upsertRouteSegment({ ...seg, tripId: restoredId, fromPlanId, toPlanId, id: undefined } as Omit<RouteSegment, 'id'>)
+                }
+                // Restore travel logs (re-point tripId), tracking old→new log id remap for expenses
+                const logIdMap = new Map<number, number>()
+                for (const log of logsSnapshot) {
+                  const newLogId = await db.addTravelLog({ ...log, tripId: restoredId, id: undefined } as Omit<TravelLog, 'id'>)
+                  if (log.id != null) logIdMap.set(log.id, newLogId)
+                }
+                // Restore expenses (re-point tripId + remapped sourceLogId FK)
+                for (const exp of expensesSnapshot) {
+                  const sourceLogId =
+                    exp.sourceLogId != null ? (logIdMap.get(exp.sourceLogId) ?? exp.sourceLogId) : undefined
+                  await db.addExpense({ ...exp, tripId: restoredId, sourceLogId, id: undefined } as Omit<Expense, 'id'>)
                 }
                 // Partial update: prepend restored trip
                 const restoredTrip = await db.getTrip(restoredId)
@@ -388,11 +411,11 @@ export const useTripStore = create<TripState>()(
       updatePlan: async (id, updates) => {
         set({ isLoading: true, error: null })
         try {
-          // If photos changed, clear storage paths to trigger re-upload
-          if ('photos' in updates) {
-            (updates as Partial<Plan>).photoPaths = undefined
-          }
-          await db.updatePlan(id, updates)
+          // photos 변경 시 재업로드 트리거를 위해 storage paths를 비운다 (호출자 인자 비변형)
+          const updatesToApply = 'photos' in updates
+            ? ({ ...updates, photoPaths: undefined } as Partial<Plan>)
+            : updates
+          await db.updatePlan(id, updatesToApply)
           const plan = await db.getPlan(id)
           if (plan) {
             // Sync to Firestore

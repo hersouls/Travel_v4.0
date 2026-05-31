@@ -45,15 +45,23 @@ export interface SharedTripData {
  * Generate a random 12-character alphanumeric share ID.
  * Uses crypto.getRandomValues for cryptographic randomness.
  */
-export function generateShareId(): string {
-  const array = new Uint8Array(16)
-  crypto.getRandomValues(array)
-  // Convert to base36 (0-9, a-z) and take the first 12 characters
-  let id = ''
-  for (let i = 0; i < array.length; i++) {
-    id += array[i].toString(36)
+export function generateShareId(length = 12): string {
+  // 각 문자를 36-심볼 알파벳에서 균일하게 추출 (rejection sampling으로 modulo 편향 제거).
+  // 기존 byte.toString(36) 방식은 36~255 바이트가 2글자로 펼쳐져 앞 문자가 1~7로 편향되어
+  // 실효 키스페이스가 36^12보다 훨씬 작았다.
+  const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz' // 36 chars
+  const max = 256 - (256 % alphabet.length) // 252: 균일성을 위해 252~255는 버림
+  const id: string[] = []
+  const buf = new Uint8Array(length * 2)
+  while (id.length < length) {
+    crypto.getRandomValues(buf)
+    for (let i = 0; i < buf.length && id.length < length; i++) {
+      if (buf[i] < max) {
+        id.push(alphabet[buf[i] % alphabet.length])
+      }
+    }
   }
-  return id.slice(0, 12)
+  return id.join('')
 }
 
 // ============================================

@@ -855,6 +855,9 @@ class SyncManager {
           await dexieDb.plans.where('tripId').equals(trip.id).delete()
           await dexieDb.routeSegments.where('tripId').equals(trip.id).delete()
           await dexieDb.travelLogs.where('tripId').equals(trip.id).delete()
+          // 경비도 함께 삭제 (database.deleteTrip / 실시간 'removed' 핸들러와 일관성).
+          // 누락 시 고아 경비가 집계에 남고 다음 동기화에서 재업로드되어 삭제분이 부활함
+          await dexieDb.expenses.where('tripId').equals(trip.id).delete()
           await dexieDb.trips.delete(trip.id)
           console.log('[Sync] Deleted locally (remotely deleted trip):', trip.firebaseId, trip.title)
         } catch (e) {
@@ -1416,6 +1419,8 @@ class SyncManager {
             const addedId = await dexieDb.trips.add({ ...tripData, firebaseId: docId, coverImage: '', coverImagePath: data.coverImagePath || undefined } as Trip)
             if (this.tripIdCache && addedId) this.tripIdCache.set(docId, addedId as number)
             changed = true
+            // Drain any child docs (plans/segments/logs/expenses) that arrived before this trip.
+            await this.drainPendingChildren(docId)
             // Trigger background image download if cloud has image
             if (data.coverImagePath) {
               import('@/services/imageSync').then(({ scheduleImageDownload, downloadTripCoverImage }) => {
@@ -1534,20 +1539,33 @@ class SyncManager {
           const local = await database.getPlanByFirebaseId(docId)
           if (!local) {
             const planData = firestoreToPlanData(data)
+            const addNewPlan = async (resolvedTripId: number) => {
+              if (await database.getPlanByFirebaseId(docId)) return // race guard: already added
+              await dexieDb.plans.add({ ...planData, firebaseId: docId, tripId: resolvedTripId, photos: [], photoPaths: data.photoPaths || undefined } as Plan)
+              // Trigger background image download if cloud has photos
+              if (data.photoPaths?.length) {
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlanPhotos }) => {
+                  scheduleImageDownload(`plan-photos:${docId}`, async () => {
+                    const added = await dexieDb.plans.where('firebaseId').equals(docId).first()
+                    if (added) await downloadPlanPhotos(added)
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] Plan photos download schedule failed:', e))
+              }
+            }
             const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
-            if (localTripId === null) continue
-            await dexieDb.plans.add({ ...planData, firebaseId: docId, tripId: localTripId, photos: [], photoPaths: data.photoPaths || undefined } as Plan)
+            if (localTripId === null) {
+              // Parent trip snapshot hasn't arrived yet — buffer and retry on trip add.
+              this.enqueuePendingChild(data.tripFirebaseId, async () => {
+                const resolved = await this.resolveLocalTripId(data.tripFirebaseId)
+                if (resolved === null) return
+                await addNewPlan(resolved)
+                this.notifyUpdateDebounced()
+              })
+              continue
+            }
+            await addNewPlan(localTripId)
             affectedTripIds.add(localTripId)
             changed = true
-            // Trigger background image download if cloud has photos
-            if (data.photoPaths?.length) {
-              import('@/services/imageSync').then(({ scheduleImageDownload, downloadPlanPhotos }) => {
-                scheduleImageDownload(`plan-photos:${docId}`, async () => {
-                  const added = await dexieDb.plans.where('firebaseId').equals(docId).first()
-                  if (added) await downloadPlanPhotos(added)
-                }, () => this.notifyUpdateDebounced())
-              }).catch(e => console.error('[Sync] Plan photos download schedule failed:', e))
-            }
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
             const localMs = dateToMs(local.updatedAt)
@@ -1803,13 +1821,25 @@ class SyncManager {
           const local = await database.getRouteSegmentByFirebaseId(docId)
           if (!local) {
             const segData = firestoreToRouteSegmentData(data)
+            const addNewSegment = async (resolvedTripId: number) => {
+              if (await database.getRouteSegmentByFirebaseId(docId)) return // race guard
+              await dexieDb.routeSegments.add({
+                ...segData,
+                firebaseId: docId,
+                tripId: resolvedTripId,
+              } as RouteSegment)
+            }
             const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
-            if (localTripId === null) continue
-            await dexieDb.routeSegments.add({
-              ...segData,
-              firebaseId: docId,
-              tripId: localTripId,
-            } as RouteSegment)
+            if (localTripId === null) {
+              this.enqueuePendingChild(data.tripFirebaseId, async () => {
+                const resolved = await this.resolveLocalTripId(data.tripFirebaseId)
+                if (resolved === null) return
+                await addNewSegment(resolved)
+                this.notifyUpdateDebounced()
+              })
+              continue
+            }
+            await addNewSegment(localTripId)
             changed = true
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
@@ -1850,27 +1880,39 @@ class SyncManager {
           const local = await database.getTravelLogByFirebaseId(docId)
           if (!local) {
             const logData = firestoreToTravelLogData(data)
-            const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
-            if (localTripId === null) continue
-            await dexieDb.travelLogs.add({
-              ...logData,
-              firebaseId: docId,
-              tripId: localTripId,
-              photo: undefined,
-              thumbnailPhoto: undefined,
-              photoPath: data.photoPath || undefined,
-              thumbnailPhotoPath: data.thumbnailPhotoPath || undefined,
-            } as TravelLog)
-            changed = true
-            // Trigger background image download if cloud has photo
-            if (data.photoPath) {
-              import('@/services/imageSync').then(({ scheduleImageDownload, downloadTravelLogPhoto }) => {
-                scheduleImageDownload(`travellog-photo:${docId}`, async () => {
-                  const added = await dexieDb.travelLogs.where('firebaseId').equals(docId).first()
-                  if (added) await downloadTravelLogPhoto(added)
-                }, () => this.notifyUpdateDebounced())
-              }).catch(e => console.error('[Sync] TravelLog photo download schedule failed:', e))
+            const addNewLog = async (resolvedTripId: number) => {
+              if (await database.getTravelLogByFirebaseId(docId)) return // race guard
+              await dexieDb.travelLogs.add({
+                ...logData,
+                firebaseId: docId,
+                tripId: resolvedTripId,
+                photo: undefined,
+                thumbnailPhoto: undefined,
+                photoPath: data.photoPath || undefined,
+                thumbnailPhotoPath: data.thumbnailPhotoPath || undefined,
+              } as TravelLog)
+              // Trigger background image download if cloud has photo
+              if (data.photoPath) {
+                import('@/services/imageSync').then(({ scheduleImageDownload, downloadTravelLogPhoto }) => {
+                  scheduleImageDownload(`travellog-photo:${docId}`, async () => {
+                    const added = await dexieDb.travelLogs.where('firebaseId').equals(docId).first()
+                    if (added) await downloadTravelLogPhoto(added)
+                  }, () => this.notifyUpdateDebounced())
+                }).catch(e => console.error('[Sync] TravelLog photo download schedule failed:', e))
+              }
             }
+            const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
+            if (localTripId === null) {
+              this.enqueuePendingChild(data.tripFirebaseId, async () => {
+                const resolved = await this.resolveLocalTripId(data.tripFirebaseId)
+                if (resolved === null) return
+                await addNewLog(resolved)
+                this.notifyUpdateDebounced()
+              })
+              continue
+            }
+            await addNewLog(localTripId)
+            changed = true
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
             const localMs = dateToMs(local.updatedAt)
@@ -1931,13 +1973,25 @@ class SyncManager {
           const local = await database.getExpenseByFirebaseId(docId)
           if (!local) {
             const expenseData = firestoreToExpenseData(data)
+            const addNewExpense = async (resolvedTripId: number) => {
+              if (await database.getExpenseByFirebaseId(docId)) return // race guard
+              await dexieDb.expenses.add({
+                ...expenseData,
+                firebaseId: docId,
+                tripId: resolvedTripId,
+              } as Expense)
+            }
             const localTripId = await this.resolveLocalTripId(data.tripFirebaseId)
-            if (localTripId === null) continue
-            await dexieDb.expenses.add({
-              ...expenseData,
-              firebaseId: docId,
-              tripId: localTripId,
-            } as Expense)
+            if (localTripId === null) {
+              this.enqueuePendingChild(data.tripFirebaseId, async () => {
+                const resolved = await this.resolveLocalTripId(data.tripFirebaseId)
+                if (resolved === null) return
+                await addNewExpense(resolved)
+                this.notifyUpdateDebounced()
+              })
+              continue
+            }
+            await addNewExpense(localTripId)
             changed = true
           } else {
             const remoteMs = dateToMs(fromTimestamp(data.updatedAt))
@@ -2474,6 +2528,35 @@ class SyncManager {
   // ID Resolution Helpers
   // ============================================
 
+  // Children (plan/routeSegment/travelLog/expense) whose parent trip snapshot has
+  // not arrived yet. Keyed by tripFirebaseId; drained when the trip doc is added.
+  // Closes the cross-device race where a dependent snapshot is processed before
+  // its parent trip, which previously dropped the record permanently.
+  private pendingChildAdds = new Map<string, Array<() => Promise<void>>>()
+
+  private enqueuePendingChild(tripFirebaseId: string, retry: () => Promise<void>): void {
+    if (!tripFirebaseId) return
+    const list = this.pendingChildAdds.get(tripFirebaseId)
+    if (list) {
+      list.push(retry)
+    } else {
+      this.pendingChildAdds.set(tripFirebaseId, [retry])
+    }
+  }
+
+  private async drainPendingChildren(tripFirebaseId: string): Promise<void> {
+    const list = this.pendingChildAdds.get(tripFirebaseId)
+    if (!list || list.length === 0) return
+    this.pendingChildAdds.delete(tripFirebaseId)
+    for (const retry of list) {
+      try {
+        await retry()
+      } catch (e) {
+        console.error('[Sync] Pending child add retry failed:', e)
+      }
+    }
+  }
+
   private async buildTripIdCache(): Promise<void> {
     const trips = await dexieDb.trips.toArray()
     this.tripIdCache = new Map()
@@ -2486,11 +2569,16 @@ class SyncManager {
 
   private async resolveLocalTripId(tripFirebaseId: string): Promise<number | null> {
     if (!tripFirebaseId) return null
-    if (this.tripIdCache) {
-      return this.tripIdCache.get(tripFirebaseId) ?? null
-    }
+    const cached = this.tripIdCache?.get(tripFirebaseId)
+    if (cached != null) return cached
+    // Cache miss: fall back to the DB so a newly-added trip not yet reflected in
+    // the cache is still found, and back-fill the cache for next time.
     const trip = await database.getTripByFirebaseId(tripFirebaseId)
-    return trip?.id ?? null
+    if (trip?.id != null) {
+      this.tripIdCache?.set(tripFirebaseId, trip.id)
+      return trip.id
+    }
+    return null
   }
 
   private async resolveTripFirebaseId(localTripId: number): Promise<string | null> {

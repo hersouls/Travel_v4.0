@@ -133,11 +133,11 @@ export const usePlaceStore = create<PlaceState>()(
       updatePlace: async (id, updates) => {
         set({ isLoading: true, error: null })
         try {
-          // If photos changed, clear storage paths to trigger re-upload
-          if ('photos' in updates) {
-            (updates as Partial<Place>).photoPaths = undefined
-          }
-          await db.updatePlace(id, updates)
+          // photos 변경 시 재업로드 트리거를 위해 storage paths를 비운다 (호출자 인자 비변형)
+          const updatesToApply = 'photos' in updates
+            ? ({ ...updates, photoPaths: undefined } as Partial<Place>)
+            : updates
+          await db.updatePlace(id, updatesToApply)
 
           // Sync to Firestore
           if (syncManager.isActive()) {

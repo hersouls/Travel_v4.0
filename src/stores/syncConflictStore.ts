@@ -74,12 +74,21 @@ export const useSyncConflictStore = create<SyncConflictState>()(
         if (!conflict) return
 
         const merged = buildMergedRecord(conflict, resolutions, conflict.entityType)
-        // Remove conflict from store FIRST to prevent race condition:
-        // If we remove after upload, a concurrent onSnapshot can replace
-        // this conflict with a new one (same entity, new ID), and our
-        // removeConflict(oldId) would fail to find it.
-        get().removeConflict(conflictId)
+        // 먼저 영속화하고 성공 시에만 제거 — 실패하면 conflict를 남겨 재시도 가능하게 한다.
+        // (이전엔 제거를 먼저 해서 applyResolution 실패 시 conflict가 조용히 사라졌다.)
+        // race-safety: 동시 onSnapshot이 같은 엔티티를 새 id로 교체했을 수 있으므로
+        // id가 아닌 엔티티 키(entityType + firebaseId)로 제거한다.
         await applyResolution(conflict.entityType, conflict.entityId, conflict.firebaseId, merged)
+        set((state) => {
+          const updated = state.pendingConflicts.filter(
+            (c) => !(c.entityType === conflict.entityType && c.firebaseId === conflict.firebaseId),
+          )
+          return {
+            pendingConflicts: updated,
+            isModalOpen: updated.length > 0,
+            currentIndex: Math.min(state.currentIndex, Math.max(0, updated.length - 1)),
+          }
+        })
       },
 
       resolveAllAsCloud: async () => {
