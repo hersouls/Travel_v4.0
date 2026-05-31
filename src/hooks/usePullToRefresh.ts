@@ -34,12 +34,29 @@ export function usePullToRefresh({
   hapticRef.current = haptic
 
   useEffect(() => {
-    // 의존성(threshold/maxPull) 변경으로 effect가 재실행될 때 cleanup이 false로 만든
-    // mountedRef를 다시 복구한다. 그렇지 않으면 이후 상태 갱신이 영구히 차단된다.
+    // 앱셸 구조에서는 window/document가 아니라 PageContainer의 <main overflow-y-auto>가
+    // 실제 스크롤러다. window.scrollY는 항상 0이므로, 터치 지점에서 실제 스크롤 컨테이너를
+    // 찾아 그 scrollTop으로 "최상단" 여부를 판정한다(없으면 window 폴백).
+    const scrollerRef: { current: Element | null } = { current: null }
+
+    const findScroller = (target: EventTarget | null): Element | null => {
+      let el = target instanceof Element ? target : null
+      while (el && el !== document.body) {
+        const oy = getComputedStyle(el).overflowY
+        if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) return el
+        el = el.parentElement
+      }
+      return null
+    }
+
+    const atTop = (): boolean =>
+      scrollerRef.current ? scrollerRef.current.scrollTop <= 0 : window.scrollY <= 0
+
     mountedRef.current = true
 
     const onTouchStart = (e: TouchEvent) => {
-      if (window.scrollY <= 0) {
+      scrollerRef.current = findScroller(e.target)
+      if (atTop()) {
         touchStartY.current = e.touches[0].clientY
         isPulling.current = true
       }
@@ -48,7 +65,7 @@ export function usePullToRefresh({
     const onTouchMove = (e: TouchEvent) => {
       if (!isPulling.current || isRefreshingRef.current) return
       const diff = e.touches[0].clientY - touchStartY.current
-      if (diff > 0 && window.scrollY <= 0) {
+      if (diff > 0 && atTop()) {
         const distance = Math.min(diff * 0.5, maxPull)
         setPullDistance(distance)
       }
