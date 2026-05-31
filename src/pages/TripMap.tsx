@@ -178,7 +178,7 @@ export function TripMap() {
           <button
             type="button"
             onClick={() => setSelectedDay(null)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
+            className={`px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
               selectedDay === null
                 ? 'bg-primary/10 text-primary'
                 : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
@@ -191,7 +191,7 @@ export function TripMap() {
               key={day}
               type="button"
               onClick={() => setSelectedDay(day)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
+              className={`px-3 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 text-xs font-medium rounded-lg transition-all whitespace-nowrap ${
                 selectedDay === day
                   ? 'bg-primary/10 text-primary'
                   : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
