@@ -155,8 +155,22 @@ export function TripDetail() {
       } else {
         const shareId = await shareTrip(trip.id)
         const shareUrl = `${window.location.origin}/shared/${shareId}`
-        await navigator.clipboard.writeText(shareUrl)
-        toast.success('공유 링크가 클립보드에 복사되었습니다')
+        const shareData = { title: trip.title, text: `${trip.title} 여행 일정`, url: shareUrl }
+        // 모바일: 네이티브 공유 시트 / 미지원(데스크톱 등): 클립보드 폴백
+        if (typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(shareData))) {
+          try {
+            await navigator.share(shareData)
+          } catch (e) {
+            // 공유 시트 취소(AbortError)는 무시, 그 외엔 클립보드 폴백
+            if (!(e instanceof DOMException && e.name === 'AbortError')) {
+              await navigator.clipboard.writeText(shareUrl)
+              toast.success('공유 링크가 클립보드에 복사되었습니다')
+            }
+          }
+        } else {
+          await navigator.clipboard.writeText(shareUrl)
+          toast.success('공유 링크가 클립보드에 복사되었습니다')
+        }
         loadTrip(trip.id)
       }
     } catch (err) {

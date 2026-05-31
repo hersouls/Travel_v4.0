@@ -3,7 +3,7 @@
 // ============================================
 
 import { create } from 'zustand'
-import { devtools } from 'zustand/middleware'
+import { devtools, persist } from 'zustand/middleware'
 import type { Toast, SyncProgress } from '@/types'
 
 type ViewType = 'dashboard' | 'tripDetail' | 'tripForm' | 'planForm' | 'map' | 'places' | 'settings'
@@ -47,6 +47,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>()(
   devtools(
+    persist(
     (set, get) => ({
       // Initial State
       currentView: 'dashboard',
@@ -96,6 +97,12 @@ export const useUIStore = create<UIState>()(
 
       clearAllToasts: () => set({ toasts: [] }),
     }),
+      {
+        // 사이드바 접힘 상태만 영속화 (toasts/modals 등 transient 상태는 제외)
+        name: 'travel-ui',
+        partialize: (state) => ({ isSidebarCollapsed: state.isSidebarCollapsed }),
+      }
+    ),
     { name: 'ui-store' }
   )
 )
