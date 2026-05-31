@@ -545,7 +545,7 @@ export function TripDetail() {
                                 <IconButton
                                   plain
                                   color="danger"
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
                                   onClick={(e) => {
                                     e.preventDefault()
                                     e.stopPropagation()

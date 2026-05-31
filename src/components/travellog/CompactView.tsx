@@ -104,7 +104,7 @@ function CompactRow({
 
       {/* Action buttons (hover reveal) */}
       {(
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <div className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
           <IconButton
             plain
             color="secondary"

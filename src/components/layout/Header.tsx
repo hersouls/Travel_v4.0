@@ -75,8 +75,8 @@ export function Header() {
   }, [])
 
   return (
-    <header className="sticky top-0 z-40 h-16 border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-md">
-      <div className="flex h-full items-center justify-between px-4 lg:px-6">
+    <header className="sticky top-0 z-40 pt-safe border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur-md">
+      <div className="flex h-16 items-center justify-between px-4 lg:px-6">
         {/* Left: Menu + Logo */}
         <div className="flex items-center gap-2 sm:gap-3">
           {/* Mobile Menu Button */}
