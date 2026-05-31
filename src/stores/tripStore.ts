@@ -556,13 +556,13 @@ export const useTripStore = create<TripState>()(
                 for (const seg of affectedSegments) {
                   if (seg.firebaseId) syncManager.removePendingDelete(seg.firebaseId)
                 }
-                await db.addPlan({ ...planSnapshot, id: undefined } as Omit<Plan, 'id'>)
+                const restoredId = await db.addPlan({ ...planSnapshot, id: undefined } as Omit<Plan, 'id'>)
                 const restoredPlans = await db.getPlansForTrip(tripId)
                 set(state => ({
                   currentPlans: restoredPlans,
                   trips: state.trips.map(t => t.id === tripId ? { ...t, plansCount: restoredPlans.length } : t),
                 }))
-                sendBroadcast('PLAN_CREATED', { tripId })
+                sendBroadcast('PLAN_CREATED', { id: restoredId, tripId })
                 useUIStore.getState().showToast({
                   type: 'success',
                   title: '일정이 복원되었습니다',

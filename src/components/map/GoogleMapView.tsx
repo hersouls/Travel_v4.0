@@ -176,8 +176,11 @@ export function GoogleMapView({
 
     const filteredSegments = selectedDay != null
       ? routeSegments.filter((s) => {
+          // 구간 양끝이 모두 선택된 Day에 속할 때만 표시 — from만 검사하면 Day 경계 구간이
+          // 표시되지 않는 마커로 향하는 dangling 폴리라인이 됨
           const fromPlan = plans.find((p) => p.id === s.fromPlanId)
-          return fromPlan && fromPlan.day === selectedDay
+          const toPlan = plans.find((p) => p.id === s.toPlanId)
+          return fromPlan?.day === selectedDay && toPlan?.day === selectedDay
         })
       : routeSegments
 

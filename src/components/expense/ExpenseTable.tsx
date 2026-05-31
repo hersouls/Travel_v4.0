@@ -13,9 +13,10 @@ import { convertToKRW } from '@/services/exchangeRateService'
 
 type SortKey = 'day' | 'date' | 'category' | 'store' | 'amount' | 'krw'
 
-function krwOf(e: Expense, rates?: Record<string, number> | null): number {
-  const v = rates ? convertToKRW(e.totalAmount, e.currency, rates) : null
-  return v ?? e.totalAmount
+// 환율 있음: convertToKRW(KRW는 항상 환산, 외화 누락 시 null) — null은 ₩ 합계에서 제외해야 통화 혼합 방지
+// 환율 없음(오프라인): 원시 금액 그대로(KRW 환산 자체가 불가한 상태)
+function krwOf(e: Expense, rates?: Record<string, number> | null): number | null {
+  return rates ? convertToKRW(e.totalAmount, e.currency, rates) : e.totalAmount
 }
 
 interface ExpenseTableProps {
@@ -52,7 +53,7 @@ export function ExpenseTable({ expenses, exchangeRates, onRowClick }: ExpenseTab
           cmp = a.totalAmount - b.totalAmount
           break
         case 'krw':
-          cmp = krwOf(a, exchangeRates) - krwOf(b, exchangeRates)
+          cmp = (krwOf(a, exchangeRates) ?? 0) - (krwOf(b, exchangeRates) ?? 0)
           break
       }
       return asc ? cmp : -cmp
@@ -60,7 +61,7 @@ export function ExpenseTable({ expenses, exchangeRates, onRowClick }: ExpenseTab
     return arr
   }, [expenses, sortKey, asc, exchangeRates])
 
-  const totalKRW = useMemo(() => sorted.reduce((s, e) => s + krwOf(e, exchangeRates), 0), [sorted, exchangeRates])
+  const totalKRW = useMemo(() => sorted.reduce((s, e) => s + (krwOf(e, exchangeRates) ?? 0), 0), [sorted, exchangeRates])
 
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setAsc((v) => !v)
@@ -118,7 +119,13 @@ export function ExpenseTable({ expenses, exchangeRates, onRowClick }: ExpenseTab
               <td className="px-3 py-2 text-right tabular-nums">
                 {e.totalAmount.toLocaleString()} {e.currency}
               </td>
-              <td className="px-3 py-2 text-right font-medium tabular-nums">{fmtKRW(krwOf(e, exchangeRates))}</td>
+              <td className="px-3 py-2 text-right font-medium tabular-nums">
+                {(() => {
+                  const k = krwOf(e, exchangeRates)
+                  // 환산 불가(환율 누락): ₩로 위장하지 않고 원화폐 그대로 표기
+                  return k != null ? fmtKRW(k) : `${e.totalAmount.toLocaleString()} ${e.currency}`
+                })()}
+              </td>
             </tr>
           ))}
         </tbody>
