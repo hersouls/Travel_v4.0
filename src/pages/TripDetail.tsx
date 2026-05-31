@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Sparkles, Download, FileDown, MessageSquare, Share2, Link2, ChevronDown, ChevronRight, BookOpen, Wallet } from 'lucide-react'
+import { ArrowLeft, Edit, Trash2, Plus, Map, Star, Calendar, MapPin, Clock, Navigation, Sparkles, Download, FileDown, MessageSquare, Share2, Link2, ChevronDown, ChevronRight, BookOpen, Wallet, LayoutGrid } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button, IconButton } from '@/components/ui/Button'
 import { PlanTypeBadge } from '@/components/ui/Badge'
@@ -387,6 +387,16 @@ export function TripDetail() {
               leftIcon={<Map className="size-4" />}
             >
               지도 보기
+            </Button>
+            <Button
+              to={`/trips/${trip.id}/board`}
+              outline
+              color="secondary"
+              size="sm"
+              className="hidden lg:inline-flex"
+              leftIcon={<LayoutGrid className="size-4" />}
+            >
+              플래닝 보드
             </Button>
             <Button
               to={`/trips/${trip.id}/navigate`}

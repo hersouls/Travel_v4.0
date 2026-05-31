@@ -36,6 +36,8 @@ interface TripState {
   updatePlan: (id: number, updates: Partial<Plan>) => Promise<void>
   deletePlan: (id: number) => Promise<void>
   reorderPlans: (tripId: number, day: number, planIds: number[]) => Promise<void>
+  /** 일정을 다른 Day로 이동(+대상 Day 순서 재정렬). orderedTargetIds는 이동된 planId 포함 대상 Day의 새 순서 */
+  movePlanToDay: (tripId: number, planId: number, targetDay: number, orderedTargetIds: number[]) => Promise<void>
 
   // Duplicate
   duplicateTrip: (id: number) => Promise<number>
@@ -593,6 +595,29 @@ export const useTripStore = create<TripState>()(
           const plans = await db.getPlansForTrip(tripId)
           set({ currentPlans: plans })
           sendBroadcast('PLANS_REORDERED', { tripId, day })
+        } catch (error) {
+          set({ error: (error as Error).message })
+        }
+      },
+
+      // Move a plan to another day + re-order the target day (cross-day DnD board)
+      movePlanToDay: async (tripId, planId, targetDay, orderedTargetIds) => {
+        try {
+          // 이동된 plan의 day 변경
+          await db.updatePlan(planId, { day: targetDay })
+          // 대상 Day의 새 순서대로 order 재인덱싱 (소스 Day는 order 간격이 생겨도 정렬에 무해)
+          await Promise.all(orderedTargetIds.map((id, index) => db.updatePlan(id, { order: index })))
+
+          if (syncManager.isActive()) {
+            for (const id of orderedTargetIds) {
+              const plan = await db.getPlan(id)
+              if (plan) syncManager.uploadPlan(plan).catch(console.error)
+            }
+          }
+
+          const plans = await db.getPlansForTrip(tripId)
+          set({ currentPlans: plans })
+          sendBroadcast('PLANS_REORDERED', { tripId, day: targetDay })
         } catch (error) {
           set({ error: (error as Error).message })
         }

@@ -107,21 +107,28 @@ export function GoogleMapView({
 
       const color = MARKER_COLORS[plan.type] || MARKER_COLORS.other
 
+      // 44px 투명 히트영역(터치 타깃) + 내부 32px 시각 핀
       const pinEl = document.createElement('div')
-      pinEl.className = 'google-map-marker'
       pinEl.setAttribute('role', 'button')
       pinEl.setAttribute('aria-label', `${index + 1}번 장소: ${plan.placeName}`)
       pinEl.setAttribute('tabindex', '0')
       pinEl.style.cssText = `
+        width: 44px; height: 44px; background: transparent;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer;
+      `
+      const pinInner = document.createElement('div')
+      pinInner.className = 'google-map-marker'
+      pinInner.style.cssText = `
         width: 32px; height: 32px; border-radius: 50%;
         background: ${color}; color: white;
         display: flex; align-items: center; justify-content: center;
         font-size: 12px; font-weight: 700;
         border: 2px solid white;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        cursor: pointer;
       `
-      pinEl.textContent = `${index + 1}`
+      pinInner.textContent = `${index + 1}`
+      pinEl.appendChild(pinInner)
 
       // Keyboard support - 리스너를 추적하여 정리 가능하게
       const keydownHandler = (e: KeyboardEvent) => {

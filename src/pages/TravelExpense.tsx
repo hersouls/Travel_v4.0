@@ -43,7 +43,11 @@ import {
   WifiOff,
   X,
   Download as DownloadIcon,
+  Table2,
+  LayoutList,
 } from 'lucide-react'
+import { ExpenseTable } from '@/components/expense/ExpenseTable'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -124,6 +128,7 @@ export function TravelExpense() {
     tripTotals,
     totalFilteredCount,
     filteredCategoryGroups,
+    filteredExpensesByDay,
   } = useExpenseView({
     expenses,
     totalDays,
@@ -137,6 +142,11 @@ export function TravelExpense() {
 
   // Thumbnail map for expenses imported from travel logs
   const thumbnailMap = useExpenseThumbnails(expenses)
+
+  // PC 와이드(xl+) 밀집 테이블 뷰 토글
+  const isXl = useMediaQuery('(min-width: 1280px)')
+  const [expenseView, setExpenseView] = useState<'cards' | 'table'>('cards')
+  const flatFiltered = useMemo(() => Object.values(filteredExpensesByDay).flat(), [filteredExpensesByDay])
 
   // Auto-expand first category with expenses — 최초 1회만.
   // size===0 조건만 쓰면 '전체 접기'로 비운 직후 다시 첫 카테고리를 펼쳐 collapse-all이 불가능했음.
@@ -340,6 +350,15 @@ export function TravelExpense() {
             </IconButton>
             <button
               type="button"
+              onClick={() => setExpenseView((v) => (v === 'table' ? 'cards' : 'table'))}
+              className="hidden xl:inline-flex items-center justify-center rounded-lg p-2 text-zinc-500 hover:bg-[var(--muted)]"
+              aria-label={expenseView === 'table' ? '카드 보기' : '표 보기'}
+              title={expenseView === 'table' ? '카드 보기' : '표 보기'}
+            >
+              {expenseView === 'table' ? <LayoutList className="size-4" /> : <Table2 className="size-4" />}
+            </button>
+            <button
+              type="button"
               onClick={() => setShowKRW(!showKRW)}
               className={clsx(
                 'px-2 py-1 text-[10px] font-medium rounded-full transition-colors',
@@ -384,6 +403,12 @@ export function TravelExpense() {
           <p className="text-zinc-500 dark:text-zinc-400">아직 경비가 없습니다</p>
           <p className="text-xs text-zinc-400 mt-1">+ 버튼으로 경비를 추가하세요</p>
         </Card>
+      ) : isXl && expenseView === 'table' ? (
+        <ExpenseTable
+          expenses={flatFiltered}
+          exchangeRates={exchangeRates}
+          onRowClick={(e) => setEditingExpense(e)}
+        />
       ) : (
         <div className="space-y-3">
           {filteredCategoryGroups.map((group) => (

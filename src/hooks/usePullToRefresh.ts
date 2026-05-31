@@ -3,6 +3,7 @@
 // ============================================
 
 import { useState, useRef, useEffect } from 'react'
+import { useHaptic } from './useHaptic'
 
 interface PullToRefreshOptions {
   onRefresh: () => Promise<void>
@@ -28,6 +29,9 @@ export function usePullToRefresh({
   isRefreshingRef.current = isRefreshing
   const pullDistanceRef = useRef(pullDistance)
   pullDistanceRef.current = pullDistance
+  const haptic = useHaptic()
+  const hapticRef = useRef(haptic)
+  hapticRef.current = haptic
 
   useEffect(() => {
     // 의존성(threshold/maxPull) 변경으로 effect가 재실행될 때 cleanup이 false로 만든
@@ -55,6 +59,7 @@ export function usePullToRefresh({
       isPulling.current = false
 
       if (pullDistanceRef.current >= threshold && !isRefreshingRef.current) {
+        hapticRef.current('medium') // 새로고침 발동 햅틱
         setIsRefreshing(true)
         setPullDistance(threshold * 0.5)
         try {
