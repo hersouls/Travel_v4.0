@@ -108,7 +108,7 @@ export default function App() {
   useScrollRestoration()
 
   return (
-    <div className="min-h-[100svh] flex flex-col bg-[var(--background)]">
+    <div className="app-shell flex flex-col overflow-hidden bg-[var(--background)]">
       {/* Skip Navigation */}
       <a
         href="#main-content"

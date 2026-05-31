@@ -297,6 +297,15 @@ body {
   min-height: 100dvh;
 }
 
+/* 앱셸 확정 높이: 헤더/하단탭 고정 + <main> 내부 스크롤 구조가 성립하려면 루트가
+   불확정(min-height)이 아닌 확정 높이여야 한다. min-height만 쓰면 <main>이 콘텐츠만큼
+   늘어나 iOS Safari에서 중간 overflow-hidden이 콘텐츠를 잘라 스크롤이 막힌다.
+   100vh 폴백 → 100dvh(주소창 변화 추종). */
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 /* Safe-area 유틸리티 (sticky 헤더/FAB/Lightbox 등 재사용) */
 .pt-safe { padding-top: env(safe-area-inset-top); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
