@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, List, Navigation } from 'lucide-react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet'
+import { ArrowLeft, List, Navigation, Clock, MapPin } from 'lucide-react'
+import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
 import { Icon, divIcon } from 'leaflet'
 import { IconButton, Button } from '@/components/ui/Button'
 import { Badge, PlanTypeBadge } from '@/components/ui/Badge'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { PageContainer } from '@/components/layout'
 import { GoogleMapView } from '@/components/map/GoogleMapView'
@@ -15,7 +16,7 @@ import { useDirections } from '@/hooks/useDirections'
 import { formatTime } from '@/utils/format'
 import { getTripDurationSafe } from '@/utils/timezone'
 import { getMarkerColor } from '@/utils/mapStyles'
-import type { MapProvider, TravelMode } from '@/types'
+import type { MapProvider, TravelMode, Plan } from '@/types'
 
 // Fix Leaflet default marker icon issue
 Icon.Default.mergeOptions({
@@ -47,6 +48,7 @@ export function TripMap() {
 
   const [mapProvider, setMapProvider] = useState<MapProvider>(savedMapProvider)
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
+  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null) // 마커 탭 → BottomSheet
 
   const tripId = trip?.id || 0
   const { segments: routeSegments } = useDirections(plans, tripId, defaultTravelMode)
@@ -219,6 +221,7 @@ export function TripMap() {
             center={mapCenter}
             className="h-full w-full"
             selectedDay={selectedDay}
+            onMarkerClick={setSelectedPlan}
           />
         ) : (
           <MapContainer
@@ -246,37 +249,68 @@ export function TripMap() {
               />
             )}
 
-            {/* Markers */}
+            {/* Markers — 탭 시 BottomSheet로 통일 (google/leaflet 동등 UX) */}
             {plansWithCoords.map((plan) => (
               <Marker
                 key={plan.id}
                 position={[plan.latitude!, plan.longitude!]}
                 icon={createCustomMarker(plan.type, plan.day)}
-              >
-                <Popup>
-                  <div className="min-w-[200px]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge color="primary" size="sm">
-                        Day {plan.day}
-                      </Badge>
-                      <PlanTypeBadge type={plan.type} />
-                    </div>
-                    <h3 className="font-semibold text-zinc-900">{plan.placeName}</h3>
-                    <p className="text-sm text-zinc-500 mt-1">
-                      {formatTime(plan.startTime)}
-                      {plan.endTime && ` - ${formatTime(plan.endTime)}`}
-                    </p>
-                    {plan.address && (
-                      <p className="text-sm text-zinc-400 mt-1">{plan.address}</p>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
+                eventHandlers={{ click: () => setSelectedPlan(plan) }}
+              />
             ))}
           </MapContainer>
         )}
       </div>
       </div>
+
+      {/* 마커 탭 → 장소 정보 (모바일 하단 시트 / 데스크톱 중앙 모달) */}
+      <BottomSheet open={!!selectedPlan} onClose={() => setSelectedPlan(null)} aria-label="장소 정보">
+        {selectedPlan && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Badge color="primary" size="sm">Day {selectedPlan.day}</Badge>
+              <PlanTypeBadge type={selectedPlan.type} />
+            </div>
+            <h3 className="text-lg font-semibold text-[var(--foreground)]">{selectedPlan.placeName}</h3>
+            <div className="flex items-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+              <Clock className="size-4 flex-shrink-0" />
+              <span>
+                {formatTime(selectedPlan.startTime)}
+                {selectedPlan.endTime ? ` - ${formatTime(selectedPlan.endTime)}` : ''}
+              </span>
+            </div>
+            {selectedPlan.address && (
+              <div className="flex items-start gap-1.5 text-sm text-zinc-500 dark:text-zinc-400">
+                <MapPin className="size-4 mt-0.5 flex-shrink-0" />
+                <span>{selectedPlan.address}</span>
+              </div>
+            )}
+            <div className="flex gap-2 pt-1">
+              <Button
+                color="primary"
+                className="flex-1"
+                onClick={() => {
+                  const day = selectedPlan.day
+                  setSelectedPlan(null)
+                  navigate(`/trips/${trip.id}/day/${day}`)
+                }}
+              >
+                일정 상세
+              </Button>
+              {selectedPlan.latitude != null && selectedPlan.longitude != null && (
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${selectedPlan.latitude},${selectedPlan.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-2 text-sm font-medium text-[var(--foreground)] hover:bg-[var(--muted)] min-h-[44px]"
+                >
+                  <Navigation className="size-4" /> 길찾기
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+      </BottomSheet>
     </PageContainer>
   )
 }
