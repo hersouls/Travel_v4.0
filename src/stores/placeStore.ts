@@ -40,7 +40,6 @@ interface PlaceState {
   setFilterType: (type: PlanType | 'all') => void
   setSortBy: (sortBy: PlaceSortBy) => void
   setSortOrder: (sortOrder: PlaceSortOrder) => void
-  getFilteredPlaces: () => Place[]
 
   // Duplicate check
   findPlaceByNameOrGoogleId: (name: string, googlePlaceId?: string) => Place | null
@@ -323,41 +322,6 @@ export const usePlaceStore = create<PlaceState>()(
       // Set sort order
       setSortOrder: (sortOrder) => {
         set({ sortOrder })
-      },
-
-      // Get filtered and sorted places
-      getFilteredPlaces: () => {
-        const { places, searchQuery, filterType, sortBy, sortOrder } = get()
-
-        const filtered = places.filter((place) => {
-          const matchesSearch =
-            searchQuery === '' ||
-            place.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            place.address?.toLowerCase().includes(searchQuery.toLowerCase())
-          const matchesType = filterType === 'all' || place.type === filterType
-          return matchesSearch && matchesType
-        })
-
-        const sorted = [...filtered].sort((a, b) => {
-          let cmp = 0
-          switch (sortBy) {
-            case 'name':
-              cmp = a.name.localeCompare(b.name, 'ko')
-              break
-            case 'date':
-              cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-              break
-            case 'usage':
-              cmp = (a.usageCount || 0) - (b.usageCount || 0)
-              break
-            case 'rating':
-              cmp = (a.rating || 0) - (b.rating || 0)
-              break
-          }
-          return sortOrder === 'asc' ? cmp : -cmp
-        })
-
-        return sorted
       },
 
       // Find place by name or Google Place ID (for duplicate check)
