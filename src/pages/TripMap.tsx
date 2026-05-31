@@ -203,6 +203,36 @@ export function TripMap() {
         </div>
       )}
 
+      {/* 콘텐츠: PC(lg+) 좌측 일정 리스트 + 우측 지도 마스터-디테일 / 모바일 풀 지도 */}
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
+      {plansWithCoords.length > 0 && (
+        <aside className="hidden lg:flex lg:w-[360px] xl:w-[400px] flex-col rounded-xl ring-1 ring-zinc-950/5 dark:ring-white/10 overflow-hidden bg-[var(--card)]">
+          <div className="flex-1 overflow-y-auto overscroll-contain p-2 space-y-1">
+            {plansWithCoords.map((plan) => (
+              <button
+                key={plan.id}
+                type="button"
+                onClick={() => setSelectedPlan(plan)}
+                className={`w-full text-left rounded-lg px-3 py-2.5 transition-colors ${
+                  selectedPlan?.id === plan.id
+                    ? 'bg-primary-50 dark:bg-primary-950/40 ring-1 ring-primary-500/40'
+                    : 'hover:bg-[var(--muted)]'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Badge color="primary" size="sm">Day {plan.day}</Badge>
+                  <PlanTypeBadge type={plan.type} />
+                </div>
+                <div className="mt-1 truncate text-sm font-medium text-[var(--foreground)]">{plan.placeName}</div>
+                <div className="text-xs text-zinc-500">
+                  {formatTime(plan.startTime)}
+                  {plan.endTime ? ` - ${formatTime(plan.endTime)}` : ''}
+                </div>
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
       {/* Map */}
       <div className="flex-1 rounded-xl overflow-hidden ring-1 ring-zinc-950/5 dark:ring-white/10 mb-16 lg:mb-0">
         {plansWithCoords.length === 0 ? (
@@ -260,6 +290,7 @@ export function TripMap() {
             ))}
           </MapContainer>
         )}
+      </div>
       </div>
       </div>
 
