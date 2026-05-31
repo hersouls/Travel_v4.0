@@ -20,6 +20,7 @@ const TripForm = lazy(() => import('@/pages/TripForm').then(m => ({ default: m.T
 const PlanForm = lazy(() => import('@/pages/PlanForm').then(m => ({ default: m.PlanForm })))
 const PlanDetail = lazy(() => import('@/pages/PlanDetail').then(m => ({ default: m.PlanDetail })))
 const TripMap = lazy(() => import('@/pages/TripMap').then(m => ({ default: m.TripMap })))
+const PlanningBoardPage = lazy(() => import('@/pages/PlanningBoardPage').then(m => ({ default: m.PlanningBoardPage })))
 const DayDetail = lazy(() => import('@/pages/DayDetail').then(m => ({ default: m.DayDetail })))
 const PlaceLibrary = lazy(() => import('@/pages/PlaceLibrary').then(m => ({ default: m.PlaceLibrary })))
 const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
@@ -131,6 +132,14 @@ const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageLoading />}>
             <NavigationView />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'trips/:id/board',
+        element: (
+          <Suspense fallback={<PageLoading />}>
+            <PlanningBoardPage />
           </Suspense>
         ),
       },
