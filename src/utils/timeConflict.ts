@@ -12,8 +12,13 @@ interface TimeRange {
 }
 
 function timeToMinutes(time: string): number {
-  const [h, m] = time.split(':').map(Number)
-  return h * 60 + m
+  // 형식/범위가 잘못되면 NaN을 반환해 fail-safe (downstream은 충돌 미보고로 처리)
+  const match = /^(\d{1,2}):(\d{2})$/.exec((time ?? '').trim())
+  if (!match) return NaN
+  const h = Number(match[1])
+  const min = Number(match[2])
+  if (h > 23 || min > 59) return NaN
+  return h * 60 + min
 }
 
 function toTimeRange(plan: Plan): TimeRange {
@@ -22,8 +27,25 @@ function toTimeRange(plan: Plan): TimeRange {
   return { start, end, planId: plan.id, placeName: plan.placeName }
 }
 
+// 자정을 넘는(end < start) 구간을 1~2개의 비-wrap 세그먼트 [start,end)로 펼친다.
+// 예: 22:00→02:00 → [[1320,1440],[0,120]]
+function toSegments(r: TimeRange): Array<[number, number]> {
+  if (r.end < r.start) {
+    return [
+      [r.start, 24 * 60],
+      [0, r.end],
+    ]
+  }
+  return [[r.start, r.end]]
+}
+
 function rangesOverlap(a: TimeRange, b: TimeRange): boolean {
-  return a.start < b.end && b.start < a.end
+  for (const [as, ae] of toSegments(a)) {
+    for (const [bs, be] of toSegments(b)) {
+      if (as < be && bs < ae) return true
+    }
+  }
+  return false
 }
 
 export interface TimeConflict {

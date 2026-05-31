@@ -5,6 +5,7 @@
 // ============================================
 
 import type { TravelLog } from '@/types'
+import { safeIsoString } from '@/utils/format'
 
 function escapeXml(str: string): string {
   return str
@@ -48,7 +49,7 @@ export function exportToGPX(logs: TravelLog[], tripTitle: string): string {
 
     lines.push(`  <wpt lat="${log.latitude}" lon="${log.longitude}">`)
     lines.push(`    <name>${escapeXml(name)}</name>`)
-    lines.push(`    <time>${new Date(log.timestamp).toISOString()}</time>`)
+    lines.push(`    <time>${safeIsoString(log.timestamp)}</time>`)
     if (desc) {
       lines.push(`    <desc>${escapeXml(desc)}</desc>`)
     }
@@ -73,7 +74,7 @@ export function exportToGPX(logs: TravelLog[], tripTitle: string): string {
     lines.push(`      <!-- Day ${day} -->`)
     for (const log of dayLogs) {
       lines.push(`      <trkpt lat="${log.latitude}" lon="${log.longitude}">`)
-      lines.push(`        <time>${new Date(log.timestamp).toISOString()}</time>`)
+      lines.push(`        <time>${safeIsoString(log.timestamp)}</time>`)
       lines.push('      </trkpt>')
     }
     lines.push('    </trkseg>')

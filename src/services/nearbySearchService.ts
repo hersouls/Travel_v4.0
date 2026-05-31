@@ -10,6 +10,7 @@ export async function searchNearby(
   radiusMeters = 1000,
   types?: string[],
   maxResults = 10,
+  signal?: AbortSignal,
 ): Promise<NearbyPlace[]> {
   try {
     const res = await fetch('/api/places/nearby', {
@@ -23,6 +24,7 @@ export async function searchNearby(
         language: 'ko',
         maxResults,
       }),
+      signal,
     })
     if (!res.ok) throw new Error('Nearby Search API error')
     const data = await res.json()

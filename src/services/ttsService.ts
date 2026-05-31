@@ -125,6 +125,18 @@ class TTSService {
           const words = sentence.split(/\s+/)
           let wordChunk = ''
           for (const word of words) {
+            // 공백·문장부호 없는 긴 CJK 런(한국어 흔함)은 글자 단위로 강제 분할.
+            // 그렇지 않으면 단일 청크가 200자 제한을 넘어 /api/tts가 400을 반환하고 재생 전체가 중단됨.
+            if (word.length > maxLength) {
+              if (wordChunk) {
+                chunks.push(wordChunk.trim())
+                wordChunk = ''
+              }
+              for (let i = 0; i < word.length; i += maxLength) {
+                chunks.push(word.slice(i, i + maxLength))
+              }
+              continue
+            }
             if ((wordChunk + ' ' + word).length > maxLength) {
               if (wordChunk) chunks.push(wordChunk.trim())
               wordChunk = word

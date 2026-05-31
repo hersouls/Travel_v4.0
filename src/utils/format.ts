@@ -67,10 +67,21 @@ export function formatTime(time: string): string {
   if (!time || !/^\d{1,2}:\d{2}$/.test(time)) return time ?? ''
   const [hours, minutes] = time.split(':')
   const h = parseInt(hours, 10)
-  if (Number.isNaN(h)) return time
+  const m = parseInt(minutes, 10)
+  // 범위를 벗어난 값('24:00','87:99' 등)은 보정하지 않고 원본 반환
+  if (Number.isNaN(h) || Number.isNaN(m) || h > 23 || m > 59) return time
   const period = h >= 12 ? '오후' : '오전'
   const hour = h === 0 ? 12 : h > 12 ? h - 12 : h
   return `${period} ${hour}:${minutes}`
+}
+
+/**
+ * 안전한 ISO 문자열 변환 — 잘못된/누락된 타임스탬프는 RangeError를 던지지 않고 epoch로 폴백.
+ * 단일 손상 레코드가 export(GPX/KML 등) 전체를 중단시키는 것을 방지한다.
+ */
+export function safeIsoString(value: string | number | Date): string {
+  const d = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(d.getTime()) ? new Date(0).toISOString() : d.toISOString()
 }
 
 /**

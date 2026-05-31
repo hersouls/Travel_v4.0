@@ -233,6 +233,16 @@ export const useTripStore = create<TripState>()(
           for (const plan of plansSnapshot) {
             if (plan.firebaseId) syncManager.addPendingDelete(plan.firebaseId)
           }
+          // 자식(segment/log/expense)도 등록 — 미등록 시 undo 창 동안 리스너가 고아로 재생성함
+          for (const seg of segmentsSnapshot) {
+            if (seg.firebaseId) syncManager.addPendingDelete(seg.firebaseId)
+          }
+          for (const log of logsSnapshot) {
+            if (log.firebaseId) syncManager.addPendingDelete(log.firebaseId)
+          }
+          for (const exp of expensesSnapshot) {
+            if (exp.firebaseId) syncManager.addPendingDelete(exp.firebaseId)
+          }
 
           // Immediately delete from local DB
           await db.deleteTrip(id)
@@ -263,6 +273,15 @@ export const useTripStore = create<TripState>()(
             for (const plan of plansSnapshot) {
               if (plan.firebaseId) syncManager.removePendingDelete(plan.firebaseId)
             }
+            for (const seg of segmentsSnapshot) {
+              if (seg.firebaseId) syncManager.removePendingDelete(seg.firebaseId)
+            }
+            for (const log of logsSnapshot) {
+              if (log.firebaseId) syncManager.removePendingDelete(log.firebaseId)
+            }
+            for (const exp of expensesSnapshot) {
+              if (exp.firebaseId) syncManager.removePendingDelete(exp.firebaseId)
+            }
           }, UNDO_TIMEOUT_MS)
 
           useUIStore.getState().showToast({
@@ -280,8 +299,17 @@ export const useTripStore = create<TripState>()(
                 for (const plan of plansSnapshot) {
                   if (plan.firebaseId) syncManager.removePendingDelete(plan.firebaseId)
                 }
-                // Restore trip
-                const restoredId = await db.addTrip(tripSnapshot)
+                for (const seg of segmentsSnapshot) {
+                  if (seg.firebaseId) syncManager.removePendingDelete(seg.firebaseId)
+                }
+                for (const log of logsSnapshot) {
+                  if (log.firebaseId) syncManager.removePendingDelete(log.firebaseId)
+                }
+                for (const exp of expensesSnapshot) {
+                  if (exp.firebaseId) syncManager.removePendingDelete(exp.firebaseId)
+                }
+                // Restore trip with a fresh id — 원래 id가 undo 창 동안 재사용됐으면 ConstraintError가 나므로
+                const restoredId = await db.addTrip({ ...tripSnapshot, id: undefined } as Omit<Trip, 'id'>)
                 // Restore plans, tracking old→new plan id remap for dependent records
                 const planIdMap = new Map<number, number>()
                 for (const plan of plansSnapshot) {

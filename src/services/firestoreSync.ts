@@ -96,7 +96,9 @@ async function withRetry<T>(
 
 /** coverImage is intentionally excluded — Firestore 1MB doc limit; use Cloud Storage for binary data */
 function tripToFirestore(trip: Trip): DocumentData {
-  return {
+  // 다른 컨버터와 동일하게 stripUndefined로 감싸 중첩 undefined(특히 budget.categoryBudgets.*)를
+  // null로 변환 — Firestore는 undefined 값을 거부하므로 setDoc 실패를 방지
+  return stripUndefined({
     title: trip.title,
     country: trip.country,
     timezone: trip.timezone || null,
@@ -113,7 +115,7 @@ function tripToFirestore(trip: Trip): DocumentData {
     } : null,
     createdAt: toTimestamp(trip.createdAt),
     updatedAt: toTimestamp(trip.updatedAt),
-  }
+  }) as DocumentData
 }
 
 /** photos is intentionally excluded — Firestore 1MB doc limit; use Cloud Storage for binary data */
@@ -649,10 +651,12 @@ class SyncManager {
   }
 
   private notifyUpdateDebounced(): void {
+    // stop() 이후 background 이미지 다운로드 콜백이 타이머를 되살려 teardown 후 콜백이 발화하는 것을 방지
+    if (!this._isActive) return
     if (this.notifyTimer) clearTimeout(this.notifyTimer)
     this.notifyTimer = setTimeout(() => {
       this.notifyTimer = null
-      this.notifyUpdate()
+      if (this._isActive) this.notifyUpdate()
     }, SyncManager.NOTIFY_DEBOUNCE_MS)
   }
 

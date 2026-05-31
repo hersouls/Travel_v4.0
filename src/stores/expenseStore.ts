@@ -140,6 +140,27 @@ export const useExpenseStore = create<ExpenseState>()(
       // Update an expense
       updateExpense: async (id, updates) => {
         try {
+          // 스키마 관련 필드가 변경되면 병합본을 검증해 무효 데이터(NaN/빈 항목 등) 유입 차단.
+          // firebaseId 등 메타 필드만 바꾸는 동기화 경로는 검증을 건너뜀.
+          const schemaKeys = ['category', 'storeName', 'totalAmount', 'currency', 'items', 'receiptDate', 'paymentMethod']
+          if (schemaKeys.some((k) => k in updates)) {
+            const current = await db.getExpense(id)
+            if (current) {
+              const merged = { ...current, ...updates }
+              const validation = expenseSchema.safeParse({
+                category: merged.category,
+                storeName: merged.storeName,
+                totalAmount: merged.totalAmount,
+                currency: merged.currency,
+                items: merged.items,
+                receiptDate: merged.receiptDate,
+                paymentMethod: merged.paymentMethod,
+              })
+              if (!validation.success) {
+                throw new Error(`경비 데이터 검증 실패: ${JSON.stringify(validation.error.flatten().fieldErrors)}`)
+              }
+            }
+          }
           await db.updateExpense(id, updates)
 
           const expense = await db.getExpense(id)
@@ -280,6 +301,21 @@ export const useExpenseStore = create<ExpenseState>()(
               address: log.address,
               createdAt: new Date(),
               updatedAt: new Date(),
+            }
+
+            // OCR/AI 추출 경비는 totalAmount=0/NaN, items 빈 배열 등 무효일 수 있어 검증 후 무효 건은 skip
+            const validation = expenseSchema.safeParse({
+              category: expense.category,
+              storeName: expense.storeName,
+              totalAmount: expense.totalAmount,
+              currency: expense.currency,
+              items: expense.items,
+              receiptDate: expense.receiptDate,
+              paymentMethod: expense.paymentMethod,
+            })
+            if (!validation.success) {
+              console.warn('[expenseStore] Skipping invalid imported expense:', validation.error.flatten().fieldErrors)
+              continue
             }
 
             const id = await db.addExpense(expense)
