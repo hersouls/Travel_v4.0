@@ -4,7 +4,7 @@
 
 import { clsx } from 'clsx'
 import { Clock } from 'lucide-react'
-import { useId, useState, useRef, useEffect } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 interface TimePickerProps {
   label?: string
@@ -18,7 +18,15 @@ interface TimePickerProps {
 const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))
 const minutes = ['00', '15', '30', '45']
 
-export function TimePicker({ label, value, onChange, minTime, className, required: _required, align = 'start' }: TimePickerProps & { align?: 'start' | 'end' }) {
+export function TimePicker({
+  label,
+  value,
+  onChange,
+  minTime,
+  className,
+  required: _required,
+  align = 'start',
+}: TimePickerProps & { align?: 'start' | 'end' }) {
   const id = useId()
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -66,9 +74,23 @@ export function TimePicker({ label, value, onChange, minTime, className, require
   }
 
   return (
-    <div ref={containerRef} className={clsx('relative', className)}>
+    <div
+      ref={containerRef}
+      className={clsx('relative', className)}
+      onKeyDown={(e) => {
+        // 드롭다운 열림 상태의 Escape 는 여기서 소비 — 상위(위저드 등)의 전역 Esc 핸들러로 새지 않게
+        if (e.key === 'Escape' && isOpen) {
+          e.preventDefault()
+          e.stopPropagation()
+          setIsOpen(false)
+        }
+      }}
+    >
       {label && (
-        <label htmlFor={id} className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
+        <label
+          htmlFor={id}
+          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2"
+        >
           {label}
         </label>
       )}
@@ -79,13 +101,13 @@ export function TimePicker({ label, value, onChange, minTime, className, require
           id={id}
           onClick={() => setIsOpen(!isOpen)}
           className={clsx(
-            'w-full h-10 pl-10 pr-3 text-left rounded-lg',
+            'w-full h-11 pl-10 pr-3 text-left rounded-lg',
             'border border-zinc-950/10 dark:border-white/10',
             'bg-transparent dark:bg-white/5',
             'text-[var(--foreground)] text-sm',
             'hover:border-zinc-950/20 dark:hover:border-white/20',
             'focus:outline-none focus:ring-2 focus:ring-primary-500',
-            'transition-colors'
+            'transition-colors',
           )}
         >
           {value || '시간 선택'}
@@ -93,10 +115,12 @@ export function TimePicker({ label, value, onChange, minTime, className, require
       </div>
 
       {isOpen && (
-        <div className={clsx(
-          "absolute z-50 mt-1 w-full min-w-[280px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden",
-          align === 'end' ? 'right-0' : 'left-0'
-        )}>
+        <div
+          className={clsx(
+            'absolute z-50 mt-1 w-full min-w-[280px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg overflow-hidden',
+            align === 'end' ? 'right-0' : 'left-0',
+          )}
+        >
           {/* Quick Select */}
           <div className="flex gap-1 p-2 border-b border-zinc-200 dark:border-zinc-700">
             {quickOptions.map((opt) => (
@@ -110,7 +134,7 @@ export function TimePicker({ label, value, onChange, minTime, className, require
                   'bg-zinc-100 dark:bg-zinc-800 hover:bg-primary-100 dark:hover:bg-primary-900',
                   'text-zinc-700 dark:text-zinc-300 hover:text-primary-700 dark:hover:text-primary-300',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'transition-colors'
+                  'transition-colors',
                 )}
               >
                 {opt.label}
@@ -138,13 +162,13 @@ export function TimePicker({ label, value, onChange, minTime, className, require
                         isSelected
                           ? 'bg-primary-500 text-white'
                           : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300',
-                        !isValid && 'opacity-30 cursor-not-allowed'
+                        !isValid && 'opacity-30 cursor-not-allowed',
                       )}
                     >
                       {time}
                     </button>
                   )
-                })
+                }),
               )}
             </div>
           </div>
