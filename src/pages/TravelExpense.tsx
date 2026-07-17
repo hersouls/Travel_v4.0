@@ -297,7 +297,7 @@ export function TravelExpense() {
       )}
 
       {/* Control bar */}
-      <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-[var(--background)] border-b border-zinc-200 dark:border-zinc-800 mb-3">
+      <div className="sticky top-0 z-10 -mx-3 px-3 sm:-mx-4 sm:px-4 py-2 bg-[var(--background)] border-b border-zinc-200 dark:border-zinc-800 mb-3">
         <div className="flex items-center justify-between gap-2">
           {/* Category tabs */}
           <div className="flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
