@@ -385,8 +385,8 @@ export async function syncAllImagesBackground(
   onProgress?: (step: string) => void,
 ): Promise<void> {
   // ── Phase 1: Upload local images missing from cloud ──
-  onProgress?.('이미지 업로드 확인 중...')
-
+  // Scan silently — progress is reported below only when uploadTasks is non-empty,
+  // so a sync with nothing to upload never flashes a "확인 중..." indicator.
   const uploadTasks: (() => Promise<void>)[] = []
 
   const trips = await dexieDb.trips.toArray()
@@ -428,8 +428,7 @@ export async function syncAllImagesBackground(
   }
 
   // ── Phase 2: Download cloud images missing locally ──
-  onProgress?.('이미지 다운로드 확인 중...')
-
+  // Scan silently — progress is reported below only when downloadTasks is non-empty.
   const downloadTasks: (() => Promise<void>)[] = []
 
   // Re-read entities (paths may have been updated during upload phase)

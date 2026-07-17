@@ -421,14 +421,18 @@ class SyncManager {
   private static readonly NOTIFY_DEBOUNCE_MS = 300
   private static readonly CONCURRENT_EDIT_THRESHOLD_MS = 60_000
 
-  // Cooldown: skip initial sync if recently synced (per-tab via sessionStorage)
+  // Cooldown: skip the visible full re-sync if synced recently.
+  // Persisted in localStorage (not sessionStorage) so the cooldown survives tab close /
+  // browser restart and is shared across tabs. A fresh access within the window therefore
+  // skips the initial reconciliation overlay; real-time onSnapshot listeners still attach
+  // (see start()), so data stays current.
   private static readonly SYNC_COOLDOWN_MS = 5 * 60 * 1000 // 5 minutes
-  private static readonly SESSION_KEY_PREFIX = 'travel_v4_last_sync_'
+  private static readonly LAST_SYNC_KEY_PREFIX = 'travel_v4_last_sync_'
 
   private isSyncFresh(userId: string): boolean {
     try {
-      const key = `${SyncManager.SESSION_KEY_PREFIX}${userId}`
-      const stored = sessionStorage.getItem(key)
+      const key = `${SyncManager.LAST_SYNC_KEY_PREFIX}${userId}`
+      const stored = localStorage.getItem(key)
       if (!stored) return false
       return Date.now() - parseInt(stored, 10) < SyncManager.SYNC_COOLDOWN_MS
     } catch {
@@ -438,8 +442,8 @@ class SyncManager {
 
   private markSyncComplete(userId: string): void {
     try {
-      sessionStorage.setItem(
-        `${SyncManager.SESSION_KEY_PREFIX}${userId}`,
+      localStorage.setItem(
+        `${SyncManager.LAST_SYNC_KEY_PREFIX}${userId}`,
         String(Date.now()),
       )
     } catch { /* ignore */ }
@@ -620,17 +624,17 @@ class SyncManager {
         await dexieDb.travelLogs.clear()
         await dexieDb.expenses.clear()
       })
-      // Clear sync cooldown timestamps from sessionStorage
+      // Clear sync cooldown timestamps from localStorage
       try {
         const keysToRemove: string[] = []
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const key = sessionStorage.key(i)
-          if (key?.startsWith(SyncManager.SESSION_KEY_PREFIX)) {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i)
+          if (key?.startsWith(SyncManager.LAST_SYNC_KEY_PREFIX)) {
             keysToRemove.push(key)
           }
         }
-        keysToRemove.forEach(key => sessionStorage.removeItem(key))
-      } catch { /* ignore sessionStorage errors */ }
+        keysToRemove.forEach(key => localStorage.removeItem(key))
+      } catch { /* ignore localStorage errors */ }
       console.log('[Sync] User data cleared from IndexedDB')
     } catch (error) {
       console.error('[Sync] Failed to clear user data:', error)
@@ -751,8 +755,9 @@ class SyncManager {
       // tripIdCache is kept alive for real-time listeners (PERF-02)
       if (this.syncGeneration !== generation) return
 
-      // Image sync (background, non-blocking for metadata)
-      this.notifySyncStatus({ status: 'syncing', step: '이미지 동기화 중...' })
+      // Image sync (background, non-blocking for metadata).
+      // No pre-emit here: syncAllImagesBackground only reports progress when there is
+      // actual upload/download work, so an empty image phase stays silent (no "이미지" flash).
       try {
         const { syncAllImagesBackground } = await import('@/services/imageSync')
         await syncAllImagesBackground(this.userId!, (step) => {
