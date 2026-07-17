@@ -3,9 +3,9 @@
 // Moonwave 오리지널 음악 재생
 // ============================================
 
-import { useEffect, useRef, useState } from 'react'
-import { Pause, Play, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { useAudioStore } from '@/stores/audioStore'
+import { ChevronDown, Music2, Pause, Play, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 const MUSIC_BASE_URL = import.meta.env.VITE_MUSIC_CDN_URL || '/music'
 
@@ -41,6 +41,11 @@ export function MusicPlayer() {
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0)
   const [volume, setVolume] = useState(0.2)
   const [isMuted, setIsMuted] = useState(false)
+  // 좁은 화면(갤럭시 폴드 커버 등)에서 와이드 바가 하단 콘텐츠를 가리지 않도록
+  // 모바일은 컴팩트 필로 접어두고, 데스크톱(lg+)은 전체 바를 펼쳐 시작
+  const [isExpanded, setIsExpanded] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches,
+  )
   const audioRef = useRef<HTMLAudioElement>(null)
   // 배타 재생 양보 전 재생 의도를 기억 (TTS 종료 후 BGM 재개용)
   const isPlayingRef = useRef(isPlaying)
@@ -149,12 +154,42 @@ export function MusicPlayer() {
     return decodeURIComponent(fileName).replace(/\.wav$/, '')
   }
 
+  // 오디오 엘리먼트는 접힘/펼침 상태와 무관하게 항상 마운트 유지 (재생 연속성)
+  const audioEl = <audio ref={audioRef} src={TRACKS[currentTrackIndex]} onEnded={handleEnded} />
+
+  // 접힌 상태(모바일 기본) — 재생/일시정지 + 펼치기만 있는 컴팩트 필
+  if (!isExpanded) {
+    return (
+      <div className="flex items-center gap-0.5 p-1 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-lg">
+        {audioEl}
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+          aria-label={isPlaying ? '음악 일시정지' : '음악 재생'}
+        >
+          {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsExpanded(true)}
+          className="p-2 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+          aria-label="음악 플레이어 펼치기"
+        >
+          <Music2 size={16} className={isPlaying ? 'text-primary-600 dark:text-primary-400' : ''} />
+        </button>
+      </div>
+    )
+  }
+
+  // 펼친 상태 — 전체 컨트롤
   return (
-    <div className="flex items-center gap-2 p-2 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-lg">
-      <audio ref={audioRef} src={TRACKS[currentTrackIndex]} onEnded={handleEnded} />
+    <div className="flex items-center gap-1.5 p-2 rounded-full bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-lg">
+      {audioEl}
 
       {/* 재생/일시정지 */}
       <button
+        type="button"
         onClick={togglePlay}
         className="p-1.5 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
         aria-label={isPlaying ? '일시정지' : '재생'}
@@ -164,6 +199,7 @@ export function MusicPlayer() {
 
       {/* 다음 트랙 */}
       <button
+        type="button"
         onClick={nextTrack}
         className="p-1.5 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
         aria-label="다음 트랙"
@@ -174,6 +210,7 @@ export function MusicPlayer() {
       {/* 볼륨 컨트롤 */}
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={toggleMute}
           className="p-1.5 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
           aria-label={isMuted ? '음소거 해제' : '음소거'}
@@ -191,15 +228,25 @@ export function MusicPlayer() {
             setVolume(Number.parseFloat(e.target.value))
             setIsMuted(false)
           }}
-          className="w-16 h-1 bg-zinc-300 dark:bg-zinc-600 rounded-lg appearance-none cursor-pointer accent-primary-600"
+          className="w-14 sm:w-16 h-1 bg-zinc-300 dark:bg-zinc-600 rounded-lg appearance-none cursor-pointer accent-primary-600"
           aria-label="볼륨"
         />
       </div>
 
       {/* 트랙 이름 */}
-      <div className="text-[10px] text-zinc-500 dark:text-zinc-400 max-w-[100px] truncate select-none">
+      <div className="text-[10px] text-zinc-500 dark:text-zinc-400 max-w-[72px] sm:max-w-[100px] truncate select-none">
         {getTrackName()}
       </div>
+
+      {/* 접기 */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(false)}
+        className="p-1.5 rounded-full hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+        aria-label="음악 플레이어 접기"
+      >
+        <ChevronDown size={14} />
+      </button>
     </div>
   )
 }

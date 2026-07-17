@@ -534,7 +534,7 @@ export function TripDetail() {
 
         {/* Sticky Day Tab Bar */}
         {days.length > 0 && (
-          <div className="sticky top-0 z-10 -mx-4 px-4 py-2 bg-[var(--background)] border-b border-zinc-200 dark:border-zinc-800">
+          <div className="sticky top-0 z-10 -mx-3 px-3 sm:-mx-4 sm:px-4 py-2 bg-[var(--background)] border-b border-zinc-200 dark:border-zinc-800">
             <div
               ref={tabBarRef}
               className="flex gap-1.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"

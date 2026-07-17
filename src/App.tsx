@@ -148,9 +148,9 @@ export default function App() {
         <MobileNav />
       </Suspense>
 
-      {/* Music Player */}
+      {/* Music Player — 모바일은 좌하단(우하단 FAB 군집과 분리), 데스크톱은 우하단 */}
       {isMusicPlayerEnabled && (
-        <div className="fixed bottom-20 lg:bottom-4 right-4 z-30">
+        <div className="fixed bottom-20 left-4 lg:bottom-4 lg:left-auto lg:right-4 z-30">
           <MusicPlayer />
         </div>
       )}

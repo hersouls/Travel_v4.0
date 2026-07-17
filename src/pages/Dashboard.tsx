@@ -568,7 +568,7 @@ function Hero({
         {mission && texts && (
           <motion.div
             variants={heroChild}
-            className="mt-6 flex items-center gap-4 rounded-2xl bg-[color-mix(in_oklab,var(--color-primary-950)_32%,transparent)] bg-gradient-to-b from-white/[0.16] to-white/[0.07] p-4 ring-1 ring-white/20 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.28),0_10px_24px_-14px_rgba(0,0,0,0.45)] backdrop-blur-md sm:gap-5 sm:p-5"
+            className="mt-6 flex items-center gap-3 rounded-2xl bg-[color-mix(in_oklab,var(--color-primary-950)_32%,transparent)] bg-gradient-to-b from-white/[0.16] to-white/[0.07] p-4 ring-1 ring-white/20 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.28),0_10px_24px_-14px_rgba(0,0,0,0.45)] backdrop-blur-md sm:gap-5 sm:p-5"
           >
             {mission.kind === 'ongoing' && (
               <div className="[filter:drop-shadow(0_0_6px_rgba(255,255,255,0.45))]">
@@ -627,16 +627,19 @@ function Hero({
             {mission.kind === 'none' ? (
               <Link
                 to="/trips/new"
-                className="dash-cta inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-b from-white to-primary-50 px-3.5 py-2 text-xs font-bold text-primary-700 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.9),0_8px_18px_-8px_color-mix(in_oklab,var(--color-primary-900)_55%,transparent)] transition-all hover:scale-[1.04] hover:[box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.95),0_12px_24px_-8px_color-mix(in_oklab,var(--color-primary-900)_60%,transparent)] active:scale-95 sm:gap-1.5 sm:px-4 sm:py-2.5 sm:text-sm"
+                aria-label="새 여행 만들기"
+                className="dash-cta inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-b from-white to-primary-50 px-3 py-2 text-xs font-bold text-primary-700 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.9),0_8px_18px_-8px_color-mix(in_oklab,var(--color-primary-900)_55%,transparent)] transition-all hover:scale-[1.04] hover:[box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.95),0_12px_24px_-8px_color-mix(in_oklab,var(--color-primary-900)_60%,transparent)] active:scale-95 sm:gap-1.5 sm:px-4 sm:py-2.5 sm:text-sm"
               >
-                <Plus className="h-4 w-4" />새 여행
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">새 여행</span>
               </Link>
             ) : (
               <Link
                 to={`/trips/${mission.trip.id}`}
-                className="dash-cta inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-b from-white to-primary-50 px-3.5 py-2 text-xs font-bold text-primary-700 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.9),0_8px_18px_-8px_color-mix(in_oklab,var(--color-primary-900)_55%,transparent)] transition-all hover:scale-[1.04] hover:[box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.95),0_12px_24px_-8px_color-mix(in_oklab,var(--color-primary-900)_60%,transparent)] active:scale-95 sm:gap-1.5 sm:px-4 sm:py-2.5 sm:text-sm"
+                aria-label="일정 보기"
+                className="dash-cta inline-flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-b from-white to-primary-50 px-3 py-2 text-xs font-bold text-primary-700 [box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.9),0_8px_18px_-8px_color-mix(in_oklab,var(--color-primary-900)_55%,transparent)] transition-all hover:scale-[1.04] hover:[box-shadow:inset_0_1px_0_0_rgba(255,255,255,0.95),0_12px_24px_-8px_color-mix(in_oklab,var(--color-primary-900)_60%,transparent)] active:scale-95 sm:gap-1.5 sm:px-4 sm:py-2.5 sm:text-sm"
               >
-                일정 보기
+                <span className="hidden sm:inline">일정 보기</span>
                 <ArrowRight className="h-4 w-4" />
               </Link>
             )}
