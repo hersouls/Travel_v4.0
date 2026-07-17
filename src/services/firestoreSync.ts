@@ -349,7 +349,9 @@ function firestoreToPlanData(data: DocumentData): Omit<Plan, 'id' | 'tripId' | '
   return {
     tripFirebaseId: data.tripFirebaseId || '',
     day: data.day,
-    order: data.order ?? 0,
+    // ?? undefined (not ?? 0): 로컬 저장값과 대칭을 맞춰 order의 null↔0 표류를 제거.
+    // (order 미설정 일정이 기기 간 undefined/0으로 갈리던 문제) 정렬은 order ?? MAX_SAFE_INTEGER로 undefined 안전 처리됨.
+    order: data.order ?? undefined,
     placeName: data.placeName,
     startTime: data.startTime,
     endTime: data.endTime || undefined,

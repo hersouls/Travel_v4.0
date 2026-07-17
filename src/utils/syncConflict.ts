@@ -12,8 +12,13 @@ export const TRIP_MERGEABLE_FIELDS = [
   'isFavorite', 'shareId',
 ] as const
 
+// 'order'는 드래그앤드롭 자동 정렬 인덱스이므로 충돌 비교에서 제외한다.
+// 로컬은 order 미설정 시 undefined로 저장되지만, Firestore 왕복 시
+// firestoreToPlanData가 null → 0으로 되돌려(과거 동작) `undefined ≠ 0`이
+// 영구 충돌로 감지돼 접속마다 ConflictResolverModal이 떴다. order는 사용자가
+// 해결할 콘텐츠도 아니므로 mergeable에서 빼고 last-write-wins로만 동기화한다.
 export const PLAN_MERGEABLE_FIELDS = [
-  'day', 'order', 'placeName', 'startTime', 'endTime', 'type',
+  'day', 'placeName', 'startTime', 'endTime', 'type',
   'address', 'website', 'openingHours', 'memo', 'youtubeLink',
   'mapUrl', 'latitude', 'longitude', 'googlePlaceId', 'audioScript',
 ] as const
