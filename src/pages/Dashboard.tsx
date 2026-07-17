@@ -1,7 +1,8 @@
 import { OnboardingModal } from '@/components/OnboardingModal'
 import { PageContainer } from '@/components/layout'
 import { VisitedCountries } from '@/components/travellog/VisitedCountries'
-import { Badge } from '@/components/ui/Badge'
+import { TodayItinerary } from '@/components/trip/TodayItinerary'
+import { TripCard } from '@/components/trip/TripCard'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { RingProgress } from '@/components/ui/RingProgress'
@@ -11,8 +12,8 @@ import { useUser } from '@/stores/authStore'
 import { useTripLoading, useTripStore, useTrips } from '@/stores/tripStore'
 import { toast } from '@/stores/uiStore'
 import type { Trip } from '@/types'
-import { formatDateRange, getTripDuration } from '@/utils/format'
-import { parseDateAsLocal } from '@/utils/timezone'
+import { getTripDuration } from '@/utils/format'
+import { type TripStatus, getTripStatus, parseDateAsLocal } from '@/utils/timezone'
 import {
   type Variants,
   motion,
@@ -24,15 +25,14 @@ import {
   ArrowRight,
   CalendarClock,
   CheckSquare,
-  ChevronRight,
   Globe,
+  History,
   ListChecks,
   type LucideIcon,
   MapPin,
   Plane,
   Plus,
   RefreshCw,
-  Star,
   Trash2,
   X,
 } from 'lucide-react'
@@ -136,6 +136,23 @@ export function Dashboard() {
         trip.title.toLowerCase().includes(query) || trip.country.toLowerCase().includes(query),
     )
   }, [trips, searchQuery])
+
+  // 상태별 그룹핑 — 진행 중(종료 임박순) → 다가오는(출발 임박순) → 지난(최신순)
+  const grouped = useMemo(() => {
+    const ongoing: { trip: Trip; status: TripStatus }[] = []
+    const upcoming: { trip: Trip; status: TripStatus }[] = []
+    const past: { trip: Trip; status: TripStatus }[] = []
+    for (const trip of filteredTrips) {
+      const status = getTripStatus(trip.startDate, trip.endDate)
+      if (status.kind === 'ongoing') ongoing.push({ trip, status })
+      else if (status.kind === 'upcoming') upcoming.push({ trip, status })
+      else past.push({ trip, status })
+    }
+    ongoing.sort((a, b) => a.trip.endDate.localeCompare(b.trip.endDate))
+    upcoming.sort((a, b) => a.trip.startDate.localeCompare(b.trip.startDate))
+    past.sort((a, b) => b.trip.endDate.localeCompare(a.trip.endDate))
+    return { ongoing, upcoming, past }
+  }, [filteredTrips])
 
   // Calculate stats — 히어로 미션과 동일하게 정오(12:00) 기준으로 비교해
   // 당일 출발 여행이 시간대에 따라 '예정' 집계에서 들쭉날쭉해지는 것을 방지
@@ -338,6 +355,13 @@ export function Dashboard() {
           />
         </motion.div>
 
+        {/* 오늘의 여정 — 진행 중 여행의 오늘 일정 타임라인 */}
+        {hero.mission.kind === 'ongoing' && !searchQuery && (
+          <motion.div variants={item}>
+            <TodayItinerary trip={hero.mission.trip} dayN={hero.mission.dayN} />
+          </motion.div>
+        )}
+
         {/* Visited Countries */}
         {trips.length > 0 && (
           <motion.div variants={item}>
@@ -375,125 +399,64 @@ export function Dashboard() {
             </Card>
           </motion.div>
         ) : (
-          <motion.div
-            variants={item}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-          >
-            {filteredTrips.map((trip) => (
-              <Card
-                key={trip.id}
-                variant="interactive"
-                padding="none"
-                className={`overflow-hidden group relative ${bulk.isSelectionMode && trip.id && bulk.isSelected(trip.id) ? 'ring-2 ring-primary-500' : ''}`}
-                style={{ viewTransitionName: `trip-card-${trip.id}` }}
-                role={bulk.isSelectionMode ? 'checkbox' : undefined}
-                aria-checked={
-                  bulk.isSelectionMode && trip.id ? bulk.isSelected(trip.id) : undefined
-                }
-                aria-label={bulk.isSelectionMode ? `${trip.title} 선택` : undefined}
-                tabIndex={bulk.isSelectionMode ? 0 : undefined}
-                onClick={
-                  bulk.isSelectionMode
-                    ? (e: React.MouseEvent) => {
-                        e.preventDefault()
-                        if (trip.id) bulk.toggle(trip.id)
-                      }
-                    : undefined
-                }
-                onKeyDown={
-                  bulk.isSelectionMode
-                    ? (e: React.KeyboardEvent) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          if (trip.id) bulk.toggle(trip.id)
-                        }
-                      }
-                    : undefined
-                }
-              >
-                {/* Selection checkbox overlay */}
-                {bulk.isSelectionMode && (
-                  <div className="absolute top-2 left-2 z-10">
-                    <div
-                      className={`size-6 rounded-md border-2 flex items-center justify-center transition-colors ${
-                        trip.id && bulk.isSelected(trip.id)
-                          ? 'bg-primary-500 border-primary-500 text-white'
-                          : 'border-zinc-300 dark:border-zinc-600 bg-white/80 dark:bg-zinc-900/80'
-                      }`}
-                    >
-                      {trip.id && bulk.isSelected(trip.id) && <CheckSquare className="size-4" />}
+          <>
+            {(
+              [
+                { key: 'ongoing', title: '지금 여행 중', icon: Plane, entries: grouped.ongoing },
+                {
+                  key: 'upcoming',
+                  title: '다가오는 여행',
+                  icon: CalendarClock,
+                  entries: grouped.upcoming,
+                },
+                { key: 'past', title: '지난 여행', icon: History, entries: grouped.past },
+              ] as const
+            ).map(
+              ({ key, title, icon, entries }) =>
+                entries.length > 0 && (
+                  <motion.section key={key} variants={item} className="space-y-3">
+                    <SectionHeading icon={icon} title={title} count={entries.length} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {entries.map(({ trip, status }) => (
+                        <TripCard
+                          key={trip.id}
+                          trip={trip}
+                          status={status}
+                          isSelectionMode={bulk.isSelectionMode}
+                          isSelected={trip.id ? bulk.isSelected(trip.id) : false}
+                          onToggleSelect={bulk.toggle}
+                          onToggleFavorite={toggleFavorite}
+                        />
+                      ))}
                     </div>
-                  </div>
-                )}
-                <Link
-                  to={bulk.isSelectionMode ? '#' : `/trips/${trip.id}`}
-                  className="block"
-                  onClick={
-                    bulk.isSelectionMode ? (e: React.MouseEvent) => e.preventDefault() : undefined
-                  }
-                >
-                  {/* Cover Image */}
-                  <div className="relative aspect-[16/10] bg-zinc-100 dark:bg-zinc-800">
-                    {trip.coverImage ? (
-                      <img
-                        src={trip.coverImage}
-                        alt={trip.title}
-                        loading="lazy"
-                        className="w-full h-full object-cover"
-                        style={{ viewTransitionName: `trip-image-${trip.id}` }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <MapPin className="size-8 text-zinc-300 dark:text-zinc-600" />
-                      </div>
-                    )}
-                    {/* Favorite Button */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        if (trip.id) toggleFavorite(trip.id)
-                      }}
-                      className="absolute top-2 right-2 p-2 rounded-full bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm hover:bg-white dark:hover:bg-zinc-900 transition-colors"
-                    >
-                      <Star
-                        className={`size-4 ${
-                          trip.isFavorite ? 'fill-warning-400 text-warning-400' : 'text-zinc-400'
-                        }`}
-                      />
-                    </button>
-                    {/* Country Badge */}
-                    <div className="absolute bottom-2 left-2">
-                      <Badge color="primary" size="sm">
-                        {trip.country}
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Content */}
-                  <div className="p-4">
-                    <h3 className="font-semibold text-[var(--foreground)] group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                      {trip.title}
-                    </h3>
-                    <p className="text-sm text-zinc-400 mt-1">
-                      {formatDateRange(trip.startDate, trip.endDate)}
-                    </p>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-zinc-400">
-                        {getTripDuration(trip.startDate, trip.endDate)}일 · {trip.plansCount || 0}개
-                        일정
-                      </span>
-                      <ChevronRight className="size-4 text-zinc-400 group-hover:text-primary-500 transition-colors" />
-                    </div>
-                  </div>
-                </Link>
-              </Card>
-            ))}
-          </motion.div>
+                  </motion.section>
+                ),
+            )}
+          </>
         )}
       </motion.div>
     </PageContainer>
+  )
+}
+
+/* 여행 목록 섹션 헤딩 — 상태 그룹별 타이틀 + 카운트 */
+function SectionHeading({
+  icon: Icon,
+  title,
+  count,
+}: {
+  icon: LucideIcon
+  title: string
+  count: number
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <Icon className="size-4 text-primary-500" aria-hidden="true" />
+      <h2 className="text-base font-bold text-[var(--foreground)]">{title}</h2>
+      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-500 tabular-nums dark:bg-zinc-800 dark:text-zinc-400">
+        {count}
+      </span>
+    </div>
   )
 }
 
