@@ -2,39 +2,39 @@
 // Timezone Utilities for Travel v4.0
 // ============================================
 
-import { formatInTimeZone, toZonedTime, fromZonedTime } from 'date-fns-tz'
-import { differenceInCalendarDays, addDays } from 'date-fns'
+import { addDays, differenceInCalendarDays } from 'date-fns'
+import { formatInTimeZone, fromZonedTime, toZonedTime } from 'date-fns-tz'
 
 // 28개 국가 → IANA 시간대 매핑
 export const COUNTRY_TIMEZONES: Record<string, string> = {
-  '대한민국': 'Asia/Seoul',
-  '일본': 'Asia/Tokyo',
-  '중국': 'Asia/Shanghai',
-  '대만': 'Asia/Taipei',
-  '홍콩': 'Asia/Hong_Kong',
-  '베트남': 'Asia/Ho_Chi_Minh',
-  '태국': 'Asia/Bangkok',
-  '싱가포르': 'Asia/Singapore',
-  '말레이시아': 'Asia/Kuala_Lumpur',
-  '인도네시아': 'Asia/Jakarta',
-  '필리핀': 'Asia/Manila',
-  '호주': 'Australia/Sydney',
-  '뉴질랜드': 'Pacific/Auckland',
-  '미국': 'America/New_York',
-  '캐나다': 'America/Toronto',
-  '영국': 'Europe/London',
-  '프랑스': 'Europe/Paris',
-  '독일': 'Europe/Berlin',
-  '이탈리아': 'Europe/Rome',
-  '스페인': 'Europe/Madrid',
-  '스위스': 'Europe/Zurich',
-  '네덜란드': 'Europe/Amsterdam',
-  '체코': 'Europe/Prague',
-  '오스트리아': 'Europe/Vienna',
-  '그리스': 'Europe/Athens',
-  '터키': 'Europe/Istanbul',
-  '두바이': 'Asia/Dubai',
-  '기타': 'Asia/Seoul',
+  대한민국: 'Asia/Seoul',
+  일본: 'Asia/Tokyo',
+  중국: 'Asia/Shanghai',
+  대만: 'Asia/Taipei',
+  홍콩: 'Asia/Hong_Kong',
+  베트남: 'Asia/Ho_Chi_Minh',
+  태국: 'Asia/Bangkok',
+  싱가포르: 'Asia/Singapore',
+  말레이시아: 'Asia/Kuala_Lumpur',
+  인도네시아: 'Asia/Jakarta',
+  필리핀: 'Asia/Manila',
+  호주: 'Australia/Sydney',
+  뉴질랜드: 'Pacific/Auckland',
+  미국: 'America/New_York',
+  캐나다: 'America/Toronto',
+  영국: 'Europe/London',
+  프랑스: 'Europe/Paris',
+  독일: 'Europe/Berlin',
+  이탈리아: 'Europe/Rome',
+  스페인: 'Europe/Madrid',
+  스위스: 'Europe/Zurich',
+  네덜란드: 'Europe/Amsterdam',
+  체코: 'Europe/Prague',
+  오스트리아: 'Europe/Vienna',
+  그리스: 'Europe/Athens',
+  터키: 'Europe/Istanbul',
+  두바이: 'Asia/Dubai',
+  기타: 'Asia/Seoul',
 }
 
 export const DEFAULT_TIMEZONE = 'Asia/Seoul'
@@ -87,7 +87,7 @@ export function parseDateAsLocal(dateString: string): Date {
     console.warn(`Invalid date string: ${dateString}`)
     // 오늘 날짜로 조용히 대체하면 다운스트림 계산이 그럴듯하게 틀어지므로,
     // 감지 가능한 Invalid Date를 반환해 호출부가 잘못된 데이터를 인지하게 한다
-    return new Date(NaN)
+    return new Date(Number.NaN)
   }
   const [year, month, day] = dateString.split('-').map(Number)
   return new Date(year, month - 1, day, 12, 0, 0)
@@ -99,7 +99,7 @@ export function parseDateAsLocal(dateString: string): Date {
 export function formatDateInTimezone(
   date: Date | string,
   timezone: string,
-  formatStr: string
+  formatStr: string,
 ): string {
   try {
     const d = typeof date === 'string' ? parseDateAsLocal(date) : date
@@ -125,9 +125,10 @@ function getZoneOffsetMinutes(timeZone: string, date: Date): number {
     minute: '2-digit',
     second: '2-digit',
   })
-  const parts = Object.fromEntries(
-    dtf.formatToParts(date).map((p) => [p.type, p.value])
-  ) as Record<string, string>
+  const parts = Object.fromEntries(dtf.formatToParts(date).map((p) => [p.type, p.value])) as Record<
+    string,
+    string
+  >
   // 'en-US' + hour12:false 는 자정에 '24'를 낼 수 있어 24로 보정
   const hour = Number(parts.hour) % 24
   const asUTC = Date.UTC(
@@ -136,7 +137,7 @@ function getZoneOffsetMinutes(timeZone: string, date: Date): number {
     Number(parts.day),
     hour,
     Number(parts.minute),
-    Number(parts.second)
+    Number(parts.second),
   )
   return Math.round((asUTC - date.getTime()) / 60000)
 }
@@ -188,11 +189,7 @@ export function getTripDayDate(startDate: string, dayNumber: number): Date {
 /**
  * 여행 N일차 날짜를 포맷된 문자열로 반환
  */
-export function formatTripDayDate(
-  startDate: string,
-  dayNumber: number,
-  locale = 'ko-KR'
-): string {
+export function formatTripDayDate(startDate: string, dayNumber: number, locale = 'ko-KR'): string {
   const date = getTripDayDate(startDate, dayNumber)
   return date.toLocaleDateString(locale, {
     month: 'long',
@@ -208,6 +205,41 @@ export function formatTripDayDate(
 export function getTripDayNumbers(startDate: string, endDate: string): number[] {
   const duration = getTripDurationSafe(startDate, endDate)
   return Array.from({ length: duration }, (_, i) => i + 1)
+}
+
+// ============================================
+// 여행 상태 (진행 중 / 예정 / 종료)
+// ============================================
+
+export type TripStatus =
+  | { kind: 'ongoing'; dayN: number; duration: number; progress: number }
+  | { kind: 'upcoming'; dDay: number }
+  | { kind: 'past'; endedDaysAgo: number }
+
+/**
+ * 오늘 날짜 기준 여행 상태 계산.
+ * parseDateAsLocal 이 정오(12:00) 기준 Date 를 반환하므로
+ * 오늘도 정오로 맞춰 비교해야 당일 출발/종료가 시간대에 따라 흔들리지 않는다.
+ */
+export function getTripStatus(startDate: string, endDate: string, now = new Date()): TripStatus {
+  const todayNoon = new Date(now)
+  todayNoon.setHours(12, 0, 0, 0)
+  const start = parseDateAsLocal(startDate)
+  const end = parseDateAsLocal(endDate)
+  const DAY_MS = 86_400_000
+
+  if (todayNoon < start) {
+    return { kind: 'upcoming', dDay: Math.round((start.getTime() - todayNoon.getTime()) / DAY_MS) }
+  }
+  if (todayNoon > end) {
+    return {
+      kind: 'past',
+      endedDaysAgo: Math.round((todayNoon.getTime() - end.getTime()) / DAY_MS),
+    }
+  }
+  const duration = getTripDurationSafe(startDate, endDate)
+  const dayN = Math.round((todayNoon.getTime() - start.getTime()) / DAY_MS) + 1
+  return { kind: 'ongoing', dayN, duration, progress: duration > 0 ? dayN / duration : 1 }
 }
 
 // ============================================
@@ -236,7 +268,7 @@ export function getTimezoneUTCOffset(timezone: string): string {
       timeZoneName: 'shortOffset',
     })
     const parts = formatter.formatToParts(now)
-    const offsetPart = parts.find(p => p.type === 'timeZoneName')
+    const offsetPart = parts.find((p) => p.type === 'timeZoneName')
     return offsetPart?.value || 'UTC'
   } catch {
     return 'UTC'
@@ -271,7 +303,7 @@ export function convertTimeBetweenZones(
   time: string,
   date: Date,
   fromTimezone: string,
-  toTimezone: string
+  toTimezone: string,
 ): string {
   try {
     const [hours, minutes] = time.split(':').map(Number)
